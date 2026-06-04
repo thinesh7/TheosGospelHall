@@ -1,0 +1,112 @@
+# ─────────────────────────────────────────
+#  React Native / Expo – .gitignore
+# ─────────────────────────────────────────
+
+# ── OSX ──────────────────────────────────
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+
+# ── Windows ──────────────────────────────
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+
+# ── Node ─────────────────────────────────
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.npm
+.yarn-integrity
+.pnp.*
+.yarn/cache
+.yarn/unplugged
+.yarn/build-state.yml
+
+# ── Expo ─────────────────────────────────
+.expo/
+.expo-shared/
+dist/
+web-build/
+expo-env.d.ts
+
+# ── Native build outputs ─────────────────
+# Android
+android/
+*.apk
+*.aab
+*.keystore
+!debug.keystore
+
+# iOS
+ios/
+*.ipa
+*.xcarchive
+DerivedData/
+*.xcworkspace/xcuserdata/
+*.pbxuser
+*.mode1v3
+*.mode2v3
+*.perspectivev3
+!default.pbxuser
+!default.mode1v3
+!default.mode2v3
+!default.perspectivev3
+
+# ── Metro bundler ────────────────────────
+.metro-health-check*
+.metro_cache/
+
+# ── TypeScript ───────────────────────────
+*.tsbuildinfo
+tsconfig.tsbuildinfo
+
+# ── Environment / secrets ────────────────
+.env
+.env.local
+.env.development
+.env.staging
+.env.production
+.env.*.local
+*.pem
+*.p8
+*.p12
+
+# ── Firebase ─────────────────────────────
+google-services.json
+GoogleService-Info.plist
+.firebase/
+firebase-debug.log
+firestore-debug.log
+ui-debug.log
+
+# ── EAS / Expo Application Services ──────
+.easignore
+
+# ── IDE / Editor ─────────────────────────
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json
+.idea/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# ── Testing ──────────────────────────────
+coverage/
+.nyc_output/
+jest-results/
+
+# ── Misc ─────────────────────────────────
+*.log
+*.pid
+*.seed
+*.pid.lock
+.cache/
+tmp/
+temp/

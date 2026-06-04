@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "770231202555",
+    "project_id": "tgh-theosgospelhall",
+    "storage_bucket": "tgh-theosgospelhall.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:770231202555:android:ccc49c558edb492f7e365e",
+        "android_client_info": {
+          "package_name": "com.theosgospelhall.app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAbLLk0ac-xd0Jr0InYa8MMGiqom4LHQ6Q"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
