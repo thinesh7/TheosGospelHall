@@ -14,12 +14,12 @@
     },
     "android": {
       "package": "com.theosgospelhall.app",
+      "softwareKeyboardLayoutMode": "pan",
       "googleServicesFile": "./google-services.json",
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/logo.png",
         "backgroundColor": "#ffffff"
       },
-      "edgeToEdgeEnabled": true,
       "predictiveBackGestureEnabled": false,
       "permissions": [
         "RECEIVE_BOOT_COMPLETED",

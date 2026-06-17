@@ -1,20 +1,29 @@
 import { Ionicons } from '@expo/vector-icons';
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
+  Dimensions,
   FlatList,
   Image,
   Linking,
+  Modal,
+  StatusBar,
   StyleSheet,
   Text,
   TextInput,
   TouchableOpacity,
   View,
 } from 'react-native';
+import YoutubePlayer from 'react-native-youtube-iframe';
 
 const API_KEY = 'AIzaSyDB77b7nPE0Fs4tMvrOVZTqq12CXkaZdBg';
 const CHANNEL_ID = 'UCFg0eNTRs2UIcihQAVpyrJA';
 const PLAYLIST_ID = 'UUFg0eNTRs2UIcihQAVpyrJA';
+const SHORTS_PLAYLIST_ID = 'PLZISpWbe8RUjb_YX_C2yEEB7IZnhU9VRA';
+const LIVE_PLAYLIST_ID = 'PLZISpWbe8RUidyhPJNs5xa8-WOnHq-NLj';
+
+const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
+const PLAYER_HEIGHT = SCREEN_HEIGHT * 0.55;
 
 type Tab = 'home' | 'shorts' | 'live' | 'playlists';
 
@@ -41,15 +50,20 @@ const decodeHtml = (text: string): string => {
     .replace(/&nbsp;/g, ' ');
 };
 
-const parseDuration = (iso: string): number => {
-  try {
-    const match = iso.match(/PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?/);
-    if (!match) return 9999;
-    const h = parseInt(match[1] || '0', 10);
-    const m = parseInt(match[2] || '0', 10);
-    const s = parseInt(match[3] || '0', 10);
-    return h * 3600 + m * 60 + s;
-  } catch { return 9999; }
+const sortByDate = (a: any, b: any) => {
+  const da = (a?.snippet?.publishedAt || '');
+  const db = (b?.snippet?.publishedAt || '');
+  return db.localeCompare(da);
+};
+
+const dedupeById = (items: any[]): any[] => {
+  const seen = new Set<string>();
+  return items.filter((v: any) => {
+    const id = v?.snippet?.resourceId?.videoId;
+    if (!id || seen.has(id)) return false;
+    seen.add(id);
+    return true;
+  });
 };
 
 export default function VideosScreen() {
@@ -58,34 +72,42 @@ export default function VideosScreen() {
   const [searching, setSearching] = useState(false);
   const [searchResults, setSearchResults] = useState<any[]>([]);
 
-  // Videos
   const [videos, setVideos] = useState<any[]>([]);
   const [allVideos, setAllVideos] = useState<any[]>([]);
   const [loadingVideos, setLoadingVideos] = useState(true);
   const [nextPageToken, setNextPageToken] = useState('');
   const [loadingMore, setLoadingMore] = useState(false);
 
-  // Shorts
   const [shorts, setShorts] = useState<any[]>([]);
   const [loadingShorts, setLoadingShorts] = useState(false);
   const [shortsLoaded, setShortsLoaded] = useState(false);
   const [shortsNextToken, setShortsNextToken] = useState('');
   const [loadingMoreShorts, setLoadingMoreShorts] = useState(false);
 
-  // Live — now with pagination
   const [liveVideos, setLiveVideos] = useState<any[]>([]);
   const [loadingLive, setLoadingLive] = useState(false);
   const [liveLoaded, setLiveLoaded] = useState(false);
   const [liveNextToken, setLiveNextToken] = useState('');
   const [loadingMoreLive, setLoadingMoreLive] = useState(false);
 
-  // Playlists
   const [playlists, setPlaylists] = useState<any[]>([]);
   const [loadingPlaylists, setLoadingPlaylists] = useState(false);
   const [playlistsLoaded, setPlaylistsLoaded] = useState(false);
 
-  // Pull to refresh
   const [refreshing, setRefreshing] = useState(false);
+
+  const [shortsPlayerVisible, setShortsPlayerVisible] = useState(false);
+  const [currentShortIndex, setCurrentShortIndex] = useState(0);
+  const [playingId, setPlayingId] = useState<string | null>(null);
+
+  const shortsPlayerRef = useRef<FlatList>(null);
+  const shortsNextTokenRef = useRef('');
+  const loadingMoreShortsRef = useRef(false);
+  const shortsRef = useRef<any[]>([]);
+
+  useEffect(() => { shortsNextTokenRef.current = shortsNextToken; }, [shortsNextToken]);
+  useEffect(() => { loadingMoreShortsRef.current = loadingMoreShorts; }, [loadingMoreShorts]);
+  useEffect(() => { shortsRef.current = shorts; }, [shorts]);
 
   useEffect(() => { fetchVideos(); }, []);
 
@@ -121,21 +143,14 @@ export default function VideosScreen() {
       );
       if (pageToken) {
         setAllVideos(prev => {
-          const combined = [...prev, ...items];
-          return combined.sort((a: any, b: any) => {
-            const da = (a?.snippet?.publishedAt || '').split('T')[0];
-            const db = (b?.snippet?.publishedAt || '').split('T')[0];
-            return db.localeCompare(da);
-          });
+          const existingIds = new Set(prev.map((v: any) => v.snippet.resourceId.videoId));
+          const unique = items.filter((v: any) => !existingIds.has(v.snippet.resourceId.videoId));
+          return [...prev, ...unique].sort(sortByDate);
         });
       } else {
-        const sorted = [...items].sort((a: any, b: any) => {
-          const da = (a?.snippet?.publishedAt || '').split('T')[0];
-          const db = (b?.snippet?.publishedAt || '').split('T')[0];
-          return db.localeCompare(da);
-        });
-        setAllVideos(sorted);
-        setVideos(sorted);
+        const deduped = dedupeById(items).sort(sortByDate);
+        setAllVideos(deduped);
+        setVideos(deduped);
       }
       setNextPageToken(data.nextPageToken || '');
     } catch (e) {
@@ -146,57 +161,32 @@ export default function VideosScreen() {
     }
   };
 
-  // Simple duration check — trust YouTube's videoDuration=short parameter
-  // Only remove obvious long videos using a lightweight API check
-  const filterShortsByDuration = async (items: any[]): Promise<any[]> => {
-    try {
-      if (items.length === 0) return [];
-      const videoIds = items.map((i: any) => i.snippet.resourceId.videoId).join(',');
-      const res = await fetch(
-        `https://www.googleapis.com/youtube/v3/videos?key=${API_KEY}&id=${videoIds}&part=contentDetails`
-      );
-      const data = await res.json();
-      const durationMap: Record<string, number> = {};
-      (data.items || []).forEach((v: any) => {
-        durationMap[v.id] = parseDuration(v.contentDetails?.duration || '');
-      });
-      return items.filter((i: any) => {
-        const secs = durationMap[i.snippet.resourceId.videoId];
-        if (secs === undefined) return true;
-        return secs <= 180;
-      });
-    } catch (e) {
-      console.log('Duration filter error', e);
-      return items; // if API fails — return all
-    }
-  };
-
   const fetchShorts = async (pageToken = '') => {
     try {
       if (!pageToken) setLoadingShorts(true);
       else setLoadingMoreShorts(true);
       const res = await fetch(
-        `https://www.googleapis.com/youtube/v3/search?key=${API_KEY}&channelId=${CHANNEL_ID}&part=snippet&type=video&maxResults=50&order=date&videoDuration=short${pageToken ? `&pageToken=${pageToken}` : ''}`
+        `https://www.googleapis.com/youtube/v3/playlistItems?key=${API_KEY}&playlistId=${SHORTS_PLAYLIST_ID}&part=snippet&maxResults=50${pageToken ? `&pageToken=${pageToken}` : ''}`
       );
       const data = await res.json();
       const mapped = (data.items || [])
-        .filter((item: any) => {
-          if (!item?.id?.videoId || !item?.snippet?.thumbnails) return false;
-          return true;
-        })
+        .filter((item: any) => item?.snippet?.resourceId?.videoId && item?.snippet?.thumbnails?.medium)
         .map((item: any) => ({
           snippet: {
             title: decodeHtml(item.snippet.title),
             publishedAt: item.snippet.publishedAt,
             thumbnails: item.snippet.thumbnails,
-            resourceId: { videoId: item.id.videoId },
+            resourceId: { videoId: item.snippet.resourceId.videoId },
           },
         }));
-      const filtered = await filterShortsByDuration(mapped);
       if (pageToken) {
-        setShorts(prev => [...prev, ...filtered]);
+        setShorts(prev => {
+          const existingIds = new Set(prev.map((v: any) => v.snippet.resourceId.videoId));
+          const unique = mapped.filter((v: any) => !existingIds.has(v.snippet.resourceId.videoId));
+          return [...prev, ...unique];
+        });
       } else {
-        setShorts(filtered);
+        setShorts(dedupeById(mapped));
       }
       setShortsNextToken(data.nextPageToken || '');
       setShortsLoaded(true);
@@ -208,29 +198,32 @@ export default function VideosScreen() {
     }
   };
 
-  // Live with full pagination support
   const fetchLive = async (pageToken = '') => {
     try {
       if (!pageToken) setLoadingLive(true);
       else setLoadingMoreLive(true);
       const res = await fetch(
-        `https://www.googleapis.com/youtube/v3/search?key=${API_KEY}&channelId=${CHANNEL_ID}&part=snippet&type=video&eventType=completed&maxResults=50&order=date${pageToken ? `&pageToken=${pageToken}` : ''}`
+        `https://www.googleapis.com/youtube/v3/playlistItems?key=${API_KEY}&playlistId=${LIVE_PLAYLIST_ID}&part=snippet&maxResults=50${pageToken ? `&pageToken=${pageToken}` : ''}`
       );
       const data = await res.json();
       const mapped = (data.items || [])
-        .filter((item: any) => item?.id?.videoId && item?.snippet?.thumbnails)
+        .filter((item: any) => item?.snippet?.resourceId?.videoId && item?.snippet?.thumbnails?.medium)
         .map((item: any) => ({
           snippet: {
             title: decodeHtml(item.snippet.title),
             publishedAt: item.snippet.publishedAt,
             thumbnails: item.snippet.thumbnails,
-            resourceId: { videoId: item.id.videoId },
+            resourceId: { videoId: item.snippet.resourceId.videoId },
           },
         }));
       if (pageToken) {
-        setLiveVideos(prev => [...prev, ...mapped]);
+        setLiveVideos(prev => {
+          const existingIds = new Set(prev.map((v: any) => v.snippet.resourceId.videoId));
+          const unique = mapped.filter((v: any) => !existingIds.has(v.snippet.resourceId.videoId));
+          return [...prev, ...unique];
+        });
       } else {
-        setLiveVideos(mapped);
+        setLiveVideos(dedupeById(mapped));
       }
       setLiveNextToken(data.nextPageToken || '');
       setLiveLoaded(true);
@@ -283,7 +276,6 @@ export default function VideosScreen() {
     }
   };
 
-  // Pull to refresh — resets and refetches all tabs
   const onRefresh = async () => {
     setRefreshing(true);
     setAllVideos([]);
@@ -294,6 +286,9 @@ export default function VideosScreen() {
     setLiveNextToken('');
     setPlaylists([]);
     setNextPageToken('');
+    setShortsLoaded(false);
+    setLiveLoaded(false);
+    setPlaylistsLoaded(false);
     await Promise.all([
       fetchVideos(),
       fetchShorts(),
@@ -305,6 +300,96 @@ export default function VideosScreen() {
     setPlaylistsLoaded(true);
     setRefreshing(false);
   };
+
+  const openShortsPlayer = (index: number) => {
+    setCurrentShortIndex(index);
+    setPlayingId(shorts[index]?.snippet?.resourceId?.videoId || null);
+    setShortsPlayerVisible(true);
+  };
+
+  const closeShortsPlayer = () => {
+    setShortsPlayerVisible(false);
+    setPlayingId(null);
+  };
+
+  const handleVideoEnd = useCallback((index: number) => {
+    const currentShorts = shortsRef.current;
+    const nextIndex = index + 1;
+    if (nextIndex < currentShorts.length) {
+      shortsPlayerRef.current?.scrollToIndex({ index: nextIndex, animated: true });
+    } else if (shortsNextTokenRef.current && !loadingMoreShortsRef.current) {
+      fetchShorts(shortsNextTokenRef.current);
+    }
+  }, []);
+
+  const onViewableItemsChanged = useRef(({ viewableItems }: any) => {
+    if (viewableItems.length > 0) {
+      const index = viewableItems[0].index ?? 0;
+      setCurrentShortIndex(index);
+      setPlayingId(viewableItems[0].item?.snippet?.resourceId?.videoId || null);
+      const isLast = index === shortsRef.current.length - 1;
+      if (isLast && shortsNextTokenRef.current && !loadingMoreShortsRef.current) {
+        fetchShorts(shortsNextTokenRef.current);
+      }
+    }
+  }).current;
+
+  const viewabilityConfig = useRef({ itemVisiblePercentThreshold: 80 }).current;
+
+  const ShortsPlayerItem = useCallback(({ item, index }: any) => {
+    const videoId = item?.snippet?.resourceId?.videoId;
+    const title = item?.snippet?.title || '';
+    const isActive = playingId === videoId;
+
+    return (
+      <View style={styles.shortsPlayerItem}>
+        <StatusBar hidden />
+        <View style={styles.shortsVideoWrapper}>
+          {isActive ? (
+            <YoutubePlayer
+              height={PLAYER_HEIGHT}
+              width={SCREEN_WIDTH}
+              videoId={videoId}
+              play={true}
+              onChangeState={(state: string) => {
+                if (state === 'ended') handleVideoEnd(index);
+              }}
+              onError={() => {
+                Linking.openURL(`https://www.youtube.com/shorts/${videoId}`);
+              }}
+              webViewProps={{
+                allowsInlineMediaPlayback: true,
+                mediaPlaybackRequiresUserAction: false,
+                allowsFullscreenVideo: true,
+                scalesPageToFit: true,
+                injectedJavaScript: `
+                  document.body.style.margin='0';
+                  document.body.style.padding='0';
+                  document.querySelector('iframe') && (document.querySelector('iframe').style.width='100%');
+                  true;
+                `,
+              }}
+              initialPlayerParams={{
+                rel: 0,
+                modestbranding: 1,
+                controls: 1,
+                fs: 1,
+              }}
+            />
+          ) : (
+            <View style={{ width: SCREEN_WIDTH, height: PLAYER_HEIGHT, backgroundColor: '#000' }} />
+          )}
+        </View>
+        <View style={styles.shortsOverlay}>
+          <Text style={styles.shortsVideoTitle} numberOfLines={3}>{title}</Text>
+          <Text style={styles.shortsCounter}>{index + 1} / {shortsRef.current.length}</Text>
+        </View>
+        <TouchableOpacity style={styles.shortsCloseBtn} onPress={closeShortsPlayer}>
+          <Ionicons name="close" size={28} color="#fff" />
+        </TouchableOpacity>
+      </View>
+    );
+  }, [playingId, handleVideoEnd]);
 
   const VideoCard = ({ item }: any) => {
     const videoId = item?.snippet?.resourceId?.videoId;
@@ -326,7 +411,7 @@ export default function VideosScreen() {
     );
   };
 
-  const ShortCard = ({ item }: any) => {
+  const ShortCard = ({ item, index }: any) => {
     const videoId = item?.snippet?.resourceId?.videoId;
     const thumbUrl = item?.snippet?.thumbnails?.high?.url || item?.snippet?.thumbnails?.medium?.url;
     const title = decodeHtml(item?.snippet?.title || '');
@@ -334,9 +419,12 @@ export default function VideosScreen() {
     return (
       <TouchableOpacity
         style={styles.shortCard}
-        onPress={() => Linking.openURL(`https://www.youtube.com/shorts/${videoId}`)}
+        onPress={() => openShortsPlayer(index)}
       >
         <Image source={{ uri: thumbUrl }} style={styles.shortThumbnail} />
+        <View style={styles.shortPlayIcon}>
+          <Ionicons name="play-circle" size={36} color="rgba(255,255,255,0.9)" />
+        </View>
         <View style={styles.shortOverlay}>
           <Text style={styles.shortTitle} numberOfLines={2}>{title}</Text>
         </View>
@@ -383,7 +471,37 @@ export default function VideosScreen() {
   return (
     <View style={styles.container}>
 
-      {/* Search */}
+      <Modal
+        visible={shortsPlayerVisible}
+        animationType="slide"
+        statusBarTranslucent
+        onRequestClose={closeShortsPlayer}
+      >
+        <View style={styles.shortsPlayerContainer}>
+          <FlatList
+            ref={shortsPlayerRef}
+            data={shorts}
+            keyExtractor={(item) => item.snippet.resourceId.videoId}
+            renderItem={({ item, index }) => <ShortsPlayerItem item={item} index={index} />}
+            pagingEnabled
+            horizontal={false}
+            showsVerticalScrollIndicator={false}
+            snapToInterval={SCREEN_HEIGHT}
+            snapToAlignment="start"
+            decelerationRate="fast"
+            onViewableItemsChanged={onViewableItemsChanged}
+            viewabilityConfig={viewabilityConfig}
+            getItemLayout={(_, index) => ({
+              length: SCREEN_HEIGHT,
+              offset: SCREEN_HEIGHT * index,
+              index,
+            })}
+            initialScrollIndex={currentShortIndex}
+            onScrollToIndexFailed={() => {}}
+          />
+        </View>
+      </Modal>
+
       <View style={styles.searchBar}>
         <Ionicons name="search" size={20} color="#666" />
         <TextInput
@@ -401,7 +519,6 @@ export default function VideosScreen() {
         )}
       </View>
 
-      {/* Tabs */}
       {!isSearching && (
         <View style={styles.tabsRow}>
           {tabs.map(tab => (
@@ -423,7 +540,6 @@ export default function VideosScreen() {
         </View>
       )}
 
-      {/* Search results */}
       {isSearching && (
         searching
           ? <ActivityIndicator color="#0f3460" style={{ marginTop: 40 }} size="large" />
@@ -436,13 +552,12 @@ export default function VideosScreen() {
             />
       )}
 
-      {/* Videos tab */}
       {!isSearching && activeTab === 'home' && (
         loadingVideos
           ? <ActivityIndicator size="large" color="#0f3460" style={{ marginTop: 40 }} />
           : <FlatList
               data={videos}
-              keyExtractor={(_, i) => `v${i}`}
+              keyExtractor={(item) => item.snippet.resourceId.videoId}
               refreshing={refreshing}
               onRefresh={onRefresh}
               renderItem={({ item }) => <VideoCard item={item} />}
@@ -461,16 +576,15 @@ export default function VideosScreen() {
             />
       )}
 
-      {/* Shorts tab */}
       {!isSearching && activeTab === 'shorts' && (
         loadingShorts
           ? <ActivityIndicator size="large" color="#0f3460" style={{ marginTop: 40 }} />
           : <FlatList
               data={shorts}
-              keyExtractor={(_, i) => `sh${i}`}
+              keyExtractor={(item) => item.snippet.resourceId.videoId}
               refreshing={refreshing}
               onRefresh={onRefresh}
-              renderItem={({ item }) => <ShortCard item={item} />}
+              renderItem={({ item, index }) => <ShortCard item={item} index={index} />}
               numColumns={2}
               contentContainerStyle={{ padding: 8, paddingBottom: 100 }}
               columnWrapperStyle={{ gap: 8 }}
@@ -480,7 +594,7 @@ export default function VideosScreen() {
                   <TouchableOpacity style={styles.loadMore} onPress={() => fetchShorts(shortsNextToken)}>
                     {loadingMoreShorts
                       ? <ActivityIndicator color="#fff" />
-                      : <Text style={styles.loadMoreText}>Load More Shorts</Text>
+                      : <Text style={styles.loadMoreText}>Load More Videos</Text>
                     }
                   </TouchableOpacity>
                 ) : null
@@ -488,13 +602,12 @@ export default function VideosScreen() {
             />
       )}
 
-      {/* Live tab */}
       {!isSearching && activeTab === 'live' && (
         loadingLive
           ? <ActivityIndicator size="large" color="#0f3460" style={{ marginTop: 40 }} />
           : <FlatList
               data={liveVideos}
-              keyExtractor={(_, i) => `l${i}`}
+              keyExtractor={(item) => item.snippet.resourceId.videoId}
               refreshing={refreshing}
               onRefresh={onRefresh}
               renderItem={({ item }) => {
@@ -527,7 +640,7 @@ export default function VideosScreen() {
                   <TouchableOpacity style={styles.loadMore} onPress={() => fetchLive(liveNextToken)}>
                     {loadingMoreLive
                       ? <ActivityIndicator color="#fff" />
-                      : <Text style={styles.loadMoreText}>Load More Live</Text>
+                      : <Text style={styles.loadMoreText}>Load More Videos</Text>
                     }
                   </TouchableOpacity>
                 ) : null
@@ -535,7 +648,6 @@ export default function VideosScreen() {
             />
       )}
 
-      {/* Playlists tab */}
       {!isSearching && activeTab === 'playlists' && (
         loadingPlaylists
           ? <ActivityIndicator size="large" color="#0f3460" style={{ marginTop: 40 }} />
@@ -603,6 +715,12 @@ const styles = StyleSheet.create({
     minHeight: 220,
   },
   shortThumbnail: { width: '100%', height: 220 },
+  shortPlayIcon: {
+    position: 'absolute',
+    top: 0, left: 0, right: 0, bottom: 0,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
   shortOverlay: {
     position: 'absolute',
     bottom: 0,
@@ -655,4 +773,46 @@ const styles = StyleSheet.create({
   empty: { textAlign: 'center', color: '#888', marginTop: 40, fontSize: 14 },
   loadMore: { backgroundColor: '#0f3460', borderRadius: 12, padding: 14, alignItems: 'center', marginBottom: 20 },
   loadMoreText: { color: '#fff', fontWeight: 'bold', fontSize: 14 },
+  shortsPlayerContainer: { flex: 1, backgroundColor: '#000' },
+  shortsPlayerItem: {
+      width: SCREEN_WIDTH,
+      height: SCREEN_HEIGHT,
+      backgroundColor: '#000',
+      justifyContent: 'center',
+      alignItems: 'center',
+    },
+  shortsVideoWrapper: {
+      width: SCREEN_WIDTH,
+      height: PLAYER_HEIGHT,
+      backgroundColor: '#000',
+      justifyContent: 'center',
+      alignItems: 'center',
+      marginTop: SCREEN_HEIGHT * 0.15,
+      paddingHorizontal: 0,
+    },
+  shortsOverlay: {
+    position: 'absolute',
+    bottom: 60,
+    left: 16,
+    right: 16,
+  },
+  shortsVideoTitle: {
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: '600',
+    textShadowColor: 'rgba(0,0,0,0.8)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 4,
+    marginBottom: 4,
+  },
+  shortsCounter: { color: 'rgba(255,255,255,0.7)', fontSize: 12 },
+  shortsCloseBtn: {
+    position: 'absolute',
+    top: 50,
+    right: 16,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    borderRadius: 20,
+    padding: 6,
+    zIndex: 10,
+  },
 });

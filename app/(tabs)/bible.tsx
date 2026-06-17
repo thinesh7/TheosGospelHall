@@ -1,4 +1,5 @@
 import { Ionicons } from '@expo/vector-icons';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Clipboard from 'expo-clipboard';
 import { useEffect, useRef, useState } from 'react';
 import {
@@ -125,13 +126,14 @@ export default function BibleScreen() {
   const [view, setView] = useState<'home' | 'books' | 'chapters' | 'verses'>('home');
   const [testament, setTestament] = useState<'OT' | 'NT'>('OT');
   const [fontSize, setFontSize] = useState(17);
-  const [theme, setTheme] = useState<'light' | 'dark' | 'sepia'>('light');
+  const [theme, setTheme] = useState<'light' | 'dark' | 'sepia'>('dark');
   const [isBilingual, setIsBilingual] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [secondaryVersion, setSecondaryVersion] = useState('ERV');
   const [activeVerse, setActiveVerse] = useState(0);
   const [showBookModal, setShowBookModal] = useState(false);
   const [bookModalTestament, setBookModalTestament] = useState<'OT' | 'NT'>('OT');
+  const [settingsLoaded, setSettingsLoaded] = useState(false);
   const versesListRef = useRef<FlatList>(null);
   const verseBarRef = useRef<ScrollView>(null);
   const secondaryVersionRef = useRef('ERV');
@@ -142,6 +144,36 @@ export default function BibleScreen() {
   const isEnglish = BIBLE_VERSIONS.find(v => v.code === version)?.lang === 'English';
 
   useEffect(() => { secondaryVersionRef.current = secondaryVersion; }, [secondaryVersion]);
+
+  useEffect(() => {
+    const loadSettings = async () => {
+      try {
+        const saved = await AsyncStorage.getItem('tgh_bible_settings');
+        if (saved) {
+          const s = JSON.parse(saved);
+          if (s.theme) setTheme(s.theme);
+          if (s.fontSize) setFontSize(s.fontSize);
+          if (s.isBilingual !== undefined) setIsBilingual(s.isBilingual);
+          if (s.secondaryVersion) {
+            setSecondaryVersion(s.secondaryVersion);
+            secondaryVersionRef.current = s.secondaryVersion;
+          }
+        }
+      } catch (e) {}
+      setSettingsLoaded(true);
+    };
+    loadSettings();
+  }, []);
+
+  useEffect(() => {
+    if (!settingsLoaded) return;
+    AsyncStorage.setItem('tgh_bible_settings', JSON.stringify({
+      theme,
+      fontSize,
+      isBilingual,
+      secondaryVersion,
+    }));
+  }, [theme, fontSize, isBilingual, secondaryVersion, settingsLoaded]);
 
   useEffect(() => {
     const backAction = () => {
@@ -207,10 +239,6 @@ export default function BibleScreen() {
     verseBarRef.current?.scrollTo({ x: Math.max(0, barX), animated: false });
   };
 
-  // THE REAL FIX: use scrollToIndex which works regardless of whether
-  // items are rendered yet. onScrollToIndexFailed handles the rare case
-  // where the list hasn't rendered that far yet by first scrolling near
-  // then retrying after a short delay.
   const jumpToVerse = (verseIdx: number) => {
     setActiveVerse(verseIdx);
     syncVerseBar(verseIdx);
@@ -221,19 +249,15 @@ export default function BibleScreen() {
         animated: true,
         viewPosition: 0,
       });
-    } catch (e) {
-      // List not ready yet — will be handled by onScrollToIndexFailed
-    }
+    } catch (e) {}
   };
 
   const handleScrollToIndexFailed = (info: { index: number; averageItemLength: number; highestMeasuredFrameIndex: number }) => {
     const idx = info.index;
-    // First scroll to the highest measured index to force rendering
     versesListRef.current?.scrollToIndex({
       index: info.highestMeasuredFrameIndex,
       animated: false,
     });
-    // Then retry the actual target after items render
     setTimeout(() => {
       if (pendingScrollRef.current === idx) {
         versesListRef.current?.scrollToIndex({
@@ -254,6 +278,8 @@ export default function BibleScreen() {
 
   const OTBooks = BOOKS.filter(b => b.id <= 39);
   const NTBooks = BOOKS.filter(b => b.id >= 40);
+
+  if (!settingsLoaded) return null;
 
   const BookSelectorModal = () => (
     <Modal visible={showBookModal} transparent animationType="slide">
@@ -318,7 +344,7 @@ export default function BibleScreen() {
           </View>
           <Text style={[styles.settingLabel, { color: T.subText }]}>Theme</Text>
           <View style={styles.themeRow}>
-            {(['light', 'dark', 'sepia'] as const).map(t => (
+            {(['dark', 'light', 'sepia'] as const).map(t => (
               <TouchableOpacity key={t} style={[styles.themeBtn, { backgroundColor: THEMES[t].bg, borderColor: theme === t ? '#0f3460' : '#ddd' }]} onPress={() => setTheme(t)}>
                 <Text style={{ color: THEMES[t].text, fontSize: 12, fontWeight: '600', textTransform: 'capitalize' }}>{t}</Text>
               </TouchableOpacity>
@@ -368,7 +394,6 @@ export default function BibleScreen() {
     </Modal>
   );
 
-  // HOME
   if (view === 'home') {
     const tamilVersions = BIBLE_VERSIONS.filter(v => v.lang === 'Tamil');
     const englishVersions = BIBLE_VERSIONS.filter(v => v.lang === 'English');
@@ -426,7 +451,6 @@ export default function BibleScreen() {
     );
   }
 
-  // BOOKS
   if (view === 'books') {
     const books = testament === 'OT' ? OTBooks : NTBooks;
     const currentVersion = BIBLE_VERSIONS.find(v => v.code === version);
@@ -469,7 +493,6 @@ export default function BibleScreen() {
     );
   }
 
-  // CHAPTERS
   if (view === 'chapters' && selectedBook) {
     const chapters = Array.from({ length: selectedBook.chapters }, (_, i) => i + 1);
     const chapterTitle = isBilingual ? `${selectedBook.name} | ${selectedBook.tamil}` : isEnglish ? selectedBook.name : selectedBook.tamil;
@@ -498,7 +521,6 @@ export default function BibleScreen() {
     );
   }
 
-  // VERSES
   if (view === 'verses') {
     const showBilingual = isBilingual && !isEnglish && secondaryVerses.length > 0;
     const maxVerses = Math.max(primaryVerses.length, showBilingual ? secondaryVerses.length : 0);
@@ -539,7 +561,6 @@ export default function BibleScreen() {
           </TouchableOpacity>
         </View>
 
-        {/* Verse jump bar */}
         <View style={[styles.verseJumpBar, { backgroundColor: T.navBg, borderBottomColor: T.divider }]}>
           <ScrollView ref={verseBarRef} horizontal showsHorizontalScrollIndicator={false}
             contentContainerStyle={{ paddingHorizontal: 8, gap: 4 }}>

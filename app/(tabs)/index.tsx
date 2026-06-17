@@ -6,7 +6,8 @@ import * as Device from 'expo-device';
 import { LinearGradient } from 'expo-linear-gradient';
 import * as Notifications from 'expo-notifications';
 import { useFocusEffect } from 'expo-router';
-import { addDoc, collection, deleteDoc, doc, getDoc, getDocs, orderBy, query, setDoc, updateDoc } from 'firebase/firestore';
+import { onAuthStateChanged, signInWithEmailAndPassword } from 'firebase/auth';
+import { addDoc, collection, deleteDoc, doc, getDocs, orderBy, query, setDoc, updateDoc } from 'firebase/firestore';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   Alert,
@@ -24,7 +25,7 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
-import { db } from '../../firebaseConfig';
+import { auth, db } from '../../firebaseConfig';
 
 const isExpoGo = Constants.appOwnership === 'expo';
 if (!isExpoGo) {
@@ -71,13 +72,15 @@ export default function HomeScreen() {
   const upcomingEventsRef = useRef<{ reload: () => void }>(null);
 
   const [showPasswordModal, setShowPasswordModal] = useState(false);
+  const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [loggingIn, setLoggingIn] = useState(false);
+  const [isAdminAuthenticated, setIsAdminAuthenticated] = useState(false);
   const [showAdmin, setShowAdmin] = useState(false);
   const [adminMeetings, setAdminMeetings] = useState<SpecialMeeting[]>([]);
   const [loadingAdmin, setLoadingAdmin] = useState(false);
   const [saving, setSaving] = useState(false);
   const [sendingNotif, setSendingNotif] = useState(false);
-
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [form, setForm] = useState<Omit<SpecialMeeting, 'id'>>(EMPTY_MEETING);
@@ -93,10 +96,22 @@ export default function HomeScreen() {
     return () => sub.remove();
   }, []);
 
-  // ── Android back button handler ──
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, user => {
+      setIsAdminAuthenticated(!!user);
+    });
+    return () => unsubscribe();
+  }, []);
+
   useFocusEffect(
     useCallback(() => {
       const onBackPress = () => {
+        if (showPasswordModal) {
+          setShowPasswordModal(false);
+          setEmail('');
+          setPassword('');
+          return true;
+        }
         if (showAdmin) {
           if (showForm) {
             setShowForm(false);
@@ -110,7 +125,7 @@ export default function HomeScreen() {
       };
       const subscription = BackHandler.addEventListener('hardwareBackPress', onBackPress);
       return () => subscription.remove();
-    }, [showAdmin, showForm])
+    }, [showPasswordModal, showAdmin, showForm])
   );
 
   const registerForPushNotifications = async () => {
@@ -210,33 +225,32 @@ export default function HomeScreen() {
     if (tapCountRef.current >= 3) {
       tapCountRef.current = 0;
       clearTimeout(tapTimerRef.current);
-      setShowPasswordModal(true);
+      if (isAdminAuthenticated) {
+        openAdmin();
+      } else {
+        setShowPasswordModal(true);
+      }
     }
   };
 
-  // ── Login — password fetched from Firestore ──
   const handleLogin = async () => {
-    try {
-      const docSnap = await getDoc(doc(db, 'settings', 'admin'));
-      const correctPassword = docSnap.exists() ? docSnap.data()?.password : null;
-
-      if (!correctPassword) {
-        Alert.alert('Error', 'Admin password not configured. Contact support.');
-        return;
-      }
-
-      if (password === correctPassword) {
-        setPassword('');
-        setShowPasswordModal(false);
-        openAdmin();
-      } else {
-        Alert.alert('Wrong Password', 'Please try again.');
-        setPassword('');
-      }
-    } catch (e) {
-      console.log('Login error:', e);
-      Alert.alert('Error', 'Could not verify password. Check internet.');
+    if (!email.trim() || !password.trim()) {
+      Alert.alert('Required', 'Please enter email and password.');
+      return;
     }
+    setLoggingIn(true);
+    try {
+      await signInWithEmailAndPassword(auth, email.trim(), password);
+      setEmail('');
+      setPassword('');
+      setShowPasswordModal(false);
+      openAdmin();
+    } catch (e: any) {
+      console.log('Login error:', e.code);
+      Alert.alert('Login Failed', 'Invalid email or password.');
+      setPassword('');
+    }
+    setLoggingIn(false);
   };
 
   const openAdmin = async () => {
@@ -371,6 +385,72 @@ export default function HomeScreen() {
   const F = (field: keyof Omit<SpecialMeeting, 'id'>, val: string | boolean | number) =>
     setForm(prev => ({ ...prev, [field]: val }));
 
+  if (showPasswordModal) {
+    return (
+      <KeyboardAvoidingView
+        style={styles.loginScreen}
+        behavior="padding"
+      >
+        <ScrollView
+          contentContainerStyle={styles.loginScroll}
+          keyboardShouldPersistTaps="handled"
+          showsVerticalScrollIndicator={false}
+          bounces={false}
+        >
+          <LinearGradient colors={['#1a1a2e', '#16213e', '#0f3460']} style={styles.loginHeader}>
+            <Text style={styles.loginHeaderTitle}>🔐 Admin Access</Text>
+            <Text style={styles.loginHeaderSub}>Theos Gospel Hall</Text>
+          </LinearGradient>
+
+          <View style={styles.loginCard}>
+            <Text style={styles.loginCardTitle}>Sign In</Text>
+            <Text style={styles.loginCardSub}>Enter your admin credentials</Text>
+
+            <Text style={styles.loginLabel}>Email</Text>
+            <TextInput
+              style={styles.loginInput}
+              placeholder="admin@example.com"
+              placeholderTextColor="#999"
+              keyboardType="email-address"
+              autoCapitalize="none"
+              value={email}
+              onChangeText={setEmail}
+              autoFocus
+              returnKeyType="next"
+            />
+
+            <Text style={styles.loginLabel}>Password</Text>
+            <TextInput
+              style={styles.loginInput}
+              placeholder="Password"
+              placeholderTextColor="#999"
+              secureTextEntry
+              value={password}
+              onChangeText={setPassword}
+              returnKeyType="done"
+              onSubmitEditing={handleLogin}
+            />
+
+            <TouchableOpacity
+              style={[styles.loginSubmitBtn, loggingIn && { opacity: 0.6 }]}
+              onPress={handleLogin}
+              disabled={loggingIn}
+            >
+              <Text style={styles.loginSubmitText}>{loggingIn ? 'Signing in...' : 'Sign In'}</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.loginCancelBtn}
+              onPress={() => { setShowPasswordModal(false); setEmail(''); setPassword(''); }}
+            >
+              <Text style={styles.loginCancelText}>Cancel</Text>
+            </TouchableOpacity>
+          </View>
+        </ScrollView>
+      </KeyboardAvoidingView>
+    );
+  }
+
   return (
     <ScrollView style={styles.container}>
       <LinearGradient colors={['#1a1a2e', '#16213e', '#0f3460']} style={styles.header}>
@@ -401,39 +481,17 @@ export default function HomeScreen() {
       <ChurchInfo />
       <View style={{ height: 40 }} />
 
-      {/* ── Password Modal ── */}
-      <Modal visible={showPasswordModal} transparent animationType="fade">
-        <KeyboardAvoidingView
-          behavior={Platform.OS === 'android' ? 'height' : 'padding'}
-          style={{ flex: 1 }}
-        >
-          <View style={styles.overlay}>
-            <View style={styles.passwordCard}>
-              <Text style={styles.passwordTitle}>🔐 Admin Access</Text>
-              <Text style={styles.passwordSub}>Enter password to continue</Text>
-              <TextInput
-                style={styles.passwordInput}
-                placeholder="Password"
-                placeholderTextColor="#999"
-                secureTextEntry
-                value={password}
-                onChangeText={setPassword}
-                onSubmitEditing={handleLogin}
-                autoFocus
-              />
-              <TouchableOpacity style={styles.loginBtn} onPress={handleLogin}>
-                <Text style={styles.loginBtnText}>Login</Text>
-              </TouchableOpacity>
-              <TouchableOpacity onPress={() => { setShowPasswordModal(false); setPassword(''); }}>
-                <Text style={styles.cancelText}>Cancel</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        </KeyboardAvoidingView>
-      </Modal>
-
-      {/* ── Admin Panel Modal ── */}
-      <Modal visible={showAdmin} animationType="slide">
+      <Modal
+        visible={showAdmin}
+        animationType="slide"
+        onRequestClose={() => {
+          if (showForm) {
+            setShowForm(false);
+          } else {
+            setShowAdmin(false);
+          }
+        }}
+      >
         <KeyboardAvoidingView
           behavior={Platform.OS === 'android' ? 'height' : 'padding'}
           style={{ flex: 1 }}
@@ -451,7 +509,10 @@ export default function HomeScreen() {
               )}
             </View>
 
-            <ScrollView contentContainerStyle={{ padding: 16 }}>
+            <ScrollView
+              contentContainerStyle={{ padding: 16 }}
+              keyboardShouldPersistTaps="handled"
+            >
               {!showForm ? (
                 <>
                   <TouchableOpacity style={styles.addBtn} onPress={openAddForm}>
@@ -599,6 +660,22 @@ const styles = StyleSheet.create({
   pastorTitle: { fontSize: 14, color: '#666', marginTop: 4 },
   divider: { height: 1, backgroundColor: '#eee', width: '100%', marginVertical: 14 },
   ministryText: { fontSize: 14, color: '#444', textAlign: 'center', lineHeight: 22 },
+
+  loginScreen: { flex: 1, backgroundColor: '#f5f5f5' },
+  loginScroll: { flexGrow: 1 },
+  loginHeader: { padding: 20, paddingTop: 30, alignItems: 'center' },
+  loginHeaderTitle: { fontSize: 24, fontWeight: 'bold', color: '#fff', marginBottom: 6 },
+  loginHeaderSub: { fontSize: 14, color: '#a8c0e8' },
+  loginCard: { backgroundColor: '#fff', margin: 20, borderRadius: 20, padding: 24, elevation: 4, marginBottom: 20 },
+  loginCardTitle: { fontSize: 22, fontWeight: 'bold', color: '#1a1a2e', marginBottom: 6 },
+  loginCardSub: { fontSize: 13, color: '#888', marginBottom: 24 },
+  loginLabel: { fontSize: 13, fontWeight: '600', color: '#555', marginBottom: 6 },
+  loginInput: { backgroundColor: '#f9f9f9', borderWidth: 1.5, borderColor: '#ddd', borderRadius: 12, padding: 14, fontSize: 15, color: '#1a1a2e', marginBottom: 18 },
+  loginSubmitBtn: { backgroundColor: '#0f3460', borderRadius: 12, paddingVertical: 16, alignItems: 'center', marginTop: 8, marginBottom: 14 },
+  loginSubmitText: { color: '#fff', fontWeight: 'bold', fontSize: 16 },
+  loginCancelBtn: { alignItems: 'center', paddingVertical: 10 },
+  loginCancelText: { color: '#888', fontSize: 14 },
+
   overlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.55)', justifyContent: 'center', alignItems: 'center', padding: 32 },
   passwordCard: { backgroundColor: '#fff', borderRadius: 20, padding: 28, width: '100%', alignItems: 'center' },
   passwordTitle: { fontSize: 20, fontWeight: 'bold', color: '#1a1a2e', marginBottom: 6 },
