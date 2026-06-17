@@ -33,6 +33,7 @@ export default function TabLayout() {
         ref={pagerRef}
         style={styles.pager}
         initialPage={0}
+        scrollEnabled={false}
         onPageSelected={(e) => {
           const index = e.nativeEvent.position;
           activeTabRef.current = index;
@@ -76,8 +77,8 @@ const styles = StyleSheet.create({
     backgroundColor: '#fff',
     borderTopWidth: 1,
     borderTopColor: '#eee',
-    height: 80,
-    paddingBottom: 24,
+    height: 100,
+    paddingBottom: 35,
     elevation: 8,
   },
   tab: { flex: 1, alignItems: 'center', justifyContent: 'center' },
