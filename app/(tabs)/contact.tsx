@@ -13,7 +13,6 @@ export default function AboutScreen() {
 
       <ChurchInfo />
 
-      {/* Social */}
       <View style={styles.card}>
         <Text style={styles.cardTitle}>
           <Ionicons name="share-social-outline" size={18} color="#0f3460" /> Follow Us
@@ -22,9 +21,16 @@ export default function AboutScreen() {
           <Ionicons name="logo-youtube" size={16} color="red" />
           <Text style={[styles.rowText, styles.link]}>YouTube Channel</Text>
         </TouchableOpacity>
+        <TouchableOpacity style={styles.row} onPress={() => Linking.openURL('https://www.facebook.com/theosgospelhall.tirupur/')}>
+          <Ionicons name="logo-facebook" size={16} color="#1877f2" />
+          <Text style={[styles.rowText, styles.link]}>Facebook Page</Text>
+        </TouchableOpacity>
+        <TouchableOpacity style={styles.row} onPress={() => Linking.openURL('https://www.instagram.com/theosgospelhall')}>
+          <Ionicons name="logo-instagram" size={16} color="#e1306c" />
+          <Text style={[styles.rowText, styles.link]}>Instagram</Text>
+        </TouchableOpacity>
       </View>
 
-      {/* About Ministry */}
       <View style={styles.card}>
         <Text style={styles.cardTitle}>
           <Ionicons name="book-outline" size={18} color="#0f3460" /> About Ministry

@@ -1,8 +1,8 @@
 import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { collection, onSnapshot, orderBy, query } from 'firebase/firestore';
-import { forwardRef, useEffect, useImperativeHandle, useState } from 'react';
-import { ActivityIndicator, Linking, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from 'react';
+import { ActivityIndicator, Animated, Linking, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { db } from '../firebaseConfig';
 
 const CACHE_KEY = 'tgh_special_meetings';
@@ -25,7 +25,7 @@ const EVENTS = [
     id: '1',
     title: 'Sunday Morning Service',
     date: 'Every Sunday',
-    time: 'Tirupur: 7:00–9:30 AM\nCoimbatore: 10:30 AM–12:30 PM\nUdumalpet: 10:30 AM–12:30 PM\nKanyakumari: 10:30 AM–12:30 PM',
+    time: 'Tirupur: 7:00–9:30 AM\nCoimbatore: 10:30 AM–1:00 PM\nUdumalpet: 10:30 AM–1:00 PM\nKanyakumari: 9:00–11:30 AM',
     location: 'All Branches',
     type: 'service',
   },
@@ -96,13 +96,28 @@ const EVENT_LABELS: any = {
 const UpcomingEvents = forwardRef((props: {}, ref) => {
   const [meetings, setMeetings] = useState<SpecialMeeting[]>([]);
   const [loading, setLoading] = useState(true);
+  const shakeAnim = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    const shake = () => {
+      Animated.sequence([
+        Animated.timing(shakeAnim, { toValue: -8, duration: 60, useNativeDriver: true }),
+        Animated.timing(shakeAnim, { toValue: 8, duration: 60, useNativeDriver: true }),
+        Animated.timing(shakeAnim, { toValue: -6, duration: 60, useNativeDriver: true }),
+        Animated.timing(shakeAnim, { toValue: 6, duration: 60, useNativeDriver: true }),
+        Animated.timing(shakeAnim, { toValue: 0, duration: 60, useNativeDriver: true }),
+      ]).start();
+    };
+    shake();
+    const interval = setInterval(shake, 2000);
+    return () => clearInterval(interval);
+  }, []);
 
   useImperativeHandle(ref, () => ({
-    reload: () => {}, // no-op — onSnapshot handles real-time
+    reload: () => {},
   }));
 
   useEffect(() => {
-    // Load cache instantly on first render
     AsyncStorage.getItem(CACHE_KEY).then(cached => {
       if (cached) {
         const parsed: SpecialMeeting[] = JSON.parse(cached);
@@ -111,7 +126,6 @@ const UpcomingEvents = forwardRef((props: {}, ref) => {
       setLoading(false);
     }).catch(() => setLoading(false));
 
-    // Real-time listener — updates instantly when admin adds/edits/deletes
     const q = query(collection(db, 'events'), orderBy('order', 'asc'));
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const all: SpecialMeeting[] = snapshot.docs.map(d => ({
@@ -127,27 +141,20 @@ const UpcomingEvents = forwardRef((props: {}, ref) => {
       setLoading(false);
     });
 
-    // Cleanup listener when component unmounts
     return () => unsubscribe();
   }, []);
-
-  const loadMeetings = () => {};
 
   return (
     <View>
 
-      {/* ══════════════════════════════════════
-          ANNOUNCEMENTS SECTION
-      ══════════════════════════════════════ */}
       {(loading || meetings.length > 0) && (
         <View style={styles.section}>
 
-          {/* ── Banner Header ── */}
           <View style={styles.banner}>
             <View style={styles.glowDot} />
-            <View style={styles.micWrap}>
+            <Animated.View style={[styles.micWrap, { transform: [{ translateX: shakeAnim }] }]}>
               <Ionicons name="megaphone" size={26} color="#fff" />
-            </View>
+            </Animated.View>
             <View style={{ flex: 1 }}>
               <Text style={styles.bannerTitle}>📣 Announcements</Text>
               <Text style={styles.bannerSub}>Upcoming Special Meetings</Text>
@@ -160,7 +167,6 @@ const UpcomingEvents = forwardRef((props: {}, ref) => {
             <View style={[styles.glowDot, { right: 10, left: undefined }]} />
           </View>
 
-          {/* ── Loading ── */}
           {loading && meetings.length === 0 && (
             <View style={styles.loadingBox}>
               <ActivityIndicator color="#c0392b" size="large" />
@@ -168,7 +174,6 @@ const UpcomingEvents = forwardRef((props: {}, ref) => {
             </View>
           )}
 
-          {/* ── Meeting Cards ── */}
           {meetings.map((meeting, index) => (
             <View key={meeting.id} style={styles.meetingCard}>
 
@@ -261,7 +266,6 @@ const UpcomingEvents = forwardRef((props: {}, ref) => {
         </View>
       )}
 
-      {/* ── Regular Events ── */}
       <View style={styles.card}>
         <Text style={styles.cardTitle}>
           <Ionicons name="calendar-outline" size={18} color="#0f3460" /> Events & Programs
@@ -291,7 +295,6 @@ const UpcomingEvents = forwardRef((props: {}, ref) => {
         ))}
       </View>
 
-      {/* ── Youth Programs ── */}
       <View style={styles.youthCard}>
         <View style={styles.youthHeader}>
           <Ionicons name="flash" size={20} color="#fff" />
@@ -322,7 +325,6 @@ const UpcomingEvents = forwardRef((props: {}, ref) => {
         ))}
       </View>
 
-      {/* ── Bible Academy ── */}
       <View style={styles.academyCard}>
         <View style={styles.academyHeader}>
           <Ionicons name="school" size={24} color="#fff" />
@@ -366,8 +368,6 @@ const UpcomingEvents = forwardRef((props: {}, ref) => {
 });
 
 const styles = StyleSheet.create({
-
-  // ══ Announcement Section ══
   section: {
     marginHorizontal: 16,
     marginTop: 8,

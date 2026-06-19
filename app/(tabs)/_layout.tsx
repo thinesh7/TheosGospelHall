@@ -1,5 +1,5 @@
 import { Ionicons } from '@expo/vector-icons';
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import PagerView from 'react-native-pager-view';
 import BibleScreen from './bible';
@@ -18,8 +18,18 @@ const TABS = [
 
 export default function TabLayout() {
   const [activeTab, setActiveTab] = useState(0);
+  const [visitedTabs, setVisitedTabs] = useState<Set<number>>(new Set([0]));
   const activeTabRef = useRef(0);
   const pagerRef = useRef<PagerView>(null);
+
+  useEffect(() => {
+    setVisitedTabs(prev => {
+      if (prev.has(activeTab)) return prev;
+      const next = new Set(prev);
+      next.add(activeTab);
+      return next;
+    });
+  }, [activeTab]);
 
   const goToTab = (index: number) => {
     activeTabRef.current = index;
@@ -40,11 +50,11 @@ export default function TabLayout() {
           setActiveTab(index);
         }}
       >
-        <View key="0"><HomeScreen /></View>
-        <View key="1"><VideosScreen /></View>
-        <View key="2"><BibleScreen /></View>
-        <View key="3"><SongsScreen /></View>
-        <View key="4"><ContactScreen /></View>
+        <View key="0">{visitedTabs.has(0) ? <HomeScreen /> : null}</View>
+        <View key="1">{visitedTabs.has(1) ? <VideosScreen /> : null}</View>
+        <View key="2">{visitedTabs.has(2) ? <BibleScreen /> : null}</View>
+        <View key="3">{visitedTabs.has(3) ? <SongsScreen /> : null}</View>
+        <View key="4">{visitedTabs.has(4) ? <ContactScreen /> : null}</View>
       </PagerView>
 
       <View style={styles.tabBar}>
