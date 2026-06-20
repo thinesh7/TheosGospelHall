@@ -5,6 +5,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   FlatList,
+  RefreshControl,
   StatusBar,
   StyleSheet,
   Text,
@@ -13,7 +14,7 @@ import {
   View,
 } from 'react-native';
 import { SongIndexEntry, getSongsIndex, syncSongs } from '../../utils/songsSync';
-import { THEMES, ThemeName, getStoredTheme, nextTheme, setStoredTheme } from '../../utils/songsTheme';
+import { ThemeName, THEMES, getStoredTheme, setStoredTheme, nextTheme } from '../../utils/songsTheme';
 
 const FAVORITES_KEY = 'tgh_song_favorites';
 
@@ -32,6 +33,7 @@ export default function SongsScreen({ headerTitle, onThemeChange }: { headerTitl
   const [songs, setSongs] = useState<SongIndexEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [syncing, setSyncing] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
   const [theme, setTheme] = useState<ThemeName>('dark');
 
   useEffect(() => {
@@ -68,6 +70,15 @@ export default function SongsScreen({ headerTitle, onThemeChange }: { headerTitl
     }
     setLoading(false);
     setSyncing(false);
+  };
+
+  const onPullToRefresh = async () => {
+    setRefreshing(true);
+    const result = await syncSongs();
+    if (result.index.length > 0) {
+      setSongs(result.index);
+    }
+    setRefreshing(false);
   };
 
   const cycleTheme = async () => {
@@ -196,6 +207,9 @@ export default function SongsScreen({ headerTitle, onThemeChange }: { headerTitl
           maxToRenderPerBatch={20}
           windowSize={10}
           removeClippedSubviews
+          refreshControl={
+            <RefreshControl refreshing={refreshing} onRefresh={onPullToRefresh} colors={[c.titleColor]} tintColor={c.titleColor} />
+          }
           ListEmptyComponent={
             <Text style={[styles.empty, { color: c.sub }]}>
               {activeTab === 'favorites' ? 'No favorites yet' : 'No songs found'}

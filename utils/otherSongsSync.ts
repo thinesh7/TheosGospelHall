@@ -97,7 +97,7 @@ async function setLastSync(timestamp: number) {
   await AsyncStorage.setItem(LAST_SYNC_KEY, String(timestamp));
 }
 
-export async function syncOtherSongs(): Promise<{ index: OtherSongIndexEntry[]; updated: boolean }> {
+export async function syncOtherSongs(force: boolean = false): Promise<{ index: OtherSongIndexEntry[]; updated: boolean }> {
   let existingIndex = await getOtherSongsIndex();
   let lastSync = await getLastSync();
 
@@ -105,6 +105,8 @@ export async function syncOtherSongs(): Promise<{ index: OtherSongIndexEntry[]; 
     lastSync = 0;
     await setLastSync(0);
   }
+
+  const effectiveLastSync = force ? 0 : lastSync;
 
   const needsBackfill = existingIndex.filter(e => !e.titleEnglish);
   let backfilled = false;
@@ -124,8 +126,8 @@ export async function syncOtherSongs(): Promise<{ index: OtherSongIndexEntry[]; 
   }
 
   try {
-    const q = lastSync > 0
-      ? query(collection(db, FIRESTORE_COLLECTION), where('lastModifiedTimestamp', '>', lastSync))
+    const q = effectiveLastSync > 0
+      ? query(collection(db, FIRESTORE_COLLECTION), where('lastModifiedTimestamp', '>', effectiveLastSync))
       : collection(db, FIRESTORE_COLLECTION);
 
     const snap = await getDocs(q);

@@ -14,13 +14,17 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
+import { getCachedLivePlaylists, syncLivePlaylists } from '../../utils/livePlaylistsSync';
 import YoutubePlayer from 'react-native-youtube-iframe';
 
 const API_KEY = 'AIzaSyDB77b7nPE0Fs4tMvrOVZTqq12CXkaZdBg';
 const CHANNEL_ID = 'UCFg0eNTRs2UIcihQAVpyrJA';
 const PLAYLIST_ID = 'UUFg0eNTRs2UIcihQAVpyrJA';
 const SHORTS_PLAYLIST_ID = 'PLZISpWbe8RUjb_YX_C2yEEB7IZnhU9VRA';
-const LIVE_PLAYLIST_ID = 'PLZISpWbe8RUidyhPJNs5xa8-WOnHq-NLj';
+
+const FALLBACK_LIVE_PLAYLIST_IDS = [
+  'PLZISpWbe8RUidyhPJNs5xa8-WOnHq-NLj',
+];
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 const PLAYER_HEIGHT = SCREEN_HEIGHT * 0.55;
@@ -87,8 +91,9 @@ export default function VideosScreen() {
   const [liveVideos, setLiveVideos] = useState<any[]>([]);
   const [loadingLive, setLoadingLive] = useState(false);
   const [liveLoaded, setLiveLoaded] = useState(false);
-  const [liveNextToken, setLiveNextToken] = useState('');
+  const [liveNextTokens, setLiveNextTokens] = useState<Record<string, string>>({});
   const [loadingMoreLive, setLoadingMoreLive] = useState(false);
+  const [livePlaylistIds, setLivePlaylistIds] = useState<string[]>(FALLBACK_LIVE_PLAYLIST_IDS);
 
   const [playlists, setPlaylists] = useState<any[]>([]);
   const [loadingPlaylists, setLoadingPlaylists] = useState(false);
@@ -119,7 +124,12 @@ export default function VideosScreen() {
 
   useEffect(() => {
     if (activeTab === 'shorts' && !shortsLoaded) fetchShorts();
-    if (activeTab === 'live' && !liveLoaded) fetchLive();
+    if (activeTab === 'live' && !liveLoaded) {
+      (async () => {
+        const ids = await loadLivePlaylistIds();
+        fetchLive(false, ids);
+      })();
+    }
     if (activeTab === 'playlists' && !playlistsLoaded) fetchPlaylists();
   }, [activeTab]);
 
@@ -198,34 +208,72 @@ export default function VideosScreen() {
     }
   };
 
-  const fetchLive = async (pageToken = '') => {
+  const loadLivePlaylistIds = async (): Promise<string[]> => {
+    const cached = await getCachedLivePlaylists();
+    let ids = cached.filter(p => p.isActive).map(p => p.playlistId);
+    if (ids.length === 0) ids = FALLBACK_LIVE_PLAYLIST_IDS;
+    setLivePlaylistIds(ids);
+
+    const fresh = await syncLivePlaylists();
+    let freshIds = fresh.filter(p => p.isActive).map(p => p.playlistId);
+    if (freshIds.length === 0) freshIds = FALLBACK_LIVE_PLAYLIST_IDS;
+    setLivePlaylistIds(freshIds);
+    return freshIds;
+  };
+
+  const fetchLivePlaylistPage = async (playlistId: string, pageToken = '') => {
+    const res = await fetch(
+      `https://www.googleapis.com/youtube/v3/playlistItems?key=${API_KEY}&playlistId=${playlistId}&part=snippet&maxResults=50${pageToken ? `&pageToken=${pageToken}` : ''}`
+    );
+    const data = await res.json();
+    const mapped = (data.items || [])
+      .filter((item: any) => item?.snippet?.resourceId?.videoId && item?.snippet?.thumbnails?.medium)
+      .map((item: any) => ({
+        snippet: {
+          title: decodeHtml(item.snippet.title),
+          publishedAt: item.snippet.publishedAt,
+          thumbnails: item.snippet.thumbnails,
+          resourceId: { videoId: item.snippet.resourceId.videoId },
+        },
+      }));
+    return { items: mapped, nextPageToken: data.nextPageToken || '' };
+  };
+
+  const fetchLive = async (loadMore: boolean, idsOverride?: string[]) => {
     try {
-      if (!pageToken) setLoadingLive(true);
+      if (!loadMore) setLoadingLive(true);
       else setLoadingMoreLive(true);
-      const res = await fetch(
-        `https://www.googleapis.com/youtube/v3/playlistItems?key=${API_KEY}&playlistId=${LIVE_PLAYLIST_ID}&part=snippet&maxResults=50${pageToken ? `&pageToken=${pageToken}` : ''}`
+
+      const ids = idsOverride || livePlaylistIds;
+
+      const playlistsToFetch = loadMore
+        ? ids.filter(id => liveNextTokens[id])
+        : ids;
+
+      if (playlistsToFetch.length === 0) {
+        setLoadingLive(false);
+        setLoadingMoreLive(false);
+        return;
+      }
+
+      const results = await Promise.all(
+        playlistsToFetch.map(id => fetchLivePlaylistPage(id, loadMore ? liveNextTokens[id] : ''))
       );
-      const data = await res.json();
-      const mapped = (data.items || [])
-        .filter((item: any) => item?.snippet?.resourceId?.videoId && item?.snippet?.thumbnails?.medium)
-        .map((item: any) => ({
-          snippet: {
-            title: decodeHtml(item.snippet.title),
-            publishedAt: item.snippet.publishedAt,
-            thumbnails: item.snippet.thumbnails,
-            resourceId: { videoId: item.snippet.resourceId.videoId },
-          },
-        }));
-      if (pageToken) {
+
+      const newItems = results.flatMap(r => r.items);
+      const newTokens: Record<string, string> = { ...liveNextTokens };
+      playlistsToFetch.forEach((id, i) => { newTokens[id] = results[i].nextPageToken; });
+      setLiveNextTokens(newTokens);
+
+      if (loadMore) {
         setLiveVideos(prev => {
           const existingIds = new Set(prev.map((v: any) => v.snippet.resourceId.videoId));
-          const unique = mapped.filter((v: any) => !existingIds.has(v.snippet.resourceId.videoId));
-          return [...prev, ...unique];
+          const unique = newItems.filter((v: any) => !existingIds.has(v.snippet.resourceId.videoId));
+          return [...prev, ...unique].sort(sortByDate);
         });
       } else {
-        setLiveVideos(dedupeById(mapped));
+        setLiveVideos(dedupeById(newItems).sort(sortByDate));
       }
-      setLiveNextToken(data.nextPageToken || '');
       setLiveLoaded(true);
     } catch (e) {
       console.log('Error fetching live', e);
@@ -283,7 +331,7 @@ export default function VideosScreen() {
     setShorts([]);
     setShortsNextToken('');
     setLiveVideos([]);
-    setLiveNextToken('');
+    setLiveNextTokens({});
     setPlaylists([]);
     setNextPageToken('');
     setShortsLoaded(false);
@@ -292,7 +340,7 @@ export default function VideosScreen() {
     await Promise.all([
       fetchVideos(),
       fetchShorts(),
-      fetchLive(),
+      loadLivePlaylistIds().then(ids => fetchLive(false, ids)),
       fetchPlaylists(),
     ]);
     setShortsLoaded(true);
@@ -467,6 +515,7 @@ export default function VideosScreen() {
   ];
 
   const isSearching = search.trim().length > 0;
+  const hasMoreLive = Object.values(liveNextTokens).some(t => !!t);
 
   return (
     <View style={styles.container}>
@@ -636,8 +685,8 @@ export default function VideosScreen() {
               contentContainerStyle={{ padding: 12, paddingBottom: 100 }}
               ListEmptyComponent={<Text style={styles.empty}>No live streams found</Text>}
               ListFooterComponent={
-                liveNextToken ? (
-                  <TouchableOpacity style={styles.loadMore} onPress={() => fetchLive(liveNextToken)}>
+                hasMoreLive ? (
+                  <TouchableOpacity style={styles.loadMore} onPress={() => fetchLive(true)}>
                     {loadingMoreLive
                       ? <ActivityIndicator color="#fff" />
                       : <Text style={styles.loadMoreText}>Load More Videos</Text>

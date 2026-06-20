@@ -9,7 +9,7 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
-import { SongIndexEntry, getSongById, getSongsIndex, updateGeethangalumSong } from '../../utils/songsSync';
+import { SongIndexEntry, getSongById, getSongsIndex, syncSongs, updateGeethangalumSong } from '../../utils/songsSync';
 import { AdminScreenHandle } from './SpecialMeetingsAdmin';
 
 interface EditForm {
@@ -23,6 +23,7 @@ interface EditForm {
 const GeethangalumAdmin = forwardRef<AdminScreenHandle, {}>((_props, ref) => {
   const [songsIndex, setSongsIndex] = useState<SongIndexEntry[]>([]);
   const [loading, setLoading] = useState(true);
+  const [syncing, setSyncing] = useState(false);
   const [search, setSearch] = useState('');
   const [editForm, setEditForm] = useState<EditForm | null>(null);
   const [loadingSong, setLoadingSong] = useState(false);
@@ -43,10 +44,19 @@ const GeethangalumAdmin = forwardRef<AdminScreenHandle, {}>((_props, ref) => {
   }, []);
 
   const loadIndex = async () => {
-    setLoading(true);
-    const index = await getSongsIndex();
-    setSongsIndex(index);
+    const cached = await getSongsIndex();
+    if (cached.length > 0) {
+      setSongsIndex(cached);
+      setLoading(false);
+    } else {
+      setLoading(true);
+    }
+
+    setSyncing(true);
+    const result = await syncSongs();
+    setSongsIndex(result.index);
     setLoading(false);
+    setSyncing(false);
   };
 
   const filtered = useMemo(() => {
@@ -124,7 +134,7 @@ const GeethangalumAdmin = forwardRef<AdminScreenHandle, {}>((_props, ref) => {
                 style={styles.input}
                 value={editForm.title}
                 onChangeText={v => setEditForm(prev => prev && { ...prev, title: v })}
-                placeholder="Song Title (Tamil)"
+                placeholder="Song title (Tamil)"
                 placeholderTextColor="#999"
               />
 
@@ -175,6 +185,7 @@ const GeethangalumAdmin = forwardRef<AdminScreenHandle, {}>((_props, ref) => {
           value={search}
           onChangeText={setSearch}
         />
+        {syncing && <ActivityIndicator size="small" color="#0f3460" style={{ marginLeft: 8 }} />}
       </View>
 
       {loading ? (
@@ -205,8 +216,9 @@ export default GeethangalumAdmin;
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
-  searchBar: { paddingHorizontal: 16, paddingTop: 12 },
+  searchBar: { paddingHorizontal: 16, paddingTop: 12, flexDirection: 'row', alignItems: 'center' },
   searchInput: {
+    flex: 1,
     backgroundColor: '#fff',
     borderRadius: 12,
     paddingHorizontal: 14,

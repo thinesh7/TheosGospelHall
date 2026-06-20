@@ -5,6 +5,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   FlatList,
+  RefreshControl,
   StatusBar,
   StyleSheet,
   Text,
@@ -32,6 +33,7 @@ export default function OtherSongsScreen({ headerTitle, onThemeChange }: { heade
   const [songs, setSongs] = useState<OtherSongIndexEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [syncing, setSyncing] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
   const [theme, setTheme] = useState<ThemeName>('dark');
 
   useEffect(() => {
@@ -68,6 +70,15 @@ export default function OtherSongsScreen({ headerTitle, onThemeChange }: { heade
     }
     setLoading(false);
     setSyncing(false);
+  };
+
+  const onPullToRefresh = async () => {
+    setRefreshing(true);
+    const result = await syncOtherSongs();
+    if (result.index.length > 0) {
+      setSongs(result.index);
+    }
+    setRefreshing(false);
   };
 
   const cycleTheme = async () => {
@@ -200,6 +211,9 @@ export default function OtherSongsScreen({ headerTitle, onThemeChange }: { heade
           maxToRenderPerBatch={20}
           windowSize={10}
           removeClippedSubviews
+          refreshControl={
+            <RefreshControl refreshing={refreshing} onRefresh={onPullToRefresh} colors={[c.titleColor]} tintColor={c.titleColor} />
+          }
           ListEmptyComponent={
             <Text style={[styles.empty, { color: c.sub }]}>
               {activeTab === 'favorites' ? 'No favorites yet' : 'No songs found'}

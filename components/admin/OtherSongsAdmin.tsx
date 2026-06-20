@@ -17,6 +17,7 @@ import {
   getOtherSongById,
   getOtherSongsIndex,
   setOtherSongVisibility,
+  syncOtherSongs,
   updateOtherSong,
 } from '../../utils/otherSongsSync';
 import { AdminScreenHandle } from './SpecialMeetingsAdmin';
@@ -44,6 +45,7 @@ const EMPTY_FORM: EditForm = {
 const OtherSongsAdmin = forwardRef<AdminScreenHandle, {}>((_props, ref) => {
   const [songsIndex, setSongsIndex] = useState<OtherSongIndexEntry[]>([]);
   const [loading, setLoading] = useState(true);
+  const [syncing, setSyncing] = useState(false);
   const [search, setSearch] = useState('');
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState<EditForm>(EMPTY_FORM);
@@ -65,10 +67,19 @@ const OtherSongsAdmin = forwardRef<AdminScreenHandle, {}>((_props, ref) => {
   }, []);
 
   const loadIndex = async () => {
-    setLoading(true);
-    const index = await getOtherSongsIndex();
-    setSongsIndex(index.sort((a, b) => a.songNumber - b.songNumber));
+    const cached = await getOtherSongsIndex();
+    if (cached.length > 0) {
+      setSongsIndex(cached.sort((a, b) => a.songNumber - b.songNumber));
+      setLoading(false);
+    } else {
+      setLoading(true);
+    }
+
+    setSyncing(true);
+    const result = await syncOtherSongs();
+    setSongsIndex(result.index.sort((a, b) => a.songNumber - b.songNumber));
     setLoading(false);
+    setSyncing(false);
   };
 
   const filtered = useMemo(() => {
@@ -177,7 +188,7 @@ const OtherSongsAdmin = forwardRef<AdminScreenHandle, {}>((_props, ref) => {
                 style={styles.input}
                 value={form.title}
                 onChangeText={v => setForm(prev => ({ ...prev, title: v }))}
-                placeholder="e.g. உன்னத தேவன் உன்னுடன் இருக்க"
+                placeholder="e.g. உமது முகம் நோக்கிப் பார்த்தவர்கள்"
                 placeholderTextColor="#999"
               />
 
@@ -187,7 +198,7 @@ const OtherSongsAdmin = forwardRef<AdminScreenHandle, {}>((_props, ref) => {
                 style={styles.input}
                 value={form.titleEnglish}
                 onChangeText={v => setForm(prev => ({ ...prev, titleEnglish: v }))}
-                placeholder="e.g. Unnatha Devan Unnudan irukka"
+                placeholder="e.g. Umathu mukam Nnokkip paarththavarkal"
                 placeholderTextColor="#999"
               />
 
@@ -242,9 +253,14 @@ const OtherSongsAdmin = forwardRef<AdminScreenHandle, {}>((_props, ref) => {
   return (
     <View style={styles.container}>
       <View style={{ paddingHorizontal: 16, paddingTop: 12 }}>
-        <TouchableOpacity style={styles.addBtn} onPress={openAddForm}>
-          <Text style={styles.addBtnText}>＋ Add New Song</Text>
-        </TouchableOpacity>
+        <View style={styles.addRow}>
+          <TouchableOpacity style={styles.addBtn} onPress={openAddForm}>
+            <Text style={styles.addBtnText}>＋ Add New Song</Text>
+          </TouchableOpacity>
+          <View style={styles.syncSlot}>
+            {syncing && <ActivityIndicator size="small" color="#7209b7" />}
+          </View>
+        </View>
         <View style={styles.searchBar}>
           <TextInput
             style={styles.searchInput}
@@ -302,12 +318,15 @@ export default OtherSongsAdmin;
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
+  addRow: { flexDirection: 'row', alignItems: 'center' },
+  syncSlot: { width: 36, alignItems: 'center', justifyContent: 'center' },
   addBtn: {
     backgroundColor: '#7209b7',
     borderRadius: 14,
     padding: 16,
     alignItems: 'center',
     elevation: 4,
+    flex: 1,
   },
   addBtnText: { color: '#fff', fontWeight: 'bold', fontSize: 16 },
   searchBar: { marginTop: 12 },

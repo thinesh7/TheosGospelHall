@@ -11,6 +11,7 @@ import {
 } from 'react-native';
 import AdminDashboard, { AdminModule } from './admin/AdminDashboard';
 import GeethangalumAdmin from './admin/GeethangalumAdmin';
+import LivePlaylistsAdmin from './admin/LivePlaylistsAdmin';
 import OtherSongsAdmin from './admin/OtherSongsAdmin';
 import SongsAdminMenu, { SongsModule } from './admin/SongsAdminMenu';
 import SpecialMeetingsAdmin, { AdminScreenHandle } from './admin/SpecialMeetingsAdmin';
@@ -20,7 +21,8 @@ type ViewKey =
   | 'specialMeetings'
   | 'songsMenu'
   | 'songsGeethangalum'
-  | 'songsOther';
+  | 'songsOther'
+  | 'livePlaylists';
 
 interface ViewMeta {
   title: string;
@@ -33,6 +35,7 @@ const VIEW_META: Record<ViewKey, ViewMeta> = {
   songsMenu: { title: '🎵 Songs', subtitle: 'Choose a collection to manage' },
   songsGeethangalum: { title: '📖 Geethangalum Keerthanaigalum', subtitle: 'Edit existing songs' },
   songsOther: { title: '🎶 Other Songs', subtitle: 'Add, edit, show/hide songs' },
+  livePlaylists: { title: '🎬 Live Playlists', subtitle: 'Manage YouTube playlists' },
 };
 
 interface Props {
@@ -77,7 +80,9 @@ export default function AdminPanel({ visible, onClose, onEventsUpdated }: Props)
   const popView = () => setStack(prev => (prev.length > 1 ? prev.slice(0, -1) : prev));
 
   const handleDashboardSelect = (module: AdminModule) => {
-    pushView(module === 'specialMeetings' ? 'specialMeetings' : 'songsMenu');
+    if (module === 'specialMeetings') pushView('specialMeetings');
+    else if (module === 'songsMenu') pushView('songsMenu');
+    else if (module === 'livePlaylists') pushView('livePlaylists');
   };
 
   const handleSongsMenuSelect = (module: SongsModule) => {
@@ -134,6 +139,10 @@ export default function AdminPanel({ visible, onClose, onEventsUpdated }: Props)
 
             {currentView === 'songsOther' && (
               <OtherSongsAdmin ref={activeScreenRef} />
+            )}
+
+            {currentView === 'livePlaylists' && (
+              <LivePlaylistsAdmin ref={activeScreenRef} />
             )}
           </View>
         </View>

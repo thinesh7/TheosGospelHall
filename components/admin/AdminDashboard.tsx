@@ -1,6 +1,6 @@
 import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 
-export type AdminModule = 'specialMeetings' | 'songsMenu';
+export type AdminModule = 'specialMeetings' | 'songsMenu' | 'livePlaylists';
 
 interface ModuleCard {
   id: AdminModule;
@@ -21,6 +21,12 @@ const MODULES: ModuleCard[] = [
     icon: '🎵',
     title: 'Songs',
     subtitle: 'Manage Geethangalum Keerthanaigalum and Other Songs',
+  },
+  {
+    id: 'livePlaylists',
+    icon: '🎬',
+    title: 'Live Playlists',
+    subtitle: 'Manage YouTube playlists shown in the Live tab',
   },
 ];
 
