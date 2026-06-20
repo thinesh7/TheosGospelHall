@@ -12,9 +12,12 @@ interface SpecialMeeting {
   title: string;
   description: string;
   date: string;
+  endDate?: string;
+  numberOfDays?: '' | '1' | 'multiple';
   time: string;
   location: string;
   mapLink?: string;
+  youtubeLink?: string;
   additionalInfo?: string;
   isActive: boolean;
   order: number;
@@ -97,6 +100,9 @@ const UpcomingEvents = forwardRef((props: {}, ref) => {
   const [meetings, setMeetings] = useState<SpecialMeeting[]>([]);
   const [loading, setLoading] = useState(true);
   const shakeAnim = useRef(new Animated.Value(0)).current;
+  const pulseAnim = useRef(new Animated.Value(1)).current;
+  const glowAnim = useRef(new Animated.Value(0.08)).current;
+  const shimmerAnim = useRef(new Animated.Value(-1)).current;
 
   useEffect(() => {
     const shake = () => {
@@ -109,8 +115,36 @@ const UpcomingEvents = forwardRef((props: {}, ref) => {
       ]).start();
     };
     shake();
-    const interval = setInterval(shake, 2000);
+    const interval = setInterval(shake, 2400);
     return () => clearInterval(interval);
+  }, []);
+
+  useEffect(() => {
+    Animated.loop(
+      Animated.sequence([
+        Animated.timing(pulseAnim, { toValue: 1.15, duration: 700, useNativeDriver: true }),
+        Animated.timing(pulseAnim, { toValue: 1, duration: 700, useNativeDriver: true }),
+      ])
+    ).start();
+  }, []);
+
+  useEffect(() => {
+    Animated.loop(
+      Animated.sequence([
+        Animated.timing(glowAnim, { toValue: 0.22, duration: 1400, useNativeDriver: true }),
+        Animated.timing(glowAnim, { toValue: 0.08, duration: 1400, useNativeDriver: true }),
+      ])
+    ).start();
+  }, []);
+
+  useEffect(() => {
+    Animated.loop(
+      Animated.sequence([
+        Animated.timing(shimmerAnim, { toValue: 1, duration: 1800, useNativeDriver: true }),
+        Animated.timing(shimmerAnim, { toValue: -1, duration: 0, useNativeDriver: true }),
+        Animated.delay(1200),
+      ])
+    ).start();
   }, []);
 
   useImperativeHandle(ref, () => ({
@@ -151,7 +185,23 @@ const UpcomingEvents = forwardRef((props: {}, ref) => {
         <View style={styles.section}>
 
           <View style={styles.banner}>
-            <View style={styles.glowDot} />
+            <Animated.View style={[styles.glowDot, { opacity: glowAnim }]} />
+            <Animated.View
+              style={[
+                styles.shimmerBar,
+                {
+                  transform: [
+                    {
+                      translateX: shimmerAnim.interpolate({
+                        inputRange: [-1, 1],
+                        outputRange: [-180, 420],
+                      }),
+                    },
+                    { rotate: '20deg' },
+                  ],
+                },
+              ]}
+            />
             <Animated.View style={[styles.micWrap, { transform: [{ translateX: shakeAnim }] }]}>
               <Ionicons name="megaphone" size={26} color="#fff" />
             </Animated.View>
@@ -160,11 +210,11 @@ const UpcomingEvents = forwardRef((props: {}, ref) => {
               <Text style={styles.bannerSub}>Upcoming Special Meetings</Text>
             </View>
             {meetings.length > 0 && (
-              <View style={styles.countBadge}>
+              <Animated.View style={[styles.countBadge, { transform: [{ scale: pulseAnim }] }]}>
                 <Text style={styles.countText}>{meetings.length}</Text>
-              </View>
+              </Animated.View>
             )}
-            <View style={[styles.glowDot, { right: 10, left: undefined }]} />
+            <Animated.View style={[styles.glowDot, { right: 10, left: undefined, opacity: glowAnim }]} />
           </View>
 
           {loading && meetings.length === 0 && (
@@ -174,87 +224,124 @@ const UpcomingEvents = forwardRef((props: {}, ref) => {
             </View>
           )}
 
-          {meetings.map((meeting, index) => (
-            <View key={meeting.id} style={styles.meetingCard}>
+          {meetings.map((meeting, index) => {
+            const isMultiDay = meeting.numberOfDays === 'multiple' && !!meeting.endDate;
+            return (
+              <View key={meeting.id} style={styles.meetingCard}>
 
-              <View style={styles.cardTopBar}>
-                <View style={styles.eventNumBadge}>
-                  <Text style={styles.eventNumText}>#{index + 1}</Text>
-                </View>
-                <View style={styles.specialTag}>
-                  <Ionicons name="star" size={11} color="#fff" />
-                  <Text style={styles.specialTagText}>SPECIAL MEETING</Text>
-                </View>
-              </View>
-
-              <Text style={styles.meetingTitle}>{meeting.title}</Text>
-
-              {!!meeting.description && (
-                <Text style={styles.meetingDesc}>{meeting.description}</Text>
-              )}
-
-              <View style={styles.cardDivider} />
-
-              <View style={styles.detailsGrid}>
-                {!!meeting.date && (
-                  <View style={styles.detailItem}>
-                    <View style={styles.detailIconBox}>
-                      <Ionicons name="calendar" size={16} color="#c0392b" />
+                <View style={styles.cardTopBar}>
+                  <View style={styles.eventNumBadge}>
+                    <Text style={styles.eventNumText}>#{index + 1}</Text>
+                  </View>
+                  <View style={styles.specialTag}>
+                    <Ionicons name="star" size={11} color="#fff" />
+                    <Text style={styles.specialTagText}>SPECIAL MEETING</Text>
+                  </View>
+                  {isMultiDay && (
+                    <View style={styles.multiDayTag}>
+                      <Text style={styles.multiDayTagText}>MULTI-DAY</Text>
                     </View>
-                    <View>
-                      <Text style={styles.detailLabel}>Date</Text>
-                      <Text style={styles.detailValue}>{meeting.date}</Text>
+                  )}
+                  {!isMultiDay && meeting.numberOfDays === '1' && (
+                    <View style={styles.oneDayTag}>
+                      <Text style={styles.oneDayTagText}>1 DAY</Text>
+                    </View>
+                  )}
+                </View>
+
+                <Text style={styles.meetingTitle}>{meeting.title}</Text>
+
+                {!!meeting.description && (
+                  <Text style={styles.meetingDesc}>{meeting.description}</Text>
+                )}
+
+                <View style={styles.cardDivider} />
+
+                <View style={styles.detailsGrid}>
+                  {!!meeting.date && (
+                    <View style={[styles.detailItem, { flex: 1 }]}>
+                      <View style={styles.detailIconBox}>
+                        <Ionicons name="calendar" size={16} color="#c0392b" />
+                      </View>
+                      <View style={{ flex: 1 }}>
+                        <Text style={styles.detailLabel}>{isMultiDay ? 'Start Date' : 'Date'}</Text>
+                        <Text style={styles.detailValue}>{meeting.date}</Text>
+                      </View>
+                    </View>
+                  )}
+                  {!!meeting.time && (
+                    <View style={[styles.detailItem, { marginRight: 6 }]}>
+                      <View style={styles.detailIconBox}>
+                        <Ionicons name="time" size={16} color="#c0392b" />
+                      </View>
+                      <View>
+                        <Text style={styles.detailLabel}>Time</Text>
+                        <Text style={styles.detailValue}>{meeting.time}</Text>
+                      </View>
+                    </View>
+                  )}
+                </View>
+
+                {isMultiDay && (
+                  <View style={styles.detailsGrid}>
+                    <View style={[styles.detailItem, { flex: 1 }]}>
+                      <View style={styles.detailIconBox}>
+                        <Ionicons name="calendar" size={16} color="#c0392b" />
+                      </View>
+                      <View style={{ flex: 1 }}>
+                        <Text style={styles.detailLabel}>End Date</Text>
+                        <Text style={styles.detailValue}>{meeting.endDate}</Text>
+                      </View>
                     </View>
                   </View>
                 )}
-                {!!meeting.time && (
-                  <View style={styles.detailItem}>
+
+                {!!meeting.location && (
+                  <View style={styles.locationRow}>
                     <View style={styles.detailIconBox}>
-                      <Ionicons name="time" size={16} color="#c0392b" />
+                      <Ionicons name="location" size={16} color="#c0392b" />
                     </View>
-                    <View>
-                      <Text style={styles.detailLabel}>Time</Text>
-                      <Text style={styles.detailValue}>{meeting.time}</Text>
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.detailLabel}>Location</Text>
+                      <Text style={styles.detailValue}>{meeting.location}</Text>
                     </View>
                   </View>
                 )}
-              </View>
 
-              {!!meeting.location && (
-                <View style={styles.locationRow}>
-                  <View style={styles.detailIconBox}>
-                    <Ionicons name="location" size={16} color="#c0392b" />
+                {!!meeting.additionalInfo && (
+                  <View style={styles.infoBox}>
+                    <Ionicons name="information-circle" size={16} color="#c0392b" />
+                    <Text style={styles.infoText}>{meeting.additionalInfo}</Text>
                   </View>
-                  <View style={{ flex: 1 }}>
-                    <Text style={styles.detailLabel}>Location</Text>
-                    <Text style={styles.detailValue}>{meeting.location}</Text>
-                  </View>
-                </View>
-              )}
+                )}
 
-              {!!meeting.additionalInfo && (
-                <View style={styles.infoBox}>
-                  <Ionicons name="information-circle" size={16} color="#c0392b" />
-                  <Text style={styles.infoText}>{meeting.additionalInfo}</Text>
+                <View style={styles.noteRow}>
+                  <Ionicons name="notifications" size={13} color="#c0392b" />
+                  <Text style={styles.noteText}>Mark your calendar — Don't miss this!</Text>
                 </View>
-              )}
 
-              <View style={styles.noteRow}>
-                <Ionicons name="notifications" size={13} color="#c0392b" />
-                <Text style={styles.noteText}>Mark your calendar — Don't miss this!</Text>
+                {!!meeting.youtubeLink && (
+                  <TouchableOpacity
+                    style={styles.youtubeBtn}
+                    onPress={() => Linking.openURL(meeting.youtubeLink!)}
+                  >
+                    <Ionicons name="logo-youtube" size={16} color="#fff" />
+                    <Text style={styles.youtubeBtnText}>▶ Watch on YouTube</Text>
+                  </TouchableOpacity>
+                )}
+
+                {!!meeting.mapLink && (
+                  <TouchableOpacity
+                    style={styles.mapBtn}
+                    onPress={() => Linking.openURL(meeting.mapLink!)}
+                  >
+                    <Ionicons name="navigate" size={15} color="#fff" />
+                    <Text style={styles.mapBtnText}>📍 Get Directions</Text>
+                  </TouchableOpacity>
+                )}
               </View>
-
-              {!!meeting.mapLink && (
-                <TouchableOpacity
-                  style={styles.mapBtn}
-                  onPress={() => Linking.openURL(meeting.mapLink!)}
-                >
-                  <Ionicons name="navigate" size={15} color="#fff" />
-                  <Text style={styles.mapBtnText}>📍 Get Directions</Text>
-                </TouchableOpacity>
-              )}
-            </View>
-          ))}
+            );
+          })}
 
           {!loading && meetings.length === 0 && (
             <View style={styles.emptyBox}>
@@ -392,7 +479,14 @@ const styles = StyleSheet.create({
     width: 80,
     height: 80,
     borderRadius: 40,
-    backgroundColor: 'rgba(255,255,255,0.08)',
+    backgroundColor: 'rgba(255,255,255,0.3)',
+  },
+  shimmerBar: {
+    position: 'absolute',
+    top: -40,
+    width: 60,
+    height: 160,
+    backgroundColor: 'rgba(255,255,255,0.18)',
   },
   micWrap: {
     width: 50,
@@ -482,6 +576,30 @@ const styles = StyleSheet.create({
     fontWeight: '800',
     letterSpacing: 1,
   },
+  multiDayTag: {
+    backgroundColor: 'rgba(255,255,255,0.9)',
+    borderRadius: 10,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+  },
+  multiDayTagText: {
+    color: '#c0392b',
+    fontSize: 10,
+    fontWeight: '800',
+    letterSpacing: 0.5,
+  },
+  oneDayTag: {
+    backgroundColor: 'rgba(255,255,255,0.25)',
+    borderRadius: 10,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+  },
+  oneDayTagText: {
+    color: '#fff',
+    fontSize: 10,
+    fontWeight: '800',
+    letterSpacing: 0.5,
+  },
   meetingTitle: {
     fontSize: 17,
     fontWeight: 'bold',
@@ -508,7 +626,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     gap: 16,
     marginBottom: 10,
-    flexWrap: 'wrap',
   },
   detailItem: {
     flexDirection: 'row',
@@ -574,6 +691,22 @@ const styles = StyleSheet.create({
     color: '#c0392b',
     fontStyle: 'italic',
     fontWeight: '500',
+  },
+  youtubeBtn: {
+    backgroundColor: '#ff0000',
+    marginHorizontal: 14,
+    marginTop: 10,
+    borderRadius: 10,
+    paddingVertical: 10,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+  },
+  youtubeBtnText: {
+    color: '#fff',
+    fontWeight: '700',
+    fontSize: 14,
   },
   mapBtn: {
     backgroundColor: '#c0392b',

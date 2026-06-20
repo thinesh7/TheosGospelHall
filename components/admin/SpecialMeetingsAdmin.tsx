@@ -13,14 +13,19 @@ import {
 } from 'react-native';
 import { db } from '../../firebaseConfig';
 
+type NumberOfDays = '' | '1' | 'multiple';
+
 interface SpecialMeeting {
   id: string;
   title: string;
   description: string;
   date: string;
+  endDate: string;
+  numberOfDays: NumberOfDays;
   time: string;
   location: string;
   mapLink: string;
+  youtubeLink: string;
   additionalInfo: string;
   isActive: boolean;
   order: number;
@@ -30,9 +35,12 @@ const EMPTY_MEETING: Omit<SpecialMeeting, 'id'> = {
   title: '',
   description: '',
   date: '',
+  endDate: '',
+  numberOfDays: '',
   time: '',
   location: '',
   mapLink: '',
+  youtubeLink: '',
   additionalInfo: '',
   isActive: true,
   order: 1,
@@ -75,7 +83,8 @@ const SpecialMeetingsAdmin = forwardRef<AdminScreenHandle, Props>(({ onEventsUpd
       const snap = await getDocs(q);
       const list: SpecialMeeting[] = snap.docs.map(d => ({
         id: d.id,
-        ...(d.data() as Omit<SpecialMeeting, 'id'>),
+        ...(EMPTY_MEETING as any),
+        ...(d.data() as any),
       }));
       setAdminMeetings(list);
     } catch (e) {
@@ -90,7 +99,8 @@ const SpecialMeetingsAdmin = forwardRef<AdminScreenHandle, Props>(({ onEventsUpd
       const snap = await getDocs(q);
       const list: SpecialMeeting[] = snap.docs.map(d => ({
         id: d.id,
-        ...(d.data() as Omit<SpecialMeeting, 'id'>),
+        ...(EMPTY_MEETING as any),
+        ...(d.data() as any),
       }));
       setAdminMeetings(list);
       const active = list.filter(m => m.isActive);
@@ -158,9 +168,12 @@ const SpecialMeetingsAdmin = forwardRef<AdminScreenHandle, Props>(({ onEventsUpd
       title: meeting.title,
       description: meeting.description,
       date: meeting.date,
+      endDate: meeting.endDate || '',
+      numberOfDays: meeting.numberOfDays || '',
       time: meeting.time,
       location: meeting.location,
       mapLink: meeting.mapLink,
+      youtubeLink: meeting.youtubeLink || '',
       additionalInfo: meeting.additionalInfo,
       isActive: meeting.isActive,
       order: meeting.order,
@@ -173,13 +186,26 @@ const SpecialMeetingsAdmin = forwardRef<AdminScreenHandle, Props>(({ onEventsUpd
       Alert.alert('Required', 'Please enter a title.');
       return;
     }
+    if (!form.date.trim()) {
+      Alert.alert('Required', 'Please enter a start date.');
+      return;
+    }
+    if (form.numberOfDays === 'multiple' && !form.endDate.trim()) {
+      Alert.alert('Required', 'Please enter an end date for multi-day events.');
+      return;
+    }
+
     setSaving(true);
     try {
       const isNew = !editingId;
+      const payload = {
+        ...form,
+        endDate: form.numberOfDays === 'multiple' ? form.endDate.trim() : '',
+      };
       if (editingId) {
-        await updateDoc(doc(db, 'events', editingId), { ...form });
+        await updateDoc(doc(db, 'events', editingId), { ...payload });
       } else {
-        await addDoc(collection(db, 'events'), { ...form });
+        await addDoc(collection(db, 'events'), { ...payload });
       }
       await refreshCache();
       setShowForm(false);
@@ -192,7 +218,7 @@ const SpecialMeetingsAdmin = forwardRef<AdminScreenHandle, Props>(({ onEventsUpd
             {
               text: '📢 Send Notification',
               onPress: async () => {
-                await sendNotificationToAll(form);
+                await sendNotificationToAll(payload);
                 Alert.alert('✅ Sent!', 'Notification sent to all users.');
               },
             },
@@ -259,10 +285,15 @@ const SpecialMeetingsAdmin = forwardRef<AdminScreenHandle, Props>(({ onEventsUpd
                   <View style={{ flex: 1 }}>
                     <Text style={styles.adminMeetingTitle}>{meeting.title}</Text>
                     <Text style={styles.adminMeetingMeta}>
-                      {meeting.date} {meeting.time ? `• ${meeting.time}` : ''}
+                      {meeting.date}
+                      {meeting.numberOfDays === 'multiple' && meeting.endDate ? ` → ${meeting.endDate}` : ''}
+                      {meeting.time ? ` • ${meeting.time}` : ''}
                     </Text>
                     {meeting.location ? (
                       <Text style={styles.adminMeetingMeta}>📍 {meeting.location}</Text>
+                    ) : null}
+                    {meeting.youtubeLink ? (
+                      <Text style={styles.adminMeetingMeta}>▶ YouTube link added</Text>
                     ) : null}
                   </View>
                   <Switch
@@ -317,29 +348,146 @@ const SpecialMeetingsAdmin = forwardRef<AdminScreenHandle, Props>(({ onEventsUpd
             </TouchableOpacity>
             <Text style={styles.formTitle}>{editingId ? 'Edit Meeting' : 'New Meeting'}</Text>
           </View>
-          {[
-            { label: 'Title *', field: 'title', placeholder: 'e.g. TGH Special Meeting' },
-            { label: 'Description', field: 'description', placeholder: 'Brief description', multi: true },
-            { label: 'Date', field: 'date', placeholder: 'e.g. June 20, 2025' },
-            { label: 'Time', field: 'time', placeholder: 'e.g. 6:30 PM' },
-            { label: 'Location', field: 'location', placeholder: 'Venue name & city' },
-            { label: 'Google Maps Link', field: 'mapLink', placeholder: 'https://maps.app.goo.gl/...' },
-            { label: 'Additional Info', field: 'additionalInfo', placeholder: 'Any extra details', multi: true },
-            { label: 'Order (display sequence)', field: 'order', placeholder: '1', numeric: true },
-          ].map(f => (
-            <View key={f.field} style={styles.formField}>
-              <Text style={styles.formLabel}>{f.label}</Text>
+
+          <View style={styles.formField}>
+            <Text style={styles.formLabel}>Title *</Text>
+            <TextInput
+              style={styles.formInput}
+              placeholder="e.g. TGH Special Meeting"
+              placeholderTextColor="#999"
+              value={form.title}
+              onChangeText={v => F('title', v)}
+            />
+          </View>
+
+          <View style={styles.formField}>
+            <Text style={styles.formLabel}>Description</Text>
+            <TextInput
+              style={[styles.formInput, styles.formInputMulti]}
+              placeholder="Brief description"
+              placeholderTextColor="#999"
+              value={form.description}
+              onChangeText={v => F('description', v)}
+              multiline
+            />
+          </View>
+
+          <View style={styles.formField}>
+            <Text style={styles.formLabel}>Start Date *</Text>
+            <TextInput
+              style={styles.formInput}
+              placeholder="e.g. August 15, 2026"
+              placeholderTextColor="#999"
+              value={form.date}
+              onChangeText={v => F('date', v)}
+            />
+          </View>
+
+          <View style={styles.formField}>
+            <Text style={styles.formLabel}>Number of Days</Text>
+            <View style={styles.segmentRow}>
+              <TouchableOpacity
+                style={[styles.segmentBtn, form.numberOfDays === '1' && styles.segmentBtnActive]}
+                onPress={() => F('numberOfDays', '1')}
+              >
+                <Text style={[styles.segmentBtnText, form.numberOfDays === '1' && styles.segmentBtnTextActive]}>
+                  1 Day
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.segmentBtn, form.numberOfDays === 'multiple' && styles.segmentBtnActive]}
+                onPress={() => F('numberOfDays', 'multiple')}
+              >
+                <Text style={[styles.segmentBtnText, form.numberOfDays === 'multiple' && styles.segmentBtnTextActive]}>
+                  More Than One Day
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+
+          {form.numberOfDays === 'multiple' && (
+            <View style={styles.formField}>
+              <Text style={styles.formLabel}>End Date *</Text>
               <TextInput
-                style={[styles.formInput, f.multi && styles.formInputMulti]}
-                placeholder={f.placeholder}
+                style={styles.formInput}
+                placeholder="e.g. August 17, 2026"
                 placeholderTextColor="#999"
-                value={String(form[f.field as keyof typeof form])}
-                onChangeText={v => F(f.field as any, f.numeric ? parseInt(v) || 1 : v)}
-                multiline={f.multi}
-                keyboardType={f.numeric ? 'number-pad' : 'default'}
+                value={form.endDate}
+                onChangeText={v => F('endDate', v)}
               />
             </View>
-          ))}
+          )}
+
+          <View style={styles.formField}>
+            <Text style={styles.formLabel}>Time</Text>
+            <TextInput
+              style={styles.formInput}
+              placeholder="e.g. 6:30 PM"
+              placeholderTextColor="#999"
+              value={form.time}
+              onChangeText={v => F('time', v)}
+            />
+          </View>
+
+          <View style={styles.formField}>
+            <Text style={styles.formLabel}>Location</Text>
+            <TextInput
+              style={styles.formInput}
+              placeholder="Venue name & city"
+              placeholderTextColor="#999"
+              value={form.location}
+              onChangeText={v => F('location', v)}
+            />
+          </View>
+
+          <View style={styles.formField}>
+            <Text style={styles.formLabel}>Google Maps Link</Text>
+            <TextInput
+              style={styles.formInput}
+              placeholder="https://maps.app.goo.gl/..."
+              placeholderTextColor="#999"
+              value={form.mapLink}
+              onChangeText={v => F('mapLink', v)}
+              autoCapitalize="none"
+            />
+          </View>
+
+          <View style={styles.formField}>
+            <Text style={styles.formLabel}>YouTube Link</Text>
+            <TextInput
+              style={styles.formInput}
+              placeholder="https://youtube.com/watch?v=..."
+              placeholderTextColor="#999"
+              value={form.youtubeLink}
+              onChangeText={v => F('youtubeLink', v)}
+              autoCapitalize="none"
+            />
+          </View>
+
+          <View style={styles.formField}>
+            <Text style={styles.formLabel}>Additional Info</Text>
+            <TextInput
+              style={[styles.formInput, styles.formInputMulti]}
+              placeholder="Any extra details"
+              placeholderTextColor="#999"
+              value={form.additionalInfo}
+              onChangeText={v => F('additionalInfo', v)}
+              multiline
+            />
+          </View>
+
+          <View style={styles.formField}>
+            <Text style={styles.formLabel}>Order (display sequence)</Text>
+            <TextInput
+              style={styles.formInput}
+              placeholder="1"
+              placeholderTextColor="#999"
+              value={String(form.order)}
+              onChangeText={v => F('order', parseInt(v) || 1)}
+              keyboardType="number-pad"
+            />
+          </View>
+
           <View style={styles.toggleRow}>
             <Text style={styles.formLabel}>Show to users</Text>
             <Switch
@@ -394,6 +542,19 @@ const styles = StyleSheet.create({
   formLabel: { fontSize: 13, fontWeight: '600', color: '#555', marginBottom: 6 },
   formInput: { backgroundColor: '#fff', borderRadius: 10, padding: 12, fontSize: 15, elevation: 2, borderWidth: 1, borderColor: '#eee', color: '#1a1a2e' },
   formInputMulti: { minHeight: 80, textAlignVertical: 'top' },
+  segmentRow: { flexDirection: 'row', gap: 10 },
+  segmentBtn: {
+    flex: 1,
+    paddingVertical: 12,
+    borderRadius: 10,
+    backgroundColor: '#fff',
+    borderWidth: 1,
+    borderColor: '#eee',
+    alignItems: 'center',
+  },
+  segmentBtnActive: { backgroundColor: '#7209b7', borderColor: '#7209b7' },
+  segmentBtnText: { fontSize: 13, fontWeight: '600', color: '#555' },
+  segmentBtnTextActive: { color: '#fff' },
   toggleRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', backgroundColor: '#fff', padding: 14, borderRadius: 12, marginBottom: 20, elevation: 2 },
   saveBtn: { backgroundColor: '#7209b7', borderRadius: 14, padding: 16, alignItems: 'center', marginBottom: 12, elevation: 4 },
   saveBtnText: { color: '#fff', fontWeight: 'bold', fontSize: 16 },
