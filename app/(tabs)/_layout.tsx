@@ -5,7 +5,7 @@ import PagerView from 'react-native-pager-view';
 import BibleScreen from './bible';
 import ContactScreen from './contact';
 import HomeScreen from './index';
-import SongsScreen from './songs';
+import SongsHubScreen from './songs-hub';
 import VideosScreen from './videos';
 
 const TABS = [
@@ -53,7 +53,7 @@ export default function TabLayout() {
         <View key="0">{visitedTabs.has(0) ? <HomeScreen /> : null}</View>
         <View key="1">{visitedTabs.has(1) ? <VideosScreen /> : null}</View>
         <View key="2">{visitedTabs.has(2) ? <BibleScreen /> : null}</View>
-        <View key="3">{visitedTabs.has(3) ? <SongsScreen /> : null}</View>
+        <View key="3">{visitedTabs.has(3) ? <SongsHubScreen /> : null}</View>
         <View key="4">{visitedTabs.has(4) ? <ContactScreen /> : null}</View>
       </PagerView>
 

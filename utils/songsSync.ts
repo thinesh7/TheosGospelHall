@@ -1,5 +1,5 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { collection, getDocs, query, where } from 'firebase/firestore';
+import { collection, getDocs, query, updateDoc, where } from 'firebase/firestore';
 import { db } from '../firebaseConfig';
 
 const INDEX_KEY = 'tgh_gk_songs_index';
@@ -54,6 +54,10 @@ export async function getSongsIndex(): Promise<SongIndexEntry[]> {
   }
 }
 
+export async function saveSongsIndexCache(index: SongIndexEntry[]) {
+  await saveSongsIndex(index);
+}
+
 async function saveSongsIndex(index: SongIndexEntry[]) {
   await AsyncStorage.setItem(INDEX_KEY, JSON.stringify(index));
 }
@@ -79,6 +83,10 @@ export async function getSongsByIds(songIds: string[]): Promise<Song[]> {
   } catch (e) {
     return [];
   }
+}
+
+export async function saveSongCache(song: Song) {
+  await saveSong(song);
 }
 
 async function saveSong(song: Song) {
@@ -113,6 +121,7 @@ export async function syncSongs(): Promise<{ index: SongIndexEntry[]; updated: b
   }
 
   const needsBackfill = existingIndex.filter(e => !e.titleEnglish);
+  let backfilled = false;
   if (needsBackfill.length > 0) {
     const backfillSongs = await getSongsByIds(needsBackfill.map(e => e.songId));
     const backfillMap = new Map(backfillSongs.map(s => [s.songId, s]));
@@ -125,6 +134,7 @@ export async function syncSongs(): Promise<{ index: SongIndexEntry[]; updated: b
       return e;
     });
     await saveSongsIndex(existingIndex);
+    backfilled = true;
   }
 
   try {
@@ -135,13 +145,13 @@ export async function syncSongs(): Promise<{ index: SongIndexEntry[]; updated: b
     const snap = await getDocs(q);
 
     if (snap.empty && existingIndex.length > 0) {
-      return { index: existingIndex, updated: false };
+      return { index: existingIndex, updated: backfilled };
     }
 
     const updatedSongs: Song[] = snap.docs.map(d => d.data() as Song);
 
     if (updatedSongs.length === 0) {
-      return { index: existingIndex, updated: false };
+      return { index: existingIndex, updated: backfilled };
     }
 
     await saveSongsBatched(updatedSongs);
@@ -164,6 +174,33 @@ export async function syncSongs(): Promise<{ index: SongIndexEntry[]; updated: b
 
     return { index: finalIndex, updated: true };
   } catch (e) {
-    return { index: existingIndex, updated: false };
+    return { index: existingIndex, updated: backfilled };
+  }
+}
+
+export async function updateGeethangalumSong(
+  songId: string,
+  updates: { title?: string; lyrics?: { tamil: string; english: string } }
+): Promise<void> {
+  const q = query(collection(db, 'GeethangalumKeerthanaigal'), where('songId', '==', songId));
+  const snap = await getDocs(q);
+  if (snap.empty) throw new Error('Song not found in Firestore');
+
+  const docRef = snap.docs[0].ref;
+  const now = Date.now();
+  await updateDoc(docRef, { ...updates, lastModifiedTimestamp: now });
+
+  const existing = await getSongById(songId);
+  if (existing) {
+    const merged: Song = { ...existing, ...updates, lastModifiedTimestamp: now };
+    await saveSongCache(merged);
+
+    const index = await getSongsIndex();
+    const newIndex = index.map(e =>
+      e.songId === songId
+        ? { ...e, title: merged.title, titleEnglish: extractEnglishTitle(merged.lyrics.english) }
+        : e
+    );
+    await saveSongsIndexCache(newIndex);
   }
 }

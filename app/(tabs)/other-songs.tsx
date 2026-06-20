@@ -12,10 +12,10 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
-import { SongIndexEntry, getSongsIndex, syncSongs } from '../../utils/songsSync';
-import { THEMES, ThemeName, getStoredTheme, nextTheme, setStoredTheme } from '../../utils/songsTheme';
+import { OtherSongIndexEntry, getOtherSongsIndex, syncOtherSongs } from '../../utils/otherSongsSync';
+import { ThemeName, THEMES, getStoredTheme, setStoredTheme, nextTheme } from '../../utils/songsTheme';
 
-const FAVORITES_KEY = 'tgh_song_favorites';
+const FAVORITES_KEY = 'tgh_other_song_favorites';
 
 type Tab = 'numbers' | 'az' | 'favorites';
 
@@ -23,13 +23,13 @@ const stripNumber = (title: string) => title.replace(/^\d+\.\s*/, '');
 
 const tamilCollator = new Intl.Collator('ta');
 
-export default function SongsScreen({ headerTitle, onThemeChange }: { headerTitle?: React.ReactNode; onThemeChange?: (theme: ThemeName) => void } = {}) {
+export default function OtherSongsScreen({ headerTitle, onThemeChange }: { headerTitle?: React.ReactNode; onThemeChange?: (theme: ThemeName) => void } = {}) {
   const router = useRouter();
   const flatListRef = useRef<FlatList>(null);
   const [activeTab, setActiveTab] = useState<Tab>('numbers');
   const [search, setSearch] = useState('');
   const [favorites, setFavorites] = useState<string[]>([]);
-  const [songs, setSongs] = useState<SongIndexEntry[]>([]);
+  const [songs, setSongs] = useState<OtherSongIndexEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [syncing, setSyncing] = useState(false);
   const [theme, setTheme] = useState<ThemeName>('dark');
@@ -51,7 +51,7 @@ export default function SongsScreen({ headerTitle, onThemeChange }: { headerTitl
     const t = await getStoredTheme();
     setTheme(t);
 
-    const cached = await getSongsIndex();
+    const cached = await getOtherSongsIndex();
     if (cached.length > 0) {
       setSongs(cached);
       setLoading(false);
@@ -62,7 +62,7 @@ export default function SongsScreen({ headerTitle, onThemeChange }: { headerTitl
     });
 
     setSyncing(true);
-    const result = await syncSongs();
+    const result = await syncOtherSongs();
     if (result.index.length > 0) {
       setSongs(result.index);
     }
@@ -77,19 +77,23 @@ export default function SongsScreen({ headerTitle, onThemeChange }: { headerTitl
     onThemeChange?.(next);
   };
 
+  const visibleSongs = useMemo(() => {
+    return songs.filter(s => s.isVisible !== false);
+  }, [songs]);
+
   const azSongs = useMemo(() => {
     if (activeTab !== 'az') return [];
-    return [...songs].sort((a, b) =>
+    return [...visibleSongs].sort((a, b) =>
       tamilCollator.compare(stripNumber(a.title), stripNumber(b.title))
     );
-  }, [songs, activeTab]);
+  }, [visibleSongs, activeTab]);
 
   const favoriteSongs = useMemo(() => {
-    return songs.filter(s => favorites.includes(s.songId));
-  }, [songs, favorites]);
+    return visibleSongs.filter(s => favorites.includes(s.songId));
+  }, [visibleSongs, favorites]);
 
   const filteredSongs = useMemo(() => {
-    let base = activeTab === 'az' ? azSongs : activeTab === 'favorites' ? favoriteSongs : songs;
+    let base = activeTab === 'az' ? azSongs : activeTab === 'favorites' ? favoriteSongs : visibleSongs;
     const q = search.trim();
     if (!q) return base;
     const isNumeric = /^\d+$/.test(q);
@@ -100,7 +104,7 @@ export default function SongsScreen({ headerTitle, onThemeChange }: { headerTitl
       s.title.toLowerCase().includes(q.toLowerCase()) ||
       (s.titleEnglish && s.titleEnglish.toLowerCase().includes(q.toLowerCase()))
     );
-  }, [search, activeTab, songs, azSongs, favoriteSongs]);
+  }, [search, activeTab, visibleSongs, azSongs, favoriteSongs]);
 
   const selectTab = (tab: Tab) => {
     setActiveTab(tab);
@@ -108,12 +112,12 @@ export default function SongsScreen({ headerTitle, onThemeChange }: { headerTitl
   };
 
   const openSong = (songNumber: number) => {
-    router.push({ pathname: '/song-reader', params: { songNumber: String(songNumber) } });
+    router.push({ pathname: '/other-song-reader', params: { songNumber: String(songNumber) } });
   };
 
   const c = THEMES[theme];
 
-  const SongCard = useCallback(({ item }: { item: SongIndexEntry }) => (
+  const SongCard = useCallback(({ item }: { item: OtherSongIndexEntry }) => (
     <TouchableOpacity style={[styles.card, { backgroundColor: c.cardBg }]} onPress={() => openSong(item.songNumber)}>
       <Text style={[styles.cardText, { color: c.text }]} numberOfLines={3}>
         {item.title}
@@ -130,7 +134,7 @@ export default function SongsScreen({ headerTitle, onThemeChange }: { headerTitl
 
       <View style={styles.headerRow}>
         {headerTitle ? headerTitle : (
-          <Text style={[styles.headerTitle, { color: c.titleColor }]}>Geethangalum Keerthanaigalum</Text>
+          <Text style={[styles.headerTitle, { color: c.titleColor }]}>Other Songs</Text>
         )}
         <View style={styles.headerActions}>
           {syncing && <ActivityIndicator size="small" color={c.titleColor} />}
@@ -162,7 +166,7 @@ export default function SongsScreen({ headerTitle, onThemeChange }: { headerTitl
           onPress={() => selectTab('numbers')}
         >
           <Text style={[styles.tabText, { color: activeTab === 'numbers' ? '#fff' : c.titleColor }]}>
-            1 to 720
+            {visibleSongs.length === 0 ? '0' : `1 to ${visibleSongs.length}`}
           </Text>
         </TouchableOpacity>
         <TouchableOpacity
