@@ -1,6 +1,6 @@
 import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 
-export type AdminModule = 'specialMeetings' | 'songsMenu' | 'livePlaylists';
+export type AdminModule = 'specialMeetings' | 'songsMenu' | 'livePlaylists' | 'homeContent';
 
 interface ModuleCard {
   id: AdminModule;
@@ -10,6 +10,12 @@ interface ModuleCard {
 }
 
 const MODULES: ModuleCard[] = [
+  {
+    id: 'homeContent',
+    icon: '🏠',
+    title: 'Pastor & Ministry Content',
+    subtitle: 'Manage Pastor info & About Ministry (English/Tamil)',
+  },
   {
     id: 'specialMeetings',
     icon: '📅',

@@ -28,7 +28,7 @@ const EVENTS = [
     id: '1',
     title: 'Sunday Morning Service',
     date: 'Every Sunday',
-    time: 'Tirupur: 7:00–9:30 AM\nCoimbatore: 10:30 AM–1:00 PM\nUdumalpet: 10:30 AM–1:00 PM\nKanyakumari: 9:00–11:30 AM',
+    time: 'Tirupur: 7:00 - 9:30 AM\nCoimbatore: 10:30 AM - 1:00 PM\nUdumalpet: 10:30 AM - 1:00 PM\nKanyakumari: 9:00 - 11:30 AM',
     location: 'All Branches',
     type: 'service',
   },
@@ -36,7 +36,7 @@ const EVENTS = [
     id: '2',
     title: 'Bible Study',
     date: 'Every Wednesday',
-    time: '7:00 PM – 8:00 PM',
+    time: '7:00 PM - 8:00 PM',
     location: 'YouTube Live',
     type: 'bible',
   },
@@ -44,7 +44,7 @@ const EVENTS = [
     id: '3',
     title: 'Prayer Meeting',
     date: 'Every Thursday',
-    time: '8:30 PM – 9:30 PM',
+    time: '8:30 PM - 9:30 PM',
     location: 'Tirupur & Google Meet',
     type: 'prayer',
   },
@@ -63,7 +63,7 @@ const YOUTH_EVENTS = [
     id: 'y1',
     title: 'Discipleship Program',
     date: 'Every Day',
-    time: '6:00 AM & 10:15 PM (15 min)',
+    time: '6:00 AM & 10:00 PM (15 min)',
     location: 'Google Meet',
     icon: 'school-outline',
   },
@@ -410,6 +410,13 @@ const UpcomingEvents = forwardRef((props: {}, ref) => {
             </View>
           </View>
         ))}
+        <TouchableOpacity
+          style={styles.youthRegisterBtn}
+          onPress={() => Linking.openURL('https://wa.me/919363207478?text=Hi Brother, I am interested in registering for the Youth Program.')}
+        >
+          <Ionicons name="logo-whatsapp" size={18} color="#e63946" />
+          <Text style={styles.youthRegisterBtnText}>Click Here to Register</Text>
+        </TouchableOpacity>
       </View>
 
       <View style={styles.academyCard}>
@@ -423,7 +430,7 @@ const UpcomingEvents = forwardRef((props: {}, ref) => {
         <View style={styles.academyDivider} />
         <View style={styles.academyRow}>
           <Ionicons name="calendar-outline" size={16} color="#fff" />
-          <Text style={styles.academyText}> Monthly 1-2 sessions</Text>
+          <Text style={styles.academyText}> Monthly 1 - 2 sessions</Text>
         </View>
         <View style={styles.academyRow}>
           <Ionicons name="time-outline" size={16} color="#fff" />
@@ -439,11 +446,11 @@ const UpcomingEvents = forwardRef((props: {}, ref) => {
         </View>
         <View style={styles.academyDivider} />
         <Text style={styles.academyNote}>
-          📌 For registration & next batch details, contact Pastor directly
+          📌 For registration & next batch details, contact directly
         </Text>
         <TouchableOpacity
           style={styles.whatsappBtn}
-          onPress={() => Linking.openURL('https://wa.me/919363207478?text=Hi Pastor, I am interested in TGH Bible Academy registration.')}
+          onPress={() => Linking.openURL('https://wa.me/919363207478?text=Hi Brother, I am interested in TGH Bible Academy registration.')}
         >
           <Ionicons name="logo-whatsapp" size={18} color="#fff" />
           <Text style={styles.btnText}>Register via WhatsApp</Text>
@@ -736,21 +743,31 @@ const styles = StyleSheet.create({
   },
   card: { backgroundColor: '#fff', margin: 16, marginBottom: 0, borderRadius: 16, padding: 20, elevation: 4 },
   cardTitle: { fontSize: 16, fontWeight: 'bold', color: '#1a1a2e', marginBottom: 16 },
-  eventRow: { flexDirection: 'row', marginBottom: 16, alignItems: 'flex-start' },
-  iconBox: { width: 52, borderRadius: 10, alignItems: 'center', justifyContent: 'center', marginRight: 12, paddingVertical: 8 },
-  iconLabel: { fontSize: 9, color: '#fff', marginTop: 3, fontWeight: 'bold', textAlign: 'center' },
+  eventRow: { flexDirection: 'row', marginBottom: 18, alignItems: 'flex-start' },
+  iconBox: { width: 56, borderRadius: 10, alignItems: 'center', justifyContent: 'center', marginRight: 12, paddingVertical: 9 },
+  iconLabel: { fontSize: 10, color: '#fff', marginTop: 3, fontWeight: 'bold', textAlign: 'center' },
   eventInfo: { flex: 1 },
-  eventTitle: { fontSize: 14, fontWeight: 'bold', color: '#1a1a2e', marginBottom: 4 },
-  row: { flexDirection: 'row', alignItems: 'flex-start', marginBottom: 2 },
-  eventMeta: { fontSize: 12, color: '#888', flex: 1 },
+  eventTitle: { fontSize: 16, fontWeight: 'bold', color: '#1a1a2e', marginBottom: 6 },
+  row: { flexDirection: 'row', alignItems: 'flex-start', marginBottom: 4 },
+  eventMeta: { fontSize: 14, color: '#777', flex: 1, lineHeight: 19 },
   youthCard: { backgroundColor: '#e63946', margin: 16, marginBottom: 0, borderRadius: 16, padding: 20, elevation: 6, borderWidth: 2, borderColor: '#ff6b35' },
   youthHeader: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 4 },
   youthHeaderText: { fontSize: 18, fontWeight: 'bold', color: '#fff' },
   youthSubtitle: { fontSize: 12, color: '#ffe0d6', marginBottom: 16, fontStyle: 'italic' },
-  youthEventRow: { flexDirection: 'row', marginBottom: 16, alignItems: 'flex-start' },
+  youthEventRow: { flexDirection: 'row', marginBottom: 18, alignItems: 'flex-start' },
   youthIconBox: { width: 44, height: 44, borderRadius: 22, backgroundColor: '#fff', alignItems: 'center', justifyContent: 'center', marginRight: 12 },
-  youthEventTitle: { fontSize: 14, fontWeight: 'bold', color: '#fff', marginBottom: 4 },
-  youthEventMeta: { fontSize: 12, color: '#ffe0d6', flex: 1 },
+  youthEventTitle: { fontSize: 16, fontWeight: 'bold', color: '#fff', marginBottom: 6 },
+  youthEventMeta: { fontSize: 14, color: '#ffe0d6', flex: 1, lineHeight: 19 },
+  youthRegisterBtn: {
+    backgroundColor: '#fff',
+    borderRadius: 10,
+    padding: 14,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+  },
+  youthRegisterBtnText: { color: '#e63946', fontWeight: 'bold', fontSize: 15 },
   academyCard: { backgroundColor: '#2d6a4f', margin: 16, marginBottom: 0, borderRadius: 16, padding: 20, elevation: 6, borderWidth: 2, borderColor: '#52b788' },
   academyHeader: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 6 },
   academyHeaderText: { fontSize: 20, fontWeight: 'bold', color: '#fff' },

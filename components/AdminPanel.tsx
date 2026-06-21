@@ -11,6 +11,7 @@ import {
 } from 'react-native';
 import AdminDashboard, { AdminModule } from './admin/AdminDashboard';
 import GeethangalumAdmin from './admin/GeethangalumAdmin';
+import HomeContentAdmin from './admin/HomeContentAdmin';
 import LivePlaylistsAdmin from './admin/LivePlaylistsAdmin';
 import OtherSongsAdmin from './admin/OtherSongsAdmin';
 import SongsAdminMenu, { SongsModule } from './admin/SongsAdminMenu';
@@ -22,7 +23,8 @@ type ViewKey =
   | 'songsMenu'
   | 'songsGeethangalum'
   | 'songsOther'
-  | 'livePlaylists';
+  | 'livePlaylists'
+  | 'homeContent';
 
 interface ViewMeta {
   title: string;
@@ -36,6 +38,7 @@ const VIEW_META: Record<ViewKey, ViewMeta> = {
   songsGeethangalum: { title: '📖 Geethangalum Keerthanaigalum', subtitle: 'Edit existing songs' },
   songsOther: { title: '🎶 Other Songs', subtitle: 'Add, edit, show/hide songs' },
   livePlaylists: { title: '🎬 Live Playlists', subtitle: 'Manage YouTube playlists' },
+  homeContent: { title: '🏠 Home Screen Content', subtitle: 'Pastor & Ministry info' },
 };
 
 interface Props {
@@ -83,6 +86,7 @@ export default function AdminPanel({ visible, onClose, onEventsUpdated }: Props)
     if (module === 'specialMeetings') pushView('specialMeetings');
     else if (module === 'songsMenu') pushView('songsMenu');
     else if (module === 'livePlaylists') pushView('livePlaylists');
+    else if (module === 'homeContent') pushView('homeContent');
   };
 
   const handleSongsMenuSelect = (module: SongsModule) => {
@@ -143,6 +147,10 @@ export default function AdminPanel({ visible, onClose, onEventsUpdated }: Props)
 
             {currentView === 'livePlaylists' && (
               <LivePlaylistsAdmin ref={activeScreenRef} />
+            )}
+
+            {currentView === 'homeContent' && (
+              <HomeContentAdmin ref={activeScreenRef} />
             )}
           </View>
         </View>
