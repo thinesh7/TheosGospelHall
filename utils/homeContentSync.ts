@@ -57,7 +57,7 @@ export function subscribeHomeContent(onUpdate: (content: HomeContent) => void): 
       const content = { ...EMPTY_HOME_CONTENT, ...(snap.data() as Partial<HomeContent>) };
       onUpdate(content);
       saveCachedHomeContent(content).catch(() => {});
-    } else {
+    } else if (!snap.metadata.fromCache) {
       onUpdate(EMPTY_HOME_CONTENT);
     }
   }, () => {});
