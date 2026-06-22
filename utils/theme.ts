@@ -48,7 +48,7 @@ export const THEMES: Record<ThemeName, ThemeColors> = {
   },
 };
 
-export const THEME_ORDER: ThemeName[] = ['dark', 'light', 'sepia'];
+export const THEME_ORDER: ThemeName[] = ['light', 'dark', 'sepia'];
 
 export function nextTheme(current: ThemeName): ThemeName {
   const idx = THEME_ORDER.indexOf(current);

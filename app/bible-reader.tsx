@@ -457,7 +457,7 @@ export default function BibleReaderScreen() {
         />
       )}
 
-      <View style={[styles.bottomNav, { backgroundColor: c.surface, borderTopColor: c.divider, paddingBottom: Math.max(insets.bottom, 10) }]}>
+      <View style={[styles.bottomNav, { backgroundColor: c.surface, borderTopColor: c.divider, paddingBottom: insets.bottom + 16 }]}>
         <TouchableOpacity style={[styles.navBtn, isFirstChapterFirstBook && styles.navBtnDisabled]}
           onPress={() => !isFirstChapterFirstBook && navigateChapter('prev')}>
           <Ionicons name="chevron-back" size={20} color={isFirstChapterFirstBook ? '#ccc' : c.accent} />
@@ -539,7 +539,7 @@ const styles = StyleSheet.create({
   tamilSection: { padding: 12 },
   englishSection: { padding: 12 },
   versionTag: { fontSize: 10, fontWeight: 'bold', marginBottom: 4, textTransform: 'uppercase' },
-  bottomNav: { flexDirection: 'row', alignItems: 'center', borderTopWidth: 1, paddingTop: 10, paddingHorizontal: 16 },
+  bottomNav: { flexDirection: 'row', alignItems: 'center', borderTopWidth: 1, paddingVertical: 14, paddingHorizontal: 20 },
   navBtn: { flexDirection: 'row', alignItems: 'center', gap: 4, flex: 1 },
   navBtnRight: { flexDirection: 'row', alignItems: 'center', gap: 4, flex: 1, justifyContent: 'flex-end' },
   navBtnDisabled: { opacity: 0.3 },
