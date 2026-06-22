@@ -2,6 +2,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useEffect, useRef, useState } from 'react';
 import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import PagerView from 'react-native-pager-view';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import BibleScreen from './bible';
 import ContactScreen from './contact';
 import HomeScreen from './index';
@@ -21,6 +22,7 @@ export default function TabLayout() {
   const [visitedTabs, setVisitedTabs] = useState<Set<number>>(new Set([0]));
   const activeTabRef = useRef(0);
   const pagerRef = useRef<PagerView>(null);
+  const insets = useSafeAreaInsets();
 
   useEffect(() => {
     setVisitedTabs(prev => {
@@ -36,6 +38,8 @@ export default function TabLayout() {
     setActiveTab(index);
     pagerRef.current?.setPage(index);
   };
+
+  const tabBarHeight = 60 + Math.max(insets.bottom, 8);
 
   return (
     <View style={styles.container}>
@@ -57,7 +61,7 @@ export default function TabLayout() {
         <View key="4">{visitedTabs.has(4) ? <ContactScreen /> : null}</View>
       </PagerView>
 
-      <View style={styles.tabBar}>
+      <View style={[styles.tabBar, { height: tabBarHeight, paddingBottom: Math.max(insets.bottom, 8) }]}>
         {TABS.map((tab, index) => (
           <TouchableOpacity
             key={index}
@@ -87,8 +91,6 @@ const styles = StyleSheet.create({
     backgroundColor: '#fff',
     borderTopWidth: 1,
     borderTopColor: '#eee',
-    height: 100,
-    paddingBottom: 35,
     elevation: 8,
   },
   tab: { flex: 1, alignItems: 'center', justifyContent: 'center' },

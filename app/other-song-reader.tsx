@@ -15,10 +15,11 @@ import {
   View,
 } from 'react-native';
 import { OtherSongIndexEntry, getOtherSongById, getOtherSongsIndex } from '../utils/otherSongsSync';
-import { THEMES, getStoredTheme, nextTheme, setStoredTheme } from '../utils/songsTheme';
+import { getReaderSettings, ReaderLanguage, saveReaderSettings } from '../utils/songReaderSettings';
+import { useTheme } from '../utils/ThemeContext';
+import ThemeToggleIcon from '../components/ThemeToggleIcon';
 
 const FAVORITES_KEY = 'tgh_other_song_favorites';
-const SETTINGS_KEY = 'tgh_other_song_reader_settings';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 
@@ -28,7 +29,6 @@ const MIN_THICKNESS = 300;
 const MAX_THICKNESS = 800;
 const THICKNESS_STEP = 100;
 
-type Language = 'tamil' | 'english';
 type LyricsMap = Record<string, { tamil: string; english: string }>;
 
 const normalizeFull = (s: string) =>
@@ -71,6 +71,7 @@ const capitalizeParagraphs = (text: string) => {
 export default function OtherSongReaderScreen() {
   const router = useRouter();
   const { songNumber } = useLocalSearchParams<{ songNumber: string }>();
+  const { colors: c, theme, cycleTheme } = useTheme();
   const flatListRef = useRef<FlatList>(null);
   const lyricsMapRef = useRef<LyricsMap>({});
   const loadingSetRef = useRef<Set<string>>(new Set());
@@ -79,8 +80,7 @@ export default function OtherSongReaderScreen() {
   const [lyricsMap, setLyricsMap] = useState<LyricsMap>({});
   const [currentIndex, setCurrentIndex] = useState(0);
   const [favorites, setFavorites] = useState<string[]>([]);
-  const [theme, setTheme] = useState<'dark' | 'light' | 'sepia'>('dark');
-  const [language, setLanguage] = useState<Language>('tamil');
+  const [language, setLanguage] = useState<ReaderLanguage>('tamil');
   const [fontSize, setFontSize] = useState(18);
   const [thickness, setThickness] = useState(400);
   const [showSettings, setShowSettings] = useState(false);
@@ -100,25 +100,19 @@ export default function OtherSongReaderScreen() {
     const targetIndex = index.findIndex(s => s.songNumber === Number(songNumber));
     setCurrentIndex(targetIndex >= 0 ? targetIndex : 0);
 
-    const t = await getStoredTheme();
-    setTheme(t);
-
     const favStored = await AsyncStorage.getItem(FAVORITES_KEY);
     if (favStored) setFavorites(JSON.parse(favStored));
 
-    const settingsStored = await AsyncStorage.getItem(SETTINGS_KEY);
-    if (settingsStored) {
-      const s = JSON.parse(settingsStored);
-      setLanguage(s.language || 'tamil');
-      setFontSize(s.fontSize || 18);
-      setThickness(s.thickness || 400);
-    }
+    const settings = await getReaderSettings();
+    setLanguage(settings.language);
+    setFontSize(settings.fontSize);
+    setThickness(settings.thickness);
     setSettingsLoaded(true);
   };
 
   useEffect(() => {
     if (!settingsLoaded) return;
-    AsyncStorage.setItem(SETTINGS_KEY, JSON.stringify({ language, fontSize, thickness }));
+    saveReaderSettings({ language, fontSize, thickness });
   }, [language, fontSize, thickness, settingsLoaded]);
 
   useEffect(() => {
@@ -166,18 +160,10 @@ export default function OtherSongReaderScreen() {
     } catch (e) {}
   };
 
-  const cycleTheme = async () => {
-    const next = nextTheme(theme);
-    setTheme(next);
-    await setStoredTheme(next);
-  };
-
   const decreaseFontSize = () => setFontSize(prev => Math.max(MIN_FONT_SIZE, prev - 1));
   const increaseFontSize = () => setFontSize(prev => Math.min(MAX_FONT_SIZE, prev + 1));
   const decreaseThickness = () => setThickness(prev => Math.max(MIN_THICKNESS, prev - THICKNESS_STEP));
   const increaseThickness = () => setThickness(prev => Math.min(MAX_THICKNESS, prev + THICKNESS_STEP));
-
-  const c = THEMES[theme];
 
   const lyricsPaddingBottom = 190 + (fontSize - MIN_FONT_SIZE) * 7 + (thickness - MIN_THICKNESS) / 6;
 
@@ -203,7 +189,7 @@ export default function OtherSongReaderScreen() {
     if (!lyrics) {
       return (
         <View style={[styles.page, { backgroundColor: c.bg, alignItems: 'center', justifyContent: 'center' }]}>
-          <ActivityIndicator size="large" color={c.titleColor} />
+          <ActivityIndicator size="large" color={c.accent} />
         </View>
       );
     }
@@ -219,7 +205,7 @@ export default function OtherSongReaderScreen() {
           keyExtractor={() => item.songId}
           renderItem={() => (
             <View style={{ paddingHorizontal: 20, paddingTop: 10, paddingBottom: lyricsPaddingBottom }}>
-              <Text style={[styles.title, { color: c.titleColor, fontSize: fontSize + 4, fontWeight: thickness >= 600 ? 'bold' : '600' }]}>
+              <Text style={[styles.title, { color: c.accent, fontSize: fontSize + 4, fontWeight: thickness >= 600 ? 'bold' : '600' }]}>
                 {item.title}
               </Text>
               <View style={{ height: 24 }} />
@@ -238,7 +224,7 @@ export default function OtherSongReaderScreen() {
       <>
         <Stack.Screen options={{ headerShown: false }} />
         <View style={[styles.page, { backgroundColor: c.bg, alignItems: 'center', justifyContent: 'center' }]}>
-          <ActivityIndicator size="large" color={c.titleColor} />
+          <ActivityIndicator size="large" color={c.accent} />
         </View>
       </>
     );
@@ -250,7 +236,7 @@ export default function OtherSongReaderScreen() {
     <View style={[styles.container, { backgroundColor: c.bg }]}>
       <Stack.Screen options={{ headerShown: false }} />
 
-      <View style={[styles.topBar, { backgroundColor: c.toolbarBg }]}>
+      <View style={[styles.topBar, { backgroundColor: c.headerBg }]}>
         <TouchableOpacity onPress={() => router.back()}>
           <Ionicons name="chevron-back" size={26} color={c.text} />
         </TouchableOpacity>
@@ -269,7 +255,7 @@ export default function OtherSongReaderScreen() {
             <Ionicons name="share-social-outline" size={22} color={c.text} />
           </TouchableOpacity>
           <TouchableOpacity onPress={cycleTheme} style={styles.iconBtn}>
-            <Ionicons name="contrast-outline" size={22} color={c.text} />
+            <ThemeToggleIcon theme={theme} size={22} color={c.text} />
           </TouchableOpacity>
           <TouchableOpacity onPress={() => setShowSettings(true)} style={styles.iconBtn}>
             <Ionicons name="options-outline" size={22} color={c.text} />
@@ -294,15 +280,15 @@ export default function OtherSongReaderScreen() {
         }}
       />
 
-      <View style={[styles.bottomBar, { backgroundColor: c.toolbarBg }]}>
+      <View style={[styles.bottomBar, { backgroundColor: c.headerBg }]}>
         <TouchableOpacity
           disabled={currentIndex === 0}
           onPress={() => flatListRef.current?.scrollToIndex({ index: currentIndex - 1, animated: true })}
           style={styles.navBtn}
         >
-          <Ionicons name="chevron-back-circle" size={30} color={currentIndex === 0 ? '#555' : c.titleColor} />
+          <Ionicons name="chevron-back-circle" size={30} color={currentIndex === 0 ? '#555' : c.accent} />
         </TouchableOpacity>
-        <Text style={[styles.pageIndicator, { color: c.sub }]}>
+        <Text style={[styles.pageIndicator, { color: c.subtext }]}>
           {currentSong.songNumber} / {songsIndex.length}
         </Text>
         <TouchableOpacity
@@ -310,13 +296,13 @@ export default function OtherSongReaderScreen() {
           onPress={() => flatListRef.current?.scrollToIndex({ index: currentIndex + 1, animated: true })}
           style={styles.navBtn}
         >
-          <Ionicons name="chevron-forward-circle" size={30} color={currentIndex === songsIndex.length - 1 ? '#555' : c.titleColor} />
+          <Ionicons name="chevron-forward-circle" size={30} color={currentIndex === songsIndex.length - 1 ? '#555' : c.accent} />
         </TouchableOpacity>
       </View>
 
       <Modal visible={showSettings} transparent animationType="slide" onRequestClose={() => setShowSettings(false)}>
         <TouchableOpacity style={styles.modalOverlay} activeOpacity={1} onPress={() => setShowSettings(false)}>
-          <TouchableOpacity activeOpacity={1} style={[styles.sheet, { backgroundColor: c.toolbarBg }]}>
+          <TouchableOpacity activeOpacity={1} style={[styles.sheet, { backgroundColor: c.headerBg }]}>
             <View style={styles.sheetHandle} />
 
             <View style={styles.settingRow}>
@@ -325,13 +311,13 @@ export default function OtherSongReaderScreen() {
             </View>
             <View style={styles.langToggle}>
               <TouchableOpacity
-                style={[styles.langBtn, language === 'tamil' && styles.langBtnActive]}
+                style={[styles.langBtn, language === 'tamil' && { backgroundColor: c.accent }]}
                 onPress={() => setLanguage('tamil')}
               >
                 <Text style={[styles.langBtnText, language === 'tamil' && styles.langBtnTextActive]}>Tamil</Text>
               </TouchableOpacity>
               <TouchableOpacity
-                style={[styles.langBtn, language === 'english' && styles.langBtnActive]}
+                style={[styles.langBtn, language === 'english' && { backgroundColor: c.accent }]}
                 onPress={() => setLanguage('english')}
               >
                 <Text style={[styles.langBtnText, language === 'english' && styles.langBtnTextActive]}>English</Text>
@@ -344,7 +330,7 @@ export default function OtherSongReaderScreen() {
             </View>
             <View style={styles.stepperRow}>
               <TouchableOpacity
-                style={[styles.stepperBtn, { backgroundColor: c.searchBg }, fontSize <= MIN_FONT_SIZE && styles.stepperBtnDisabled]}
+                style={[styles.stepperBtn, { backgroundColor: c.raised }, fontSize <= MIN_FONT_SIZE && styles.stepperBtnDisabled]}
                 onPress={decreaseFontSize}
                 disabled={fontSize <= MIN_FONT_SIZE}
               >
@@ -352,7 +338,7 @@ export default function OtherSongReaderScreen() {
               </TouchableOpacity>
               <Text style={[styles.stepperValue, { color: c.text }]}>{fontSize}</Text>
               <TouchableOpacity
-                style={[styles.stepperBtn, { backgroundColor: c.searchBg }, fontSize >= MAX_FONT_SIZE && styles.stepperBtnDisabled]}
+                style={[styles.stepperBtn, { backgroundColor: c.raised }, fontSize >= MAX_FONT_SIZE && styles.stepperBtnDisabled]}
                 onPress={increaseFontSize}
                 disabled={fontSize >= MAX_FONT_SIZE}
               >
@@ -366,7 +352,7 @@ export default function OtherSongReaderScreen() {
             </View>
             <View style={styles.stepperRow}>
               <TouchableOpacity
-                style={[styles.stepperBtn, { backgroundColor: c.searchBg }, thickness <= MIN_THICKNESS && styles.stepperBtnDisabled]}
+                style={[styles.stepperBtn, { backgroundColor: c.raised }, thickness <= MIN_THICKNESS && styles.stepperBtnDisabled]}
                 onPress={decreaseThickness}
                 disabled={thickness <= MIN_THICKNESS}
               >
@@ -374,7 +360,7 @@ export default function OtherSongReaderScreen() {
               </TouchableOpacity>
               <Text style={[styles.stepperValue, { color: c.text }]}>{thickness}</Text>
               <TouchableOpacity
-                style={[styles.stepperBtn, { backgroundColor: c.searchBg }, thickness >= MAX_THICKNESS && styles.stepperBtnDisabled]}
+                style={[styles.stepperBtn, { backgroundColor: c.raised }, thickness >= MAX_THICKNESS && styles.stepperBtnDisabled]}
                 onPress={increaseThickness}
                 disabled={thickness >= MAX_THICKNESS}
               >
@@ -389,21 +375,21 @@ export default function OtherSongReaderScreen() {
 
       <Modal visible={showSearch} transparent animationType="slide" onRequestClose={() => setShowSearch(false)}>
         <TouchableOpacity style={styles.modalOverlay} activeOpacity={1} onPress={() => setShowSearch(false)}>
-          <TouchableOpacity activeOpacity={1} style={[styles.searchSheet, { backgroundColor: c.toolbarBg }]}>
+          <TouchableOpacity activeOpacity={1} style={[styles.searchSheet, { backgroundColor: c.headerBg }]}>
             <View style={styles.sheetHandle} />
 
-            <View style={[styles.searchInputRow, { backgroundColor: c.searchBg, borderColor: c.titleColor }]}>
-              <Ionicons name="search" size={20} color={c.titleColor} />
+            <View style={[styles.searchInputRow, { backgroundColor: c.surfaceAlt, borderColor: c.accent }]}>
+              <Ionicons name="search" size={20} color={c.accent} />
               <TextInput
                 style={[styles.searchInput, { color: c.text }]}
                 placeholder="Search by song number or title"
-                placeholderTextColor={c.sub}
+                placeholderTextColor={c.subtext}
                 value={searchQuery}
                 onChangeText={setSearchQuery}
                 autoFocus
               />
               {searchQuery.length > 0 && (
-                <TouchableOpacity onPress={() => setSearchQuery('')} style={[styles.clearBtn, { backgroundColor: c.titleColor }]}>
+                <TouchableOpacity onPress={() => setSearchQuery('')} style={[styles.clearBtn, { backgroundColor: c.accent }]}>
                   <Ionicons name="close" size={14} color="#fff" />
                 </TouchableOpacity>
               )}
@@ -418,10 +404,10 @@ export default function OtherSongReaderScreen() {
                 const index = songsIndex.findIndex(s => s.songId === item.songId);
                 return (
                   <TouchableOpacity
-                    style={[styles.searchResultRow, { backgroundColor: c.cardBg }]}
+                    style={[styles.searchResultRow, { backgroundColor: c.surface }]}
                     onPress={() => jumpToSong(index)}
                   >
-                    <View style={[styles.searchResultBadge, { backgroundColor: c.titleColor }]}>
+                    <View style={[styles.searchResultBadge, { backgroundColor: c.accent }]}>
                       <Text style={styles.searchResultBadgeText}>{item.songNumber}</Text>
                     </View>
                     <Text style={[styles.searchResultText, { color: c.text }]} numberOfLines={2}>
@@ -433,8 +419,8 @@ export default function OtherSongReaderScreen() {
               ListEmptyComponent={
                 searchQuery.trim().length > 0 ? (
                   <View style={styles.searchEmptyWrap}>
-                    <Ionicons name="musical-notes-outline" size={32} color={c.sub} />
-                    <Text style={[styles.searchEmpty, { color: c.sub }]}>No songs found</Text>
+                    <Ionicons name="musical-notes-outline" size={32} color={c.subtext} />
+                    <Text style={[styles.searchEmpty, { color: c.subtext }]}>No songs found</Text>
                   </View>
                 ) : null
               }
@@ -487,7 +473,6 @@ const styles = StyleSheet.create({
   settingLabel: { fontSize: 15, fontWeight: '600' },
   langToggle: { flexDirection: 'row', gap: 10 },
   langBtn: { flex: 1, paddingVertical: 12, borderRadius: 12, backgroundColor: 'rgba(150,150,150,0.2)', alignItems: 'center' },
-  langBtnActive: { backgroundColor: '#3949ab' },
   langBtnText: { fontWeight: '600', color: '#999' },
   langBtnTextActive: { color: '#fff' },
   stepperRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 24 },

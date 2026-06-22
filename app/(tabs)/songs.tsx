@@ -14,7 +14,9 @@ import {
   View,
 } from 'react-native';
 import { SongIndexEntry, getSongsIndex, syncSongs } from '../../utils/songsSync';
-import { ThemeName, THEMES, getStoredTheme, setStoredTheme, nextTheme } from '../../utils/songsTheme';
+import { useTheme } from '../../utils/ThemeContext';
+import ThemeToggleIcon from '../../components/ThemeToggleIcon';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 const FAVORITES_KEY = 'tgh_song_favorites';
 
@@ -24,8 +26,10 @@ const stripNumber = (title: string) => title.replace(/^\d+\.\s*/, '');
 
 const tamilCollator = new Intl.Collator('ta');
 
-export default function SongsScreen({ headerTitle, onThemeChange }: { headerTitle?: React.ReactNode; onThemeChange?: (theme: ThemeName) => void } = {}) {
+export default function SongsScreen({ headerTitle }: { headerTitle?: React.ReactNode } = {}) {
   const router = useRouter();
+  const { colors: c, theme, cycleTheme } = useTheme();
+  const insets = useSafeAreaInsets();
   const flatListRef = useRef<FlatList>(null);
   const [activeTab, setActiveTab] = useState<Tab>('numbers');
   const [search, setSearch] = useState('');
@@ -34,7 +38,6 @@ export default function SongsScreen({ headerTitle, onThemeChange }: { headerTitl
   const [loading, setLoading] = useState(true);
   const [syncing, setSyncing] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
-  const [theme, setTheme] = useState<ThemeName>('dark');
 
   useEffect(() => {
     loadInitial();
@@ -45,14 +48,10 @@ export default function SongsScreen({ headerTitle, onThemeChange }: { headerTitl
       AsyncStorage.getItem(FAVORITES_KEY).then(stored => {
         if (stored) setFavorites(JSON.parse(stored));
       });
-      getStoredTheme().then(setTheme);
     }, [])
   );
 
   const loadInitial = async () => {
-    const t = await getStoredTheme();
-    setTheme(t);
-
     const cached = await getSongsIndex();
     if (cached.length > 0) {
       setSongs(cached);
@@ -79,13 +78,6 @@ export default function SongsScreen({ headerTitle, onThemeChange }: { headerTitl
       setSongs(result.index);
     }
     setRefreshing(false);
-  };
-
-  const cycleTheme = async () => {
-    const next = nextTheme(theme);
-    setTheme(next);
-    await setStoredTheme(next);
-    onThemeChange?.(next);
   };
 
   const azSongs = useMemo(() => {
@@ -122,10 +114,8 @@ export default function SongsScreen({ headerTitle, onThemeChange }: { headerTitl
     router.push({ pathname: '/song-reader', params: { songNumber: String(songNumber) } });
   };
 
-  const c = THEMES[theme];
-
   const SongCard = useCallback(({ item }: { item: SongIndexEntry }) => (
-    <TouchableOpacity style={[styles.card, { backgroundColor: c.cardBg }]} onPress={() => openSong(item.songNumber)}>
+    <TouchableOpacity style={[styles.card, { backgroundColor: c.surface }]} onPress={() => openSong(item.songNumber)}>
       <Text style={[styles.cardText, { color: c.text }]} numberOfLines={3}>
         {item.title}
       </Text>
@@ -137,65 +127,64 @@ export default function SongsScreen({ headerTitle, onThemeChange }: { headerTitl
 
   return (
     <View style={[styles.container, { backgroundColor: c.bg }]}>
-      <StatusBar barStyle={theme === 'dark' ? 'light-content' : 'dark-content'} />
+      <StatusBar barStyle={theme === 'light' ? 'dark-content' : 'light-content'} />
 
-      <View style={styles.headerRow}>
+      <View style={[styles.headerRow, { marginRight: 16 + insets.right }]}>
         {headerTitle ? headerTitle : (
-          <Text style={[styles.headerTitle, { color: c.titleColor }]}>Geethangalum Keerthanaigalum</Text>
+          <Text style={[styles.headerTitle, { color: c.accent }]}>Geethangalum Keerthanaigalum</Text>
         )}
         <View style={styles.headerActions}>
-          {syncing && <ActivityIndicator size="small" color={c.titleColor} />}
           <TouchableOpacity onPress={cycleTheme} style={styles.themeBtn}>
-            <Ionicons name="contrast-outline" size={22} color={c.text} />
+            <ThemeToggleIcon theme={theme} size={22} color={c.text} />
           </TouchableOpacity>
         </View>
       </View>
 
-      <View style={[styles.searchBar, { backgroundColor: c.searchBg }]}>
-        <Ionicons name="search" size={20} color={c.sub} />
+      <View style={[styles.searchBar, { backgroundColor: c.surfaceAlt }]}>
+        <Ionicons name="search" size={20} color={c.subtext} />
         <TextInput
           style={[styles.searchInput, { color: c.text }]}
           placeholder="Search by song number or title"
-          placeholderTextColor={c.sub}
+          placeholderTextColor={c.subtext}
           value={search}
           onChangeText={setSearch}
         />
         {search.length > 0 && (
           <TouchableOpacity onPress={() => setSearch('')}>
-            <Ionicons name="close-circle" size={20} color={c.sub} />
+            <Ionicons name="close-circle" size={20} color={c.subtext} />
           </TouchableOpacity>
         )}
       </View>
 
-      <View style={[styles.tabsRow, { backgroundColor: c.searchBg }]}>
+      <View style={[styles.tabsRow, { backgroundColor: c.surfaceAlt }]}>
         <TouchableOpacity
-          style={[styles.tab, activeTab === 'numbers' && { backgroundColor: c.titleColor }]}
+          style={[styles.tab, activeTab === 'numbers' && { backgroundColor: c.accent }]}
           onPress={() => selectTab('numbers')}
         >
-          <Text style={[styles.tabText, { color: activeTab === 'numbers' ? '#fff' : c.titleColor }]}>
+          <Text style={[styles.tabText, { color: activeTab === 'numbers' ? '#fff' : c.accent }]}>
             1 to 720
           </Text>
         </TouchableOpacity>
         <TouchableOpacity
-          style={[styles.tab, activeTab === 'az' && { backgroundColor: c.titleColor }]}
+          style={[styles.tab, activeTab === 'az' && { backgroundColor: c.accent }]}
           onPress={() => selectTab('az')}
         >
-          <Text style={[styles.tabText, { color: activeTab === 'az' ? '#fff' : c.titleColor }]}>
+          <Text style={[styles.tabText, { color: activeTab === 'az' ? '#fff' : c.accent }]}>
             A to Z
           </Text>
         </TouchableOpacity>
         <TouchableOpacity
-          style={[styles.tab, activeTab === 'favorites' && { backgroundColor: c.titleColor }]}
+          style={[styles.tab, activeTab === 'favorites' && { backgroundColor: c.accent }]}
           onPress={() => selectTab('favorites')}
         >
-          <Text style={[styles.tabText, { color: activeTab === 'favorites' ? '#fff' : c.titleColor }]}>
+          <Text style={[styles.tabText, { color: activeTab === 'favorites' ? '#fff' : c.accent }]}>
             Favorites
           </Text>
         </TouchableOpacity>
       </View>
 
       {loading ? (
-        <ActivityIndicator size="large" color={c.titleColor} style={{ marginTop: 60 }} />
+        <ActivityIndicator size="large" color={c.accent} style={{ marginTop: 60 }} />
       ) : (
         <FlatList
           ref={flatListRef}
@@ -208,10 +197,10 @@ export default function SongsScreen({ headerTitle, onThemeChange }: { headerTitl
           windowSize={10}
           removeClippedSubviews
           refreshControl={
-            <RefreshControl refreshing={refreshing} onRefresh={onPullToRefresh} colors={[c.titleColor]} tintColor={c.titleColor} />
+            <RefreshControl refreshing={refreshing} onRefresh={onPullToRefresh} colors={[c.accent]} tintColor={c.accent} />
           }
           ListEmptyComponent={
-            <Text style={[styles.empty, { color: c.sub }]}>
+            <Text style={[styles.empty, { color: c.subtext }]}>
               {activeTab === 'favorites' ? 'No favorites yet' : 'No songs found'}
             </Text>
           }
@@ -228,7 +217,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     marginTop: 54,
-    marginHorizontal: 16,
+    marginLeft: 16,
     marginBottom: 14,
   },
   headerTitle: { fontSize: 20, fontWeight: 'bold', flex: 1 },

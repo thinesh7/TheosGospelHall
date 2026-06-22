@@ -1,4 +1,4 @@
-import { DarkTheme, DefaultTheme, ThemeProvider } from '@react-navigation/native';
+import { DarkTheme, DefaultTheme, ThemeProvider as NavThemeProvider } from '@react-navigation/native';
 import { Stack } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
@@ -7,6 +7,8 @@ import 'react-native-reanimated';
 
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { getCachedHomeContent } from '@/utils/homeContentSync';
+import { loadBibleSettings } from '@/utils/bibleSettings';
+import { ThemeProvider as AppThemeProvider } from '@/utils/ThemeContext';
 
 export const unstable_settings = {
   anchor: '(tabs)',
@@ -22,11 +24,10 @@ export default function RootLayout() {
     const prepare = async () => {
       try {
         await Promise.race([
-          getCachedHomeContent(),
+          Promise.all([getCachedHomeContent(), loadBibleSettings()]),
           new Promise(resolve => setTimeout(resolve, 1500)),
         ]);
       } catch (e) {
-        // ignore — proceed regardless
       } finally {
         setIsReady(true);
         SplashScreen.hideAsync().catch(() => {});
@@ -35,17 +36,19 @@ export default function RootLayout() {
     prepare();
   }, []);
 
-  if (!isReady) {
-    return null;
-  }
+  if (!isReady) return null;
 
   return (
-    <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
-      <Stack>
-        <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-        <Stack.Screen name="modal" options={{ presentation: 'modal', title: 'Modal' }} />
-      </Stack>
-      <StatusBar style="auto" />
-    </ThemeProvider>
+    <AppThemeProvider>
+      <NavThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
+        <Stack>
+          <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+          <Stack.Screen name="song-reader" options={{ headerShown: false }} />
+          <Stack.Screen name="other-song-reader" options={{ headerShown: false }} />
+          <Stack.Screen name="bible-reader" options={{ headerShown: false }} />
+        </Stack>
+        <StatusBar style="auto" />
+      </NavThemeProvider>
+    </AppThemeProvider>
   );
 }
