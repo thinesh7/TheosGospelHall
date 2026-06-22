@@ -1,1 +1,104 @@
-{"1":[{"pk":4826356,"verse":1,"text":"Greetings from Paul, a prisoner for Jesus Christ, and from Timothy, our brother. To Philemon, our dear friend and worker with us."},{"pk":4826357,"verse":2,"text":"Also to our sister Apphia, to Archippus, who serves with us in the Lord’s army, and to the church that meets in your home."},{"pk":4826358,"verse":3,"text":"Grace and peace to you from God our Father and the Lord Jesus Christ."},{"pk":4826359,"verse":4,"text":"I remember you in my prayers. And I always thank my God for you."},{"pk":4826360,"verse":5,"text":"I thank God because I hear about the love you have for all of God’s holy people and the faith you have in the Lord Jesus."},{"pk":4826361,"verse":6,"text":"I pray that the faith you share will make you understand every blessing we have in Christ."},{"pk":4826362,"verse":7,"text":"My brother, you have shown love to God’s people, and your help has greatly encouraged them. What a great joy and encouragement that has been to me."},{"pk":4826363,"verse":8,"text":"There is something that you should do. And because of the authority I have in Christ, I feel free to command you to do it."},{"pk":4826364,"verse":9,"text":"But I am not commanding you; I am asking you to do it out of love. I, Paul, am an old man now, and I am a prisoner for Christ Jesus."},{"pk":4826365,"verse":10,"text":"I am asking you for my son Onesimus. He became my son while I was in prison."},{"pk":4826366,"verse":11,"text":"In the past he was useless to you. But now he has become useful<sup>[1]</sup> for both you and me.","comment":"[1] <i class=\"catch-word\">useless … useful</i> Paul here makes a play on words with the name Onesimus, which means “useful.”"},{"pk":4826367,"verse":12,"text":"I am sending him back to you, but it’s as hard as losing part of myself."},{"pk":4826368,"verse":13,"text":"I would like to keep him here to help me while I am still in prison for telling the Good News. By helping me here, he would be representing you."},{"pk":4826369,"verse":14,"text":"But I did not want to do anything without asking you first. Then whatever you do for me will be what you want to do, not what I forced you to do."},{"pk":4826370,"verse":15,"text":"Onesimus was separated from you for a short time. Maybe that happened so that you could have him back forever,"},{"pk":4826371,"verse":16,"text":"not to be just a slave, but better than a slave, to be a dear brother. That’s what he is to me. And I know he will mean even more to you, both as your slave and as one who shares your faith in the Lord."},{"pk":4826372,"verse":17,"text":"If you accept me as your friend, then accept Onesimus back. Welcome him like you would welcome me."},{"pk":4826373,"verse":18,"text":"If he has done any wrong to you or owes you anything, charge that to me."},{"pk":4826374,"verse":19,"text":"I, Paul, am writing this in my own handwriting: I will pay back anything Onesimus owes. And I will say nothing about what you owe me for your own life."},{"pk":4826375,"verse":20,"text":"So, my brother, as a follower of the Lord please do this favor<sup>[2]</sup> for me. It would be such a great encouragement to me as your brother in Christ.","comment":"[2] <i class=\"catch-word\">please do this favor</i> Paul here makes another wordplay on the name Onesimus, using a verb related to it."},{"pk":4826376,"verse":21,"text":"I write this letter knowing that you will do what I ask, and even more than I ask."},{"pk":4826377,"verse":22,"text":"Also, please prepare a room for me. I hope that God will answer your prayers and that I will be able to come and see you."},{"pk":4826378,"verse":23,"text":"Epaphras is a prisoner with me for Christ Jesus. He sends you his greetings."},{"pk":4826379,"verse":24,"text":"Also Mark, Aristarchus, Demas, and Luke send their greetings. They are workers together with me."},{"pk":4826380,"verse":25,"text":"The grace of our Lord Jesus Christ be with your spirit."}]}
+{
+  "1": [
+    {
+      "verse": 1,
+      "text": "Greetings from Paul, a prisoner for Jesus Christ, and from Timothy, our brother. To Philemon, our dear friend and worker with us."
+    },
+    {
+      "verse": 2,
+      "text": "Also to our sister Apphia, to Archippus, who serves with us in the Lord’s army, and to the church that meets in your home."
+    },
+    {
+      "verse": 3,
+      "text": "Grace and peace to you from God our Father and the Lord Jesus Christ."
+    },
+    {
+      "verse": 4,
+      "text": "I remember you in my prayers. And I always thank my God for you."
+    },
+    {
+      "verse": 5,
+      "text": "I thank God because I hear about the love you have for all of God’s holy people and the faith you have in the Lord Jesus."
+    },
+    {
+      "verse": 6,
+      "text": "I pray that the faith you share will make you understand every blessing we have in Christ."
+    },
+    {
+      "verse": 7,
+      "text": "My brother, you have shown love to God’s people, and your help has greatly encouraged them. What a great joy and encouragement that has been to me."
+    },
+    {
+      "verse": 8,
+      "text": "There is something that you should do. And because of the authority I have in Christ, I feel free to command you to do it."
+    },
+    {
+      "verse": 9,
+      "text": "But I am not commanding you; I am asking you to do it out of love. I, Paul, am an old man now, and I am a prisoner for Christ Jesus."
+    },
+    {
+      "verse": 10,
+      "text": "I am asking you for my son Onesimus. He became my son while I was in prison."
+    },
+    {
+      "verse": 11,
+      "text": "In the past he was useless to you. But now he has become useful<sup>[1]</sup> for both you and me."
+    },
+    {
+      "verse": 12,
+      "text": "I am sending him back to you, but it’s as hard as losing part of myself."
+    },
+    {
+      "verse": 13,
+      "text": "I would like to keep him here to help me while I am still in prison for telling the Good News. By helping me here, he would be representing you."
+    },
+    {
+      "verse": 14,
+      "text": "But I did not want to do anything without asking you first. Then whatever you do for me will be what you want to do, not what I forced you to do."
+    },
+    {
+      "verse": 15,
+      "text": "Onesimus was separated from you for a short time. Maybe that happened so that you could have him back forever,"
+    },
+    {
+      "verse": 16,
+      "text": "not to be just a slave, but better than a slave, to be a dear brother. That’s what he is to me. And I know he will mean even more to you, both as your slave and as one who shares your faith in the Lord."
+    },
+    {
+      "verse": 17,
+      "text": "If you accept me as your friend, then accept Onesimus back. Welcome him like you would welcome me."
+    },
+    {
+      "verse": 18,
+      "text": "If he has done any wrong to you or owes you anything, charge that to me."
+    },
+    {
+      "verse": 19,
+      "text": "I, Paul, am writing this in my own handwriting: I will pay back anything Onesimus owes. And I will say nothing about what you owe me for your own life."
+    },
+    {
+      "verse": 20,
+      "text": "So, my brother, as a follower of the Lord please do this favor<sup>[2]</sup> for me. It would be such a great encouragement to me as your brother in Christ."
+    },
+    {
+      "verse": 21,
+      "text": "I write this letter knowing that you will do what I ask, and even more than I ask."
+    },
+    {
+      "verse": 22,
+      "text": "Also, please prepare a room for me. I hope that God will answer your prayers and that I will be able to come and see you."
+    },
+    {
+      "verse": 23,
+      "text": "Epaphras is a prisoner with me for Christ Jesus. He sends you his greetings."
+    },
+    {
+      "verse": 24,
+      "text": "Also Mark, Aristarchus, Demas, and Luke send their greetings. They are workers together with me."
+    },
+    {
+      "verse": 25,
+      "text": "The grace of our Lord Jesus Christ be with your spirit."
+    }
+  ]
+}
