@@ -1,9 +1,10 @@
 import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useFocusEffect, useRouter } from 'expo-router';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
+  Animated,
   FlatList,
   RefreshControl,
   StatusBar,
@@ -25,6 +26,117 @@ type Tab = 'numbers' | 'az' | 'favorites';
 const stripNumber = (title: string) => title.replace(/^\d+\.\s*/, '');
 
 const tamilCollator = new Intl.Collator('ta');
+
+function FirstTimeSetup({ c }: { c: any }) {
+  const dot1 = useRef(new Animated.Value(0)).current;
+  const dot2 = useRef(new Animated.Value(0)).current;
+  const dot3 = useRef(new Animated.Value(0)).current;
+  const fade = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    Animated.timing(fade, { toValue: 1, duration: 600, useNativeDriver: true }).start();
+
+    const animateDot = (dot: Animated.Value, delay: number) =>
+      Animated.loop(
+        Animated.sequence([
+          Animated.delay(delay),
+          Animated.timing(dot, { toValue: -8, duration: 300, useNativeDriver: true }),
+          Animated.timing(dot, { toValue: 0, duration: 300, useNativeDriver: true }),
+          Animated.delay(600),
+        ])
+      );
+
+    Animated.parallel([
+      animateDot(dot1, 0),
+      animateDot(dot2, 150),
+      animateDot(dot3, 300),
+    ]).start();
+  }, []);
+
+  return (
+    <Animated.View style={[setupStyles.container, { opacity: fade }]}>
+      <View style={[setupStyles.card, { backgroundColor: c.surface }]}>
+        <View style={[setupStyles.iconCircle, { backgroundColor: c.accent + '22' }]}>
+          <Ionicons name="musical-notes" size={36} color={c.accent} />
+        </View>
+
+        <Text style={[setupStyles.title, { color: c.text }]}>
+          Preparing your song collection
+        </Text>
+
+        <Text style={[setupStyles.subtitle, { color: c.subtext }]}>
+          Please allow a moment while we set things up for you. This only happens once.
+        </Text>
+
+        <View style={setupStyles.dotsRow}>
+          {[dot1, dot2, dot3].map((dot, i) => (
+            <Animated.View
+              key={i}
+              style={[
+                setupStyles.dot,
+                { backgroundColor: c.accent, transform: [{ translateY: dot }] },
+              ]}
+            />
+          ))}
+        </View>
+
+        <Text style={[setupStyles.note, { color: c.subtext }]}>
+          ✦ One-time setup
+        </Text>
+      </View>
+    </Animated.View>
+  );
+}
+
+const setupStyles = StyleSheet.create({
+  container: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 32,
+  },
+  card: {
+    width: '100%',
+    borderRadius: 24,
+    padding: 32,
+    alignItems: 'center',
+    elevation: 4,
+  },
+  iconCircle: {
+    width: 72,
+    height: 72,
+    borderRadius: 36,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 20,
+  },
+  title: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    textAlign: 'center',
+    marginBottom: 12,
+  },
+  subtitle: {
+    fontSize: 14,
+    textAlign: 'center',
+    lineHeight: 22,
+    marginBottom: 28,
+  },
+  dotsRow: {
+    flexDirection: 'row',
+    gap: 10,
+    marginBottom: 24,
+  },
+  dot: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+  },
+  note: {
+    fontSize: 12,
+    letterSpacing: 0.5,
+  },
+});
 
 export default function SongsScreen({ headerTitle }: { headerTitle?: React.ReactNode } = {}) {
   const router = useRouter();
@@ -184,7 +296,7 @@ export default function SongsScreen({ headerTitle }: { headerTitle?: React.React
       </View>
 
       {loading ? (
-        <ActivityIndicator size="large" color={c.accent} style={{ marginTop: 60 }} />
+        <FirstTimeSetup c={c} />
       ) : (
         <FlatList
           ref={flatListRef}
