@@ -71,7 +71,7 @@ const YOUTH_EVENTS = [
     id: 'y2',
     title: 'Youth Meeting',
     date: 'Every Friday',
-    time: '9:00 PM – 10:00 PM',
+    time: '9:00 PM - 10:00 PM',
     location: 'Zoom & YouTube',
     icon: 'people-outline',
   },
@@ -434,7 +434,7 @@ const UpcomingEvents = forwardRef((props: {}, ref) => {
         </View>
         <View style={styles.academyRow}>
           <Ionicons name="time-outline" size={16} color="#fff" />
-          <Text style={styles.academyText}> 5:00 PM – 8:00 PM</Text>
+          <Text style={styles.academyText}> 5:00 PM - 8:00 PM</Text>
         </View>
         <View style={styles.academyRow}>
           <Ionicons name="location-outline" size={16} color="#fff" />

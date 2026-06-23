@@ -1,14 +1,14 @@
 import { useState } from 'react';
 import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
-import { useTheme } from '../../utils/ThemeContext';
 import OtherSongsScreen from './other-songs';
 import SongsScreen from './songs';
+import { useTheme } from '../../utils/ThemeContext';
 
 type CollectionTab = 'geethangalum' | 'other';
 
 const OPTIONS: { id: CollectionTab; label: string }[] = [
   { id: 'geethangalum', label: 'Geethangalum Keerthanaigalum' },
-  { id: 'other', label: 'Special Songs' },
+  { id: 'other', label: 'Other Songs' },
 ];
 
 export default function SongsHubScreen() {
@@ -44,11 +44,12 @@ export default function SongsHubScreen() {
 
   return (
     <View style={styles.container}>
-      {activeCollection === 'geethangalum' ? (
+      <View style={{ flex: 1, display: activeCollection === 'geethangalum' ? 'flex' : 'none' }}>
         <SongsScreen headerTitle={segmentedToggle} />
-      ) : (
+      </View>
+      <View style={{ flex: 1, display: activeCollection === 'other' ? 'flex' : 'none' }}>
         <OtherSongsScreen headerTitle={segmentedToggle} />
-      )}
+      </View>
     </View>
   );
 }

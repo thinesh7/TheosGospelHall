@@ -8,13 +8,12 @@ import {
   BackHandler,
   KeyboardAvoidingView,
   Linking,
-  Platform,
   ScrollView,
   StyleSheet,
   Text,
   TextInput,
   TouchableOpacity,
-  View,
+  View
 } from 'react-native';
 import AdminPanel from '../../components/AdminPanel';
 import Paragraphs from '../../components/Paragraphs';
@@ -73,7 +72,7 @@ export default function AboutScreen() {
     tapCountRef.current += 1;
     if (tapTimerRef.current) clearTimeout(tapTimerRef.current);
     tapTimerRef.current = setTimeout(() => { tapCountRef.current = 0; }, 1500);
-    if (tapCountRef.current >= 3) {
+    if (tapCountRef.current >= 5) {
       tapCountRef.current = 0;
       clearTimeout(tapTimerRef.current);
       if (isAdminAuthenticated) {

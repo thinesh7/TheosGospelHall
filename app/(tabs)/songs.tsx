@@ -148,6 +148,7 @@ export default function SongsScreen({ headerTitle }: { headerTitle?: React.React
   const [favorites, setFavorites] = useState<string[]>([]);
   const [songs, setSongs] = useState<SongIndexEntry[]>([]);
   const [loading, setLoading] = useState(true);
+  const [showSetup, setShowSetup] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
 
@@ -168,6 +169,8 @@ export default function SongsScreen({ headerTitle }: { headerTitle?: React.React
     if (cached.length > 0) {
       setSongs(cached);
       setLoading(false);
+    } else {
+      setShowSetup(true);
     }
 
     AsyncStorage.getItem(FAVORITES_KEY).then(stored => {
@@ -180,6 +183,7 @@ export default function SongsScreen({ headerTitle }: { headerTitle?: React.React
       setSongs(result.index);
     }
     setLoading(false);
+    setShowSetup(false);
     setSyncing(false);
   };
 
@@ -296,7 +300,9 @@ export default function SongsScreen({ headerTitle }: { headerTitle?: React.React
       </View>
 
       {loading ? (
-        <FirstTimeSetup c={c} />
+        showSetup
+          ? <FirstTimeSetup c={c} />
+          : <ActivityIndicator size="large" color={c.accent} style={{ marginTop: 60 }} />
       ) : (
         <FlatList
           ref={flatListRef}

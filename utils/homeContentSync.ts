@@ -64,6 +64,20 @@ export function subscribeHomeContent(onUpdate: (content: HomeContent) => void): 
   return unsubscribe;
 }
 
+export function fetchHomeContentOnce(): Promise<HomeContent | null> {
+  return new Promise((resolve) => {
+    const timer = setTimeout(() => {
+      unsub();
+      resolve(memoryCache);
+    }, 6000);
+    const unsub = subscribeHomeContent((content) => {
+      clearTimeout(timer);
+      unsub();
+      resolve(content);
+    });
+  });
+}
+
 export async function updateHomeContent(data: Omit<HomeContent, 'lastModifiedTimestamp'>): Promise<void> {
   const ref = doc(db, ...DOC_PATH);
   await setDoc(ref, { ...data, lastModifiedTimestamp: Date.now() }, { merge: true });

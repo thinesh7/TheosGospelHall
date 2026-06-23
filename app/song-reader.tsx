@@ -39,7 +39,7 @@ const normalizeFull = (s: string) =>
     .replace(/\s+/g, ' ')
     .trim();
 
-const stripDuplicateTitle = (lyrics: string, songTitle: string) => {
+const stripDuplicateTitle = (lyrics: string, songTitle: string, songNumber?: number) => {
   const paragraphs = lyrics
     .split('\n\n')
     .map(p => p.trim())
@@ -50,7 +50,6 @@ const stripDuplicateTitle = (lyrics: string, songTitle: string) => {
   const normalizedTitle = normalizeFull(songTitle);
   const normalizedFirst = normalizeFull(paragraphs[0]);
 
-  // Strip first paragraph if it substantially matches the song title
   if (
     normalizedTitle.length > 0 &&
     (normalizedFirst === normalizedTitle ||
@@ -58,6 +57,20 @@ const stripDuplicateTitle = (lyrics: string, songTitle: string) => {
       normalizedTitle.startsWith(normalizedFirst))
   ) {
     return paragraphs.slice(1).join('\n\n');
+  }
+
+  if (songNumber !== undefined) {
+    const firstLines = paragraphs[0].split('\n').filter(l => l.trim());
+    if (firstLines.length === 1 && new RegExp(`^${songNumber}[.\\s]`).test(firstLines[0].trim())) {
+      return paragraphs.slice(1).join('\n\n');
+    }
+  }
+
+  if (paragraphs.length >= 2) {
+    const normalizedSecond = normalizeFull(paragraphs[1]);
+    if (normalizedFirst.length > 0 && normalizedSecond.startsWith(normalizedFirst)) {
+      return paragraphs.slice(1).join('\n\n');
+    }
   }
 
   return lyrics;
@@ -200,7 +213,7 @@ export default function SongReaderScreen() {
     }
 
     const rawText = language === 'tamil' ? lyrics.tamil : lyrics.english;
-    const deduped = stripDuplicateTitle(rawText, item.title);
+    const deduped = stripDuplicateTitle(rawText, item.title, item.songNumber);
     const text = language === 'english' ? capitalizeParagraphs(deduped) : deduped;
 
     return (
