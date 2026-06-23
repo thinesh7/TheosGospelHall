@@ -249,7 +249,8 @@ export default function BibleReaderScreen() {
       } else {
         setSecondaryVerses([]);
       }
-      setActiveVerse(0);
+      setSelectedVerses(new Set());
+    setActiveVerse(0);
       pendingScrollRef.current = null;
       setTimeout(() => {
         versesListRef.current?.scrollToOffset({ offset: 0, animated: false });
@@ -311,11 +312,49 @@ export default function BibleReaderScreen() {
     }, 200);
   };
 
+  const [selectedVerses, setSelectedVerses] = useState<Set<number>>(new Set());
+
+  const toggleVerseSelection = (verseNum: number) => {
+    setSelectedVerses(prev => {
+      const next = new Set(prev);
+      if (next.has(verseNum)) next.delete(verseNum);
+      else next.add(verseNum);
+      return next;
+    });
+  };
+
+  const clearSelection = () => setSelectedVerses(new Set());
+
   const copyVerse = async (verseNum: number, text: string) => {
     const bookName = isEnglish ? selectedBook?.name : selectedBook?.tamil;
     const copyText = `${bookName} ${selectedChapter}:${verseNum} - ${cleanText(text)}`;
     await Clipboard.setStringAsync(copyText);
     ToastAndroid.show('Verse copied!', ToastAndroid.SHORT);
+  };
+
+  const copySelectedVerses = async () => {
+    const sorted = Array.from(selectedVerses).sort((a, b) => a - b);
+    const isBilingualCopy = isBilingual && !isEnglish && secondaryVerses.length > 0;
+
+    const blocks = sorted.map(vNum => {
+      if (isBilingualCopy) {
+        const bookName = selectedBook?.tamil;
+        const primaryVerse = primaryVerses.find(v => v.verse === vNum);
+        const secVerse = secondaryVerses.find(v => v.verse === vNum);
+        const ref = `${bookName} ${selectedChapter}:${vNum}`;
+        const tamilText = cleanText(primaryVerse?.text || '');
+        const engText = cleanText(secVerse?.text || '');
+        return `${ref}\n${tamilText}${engText ? `\n${engText}` : ''}`;
+      } else {
+        const bookName = isEnglish ? selectedBook?.name : selectedBook?.tamil;
+        const verse = primaryVerses.find(v => v.verse === vNum);
+        return `${bookName} ${selectedChapter}:${vNum}\n${cleanText(verse?.text || '')}`;
+      }
+    });
+
+    await Clipboard.setStringAsync(blocks.join('\n\n'));
+    ToastAndroid.show(`${sorted.length} verse${sorted.length > 1 ? 's' : ''} copied!`, ToastAndroid.SHORT);
+    clearSelection();
   };
 
   const panResponder = useRef(
@@ -388,6 +427,19 @@ export default function BibleReaderScreen() {
         </ScrollView>
       </View>
 
+      {selectedVerses.size > 0 && (
+        <View style={[styles.selectionBar, { backgroundColor: c.accent }]}>
+          <TouchableOpacity onPress={clearSelection} style={styles.selectionClear}>
+            <Ionicons name="close" size={20} color="#fff" />
+          </TouchableOpacity>
+          <Text style={styles.selectionCount}>{selectedVerses.size} verse{selectedVerses.size > 1 ? 's' : ''} selected</Text>
+          <TouchableOpacity onPress={copySelectedVerses} style={styles.selectionCopy}>
+            <Ionicons name="copy-outline" size={18} color="#fff" />
+            <Text style={styles.selectionCopyText}>Copy</Text>
+          </TouchableOpacity>
+        </View>
+      )}
+
       {showBilingual ? (
         <FlatList
           ref={versesListRef}
@@ -404,31 +456,40 @@ export default function BibleReaderScreen() {
           }}
           viewabilityConfig={{ itemVisiblePercentThreshold: 50 }}
           onScrollToIndexFailed={handleScrollToIndexFailed}
-          renderItem={({ item: i }) => (
-            <TouchableOpacity
-              activeOpacity={0.7}
-              onLongPress={() => copyVerse(i + 1, (primaryVerses[i]?.text || '') + ' | ' + (secondaryVerses[i]?.text || ''))}
-            >
-              <View style={[styles.bilingualVerseBlock, { borderColor: c.divider }]}>
-                <View style={[styles.verseNumBadge, { backgroundColor: c.accent }]}>
-                  <Text style={styles.verseNumBadgeText}>{i + 1}</Text>
-                  <Text style={styles.longPressHint}>hold to copy</Text>
+          renderItem={({ item: i }) => {
+            const verseNum = i + 1;
+            const isSelected = selectedVerses.has(verseNum);
+            return (
+              <TouchableOpacity
+                activeOpacity={0.7}
+                onPress={() => toggleVerseSelection(verseNum)}
+                onLongPress={() => toggleVerseSelection(verseNum)}
+              >
+                <View style={[
+                  styles.bilingualVerseBlock,
+                  { borderColor: isSelected ? c.accent : c.divider },
+                  isSelected && { borderWidth: 2, backgroundColor: c.accent + '15' },
+                ]}>
+                  <View style={[styles.verseNumBadge, { backgroundColor: isSelected ? c.accent : c.accent }]}>
+                    <Text style={styles.verseNumBadgeText}>{verseNum}</Text>
+                    {isSelected && <Ionicons name="checkmark" size={13} color="#fff" />}
+                  </View>
+                  {primaryVerses[i] && (
+                    <View style={[styles.tamilSection, { backgroundColor: c.surface, borderBottomWidth: 1, borderBottomColor: c.divider }]}>
+                      <Text style={[styles.versionTag, { color: c.accent }]}>{primaryVersionInfo?.short}</Text>
+                      <Text style={{ fontSize, color: c.text, lineHeight: fontSize * 1.7 }}>{cleanText(primaryVerses[i]?.text)}</Text>
+                    </View>
+                  )}
+                  {secondaryVerses[i] && (
+                    <View style={[styles.englishSection, { backgroundColor: c.bg }]}>
+                      <Text style={[styles.versionTag, { color: c.subtext }]}>{secVersionInfo?.short}</Text>
+                      <Text style={{ fontSize, color: c.text, lineHeight: fontSize * 1.7 }}>{cleanText(secondaryVerses[i]?.text)}</Text>
+                    </View>
+                  )}
                 </View>
-                {primaryVerses[i] && (
-                  <View style={[styles.tamilSection, { backgroundColor: c.surface, borderBottomWidth: 1, borderBottomColor: c.divider }]}>
-                    <Text style={[styles.versionTag, { color: c.accent }]}>{primaryVersionInfo?.short}</Text>
-                    <Text style={{ fontSize, color: c.text, lineHeight: fontSize * 1.7 }}>{cleanText(primaryVerses[i]?.text)}</Text>
-                  </View>
-                )}
-                {secondaryVerses[i] && (
-                  <View style={[styles.englishSection, { backgroundColor: c.bg }]}>
-                    <Text style={[styles.versionTag, { color: c.subtext }]}>{secVersionInfo?.short}</Text>
-                    <Text style={{ fontSize, color: c.text, lineHeight: fontSize * 1.7 }}>{cleanText(secondaryVerses[i]?.text)}</Text>
-                  </View>
-                )}
-              </View>
-            </TouchableOpacity>
-          )}
+              </TouchableOpacity>
+            );
+          }}
         />
       ) : (
         <FlatList
@@ -446,14 +507,46 @@ export default function BibleReaderScreen() {
           }}
           viewabilityConfig={{ itemVisiblePercentThreshold: 50 }}
           onScrollToIndexFailed={handleScrollToIndexFailed}
-          renderItem={({ item }) => (
-            <TouchableOpacity activeOpacity={0.7} onLongPress={() => copyVerse(item.verse, item.text)}>
-              <View style={[styles.verseRow, { borderBottomColor: c.divider }]}>
-                <Text style={[styles.verseNumber, { fontSize: fontSize - 3, color: c.accent }]}>{item.verse}</Text>
-                <Text style={[styles.verseText, { fontSize, color: c.text, lineHeight: fontSize * 1.7 }]}>{cleanText(item.text)}</Text>
-              </View>
-            </TouchableOpacity>
-          )}
+          renderItem={({ item }) => {
+            const isSelected = selectedVerses.has(item.verse);
+            return (
+              <TouchableOpacity
+                activeOpacity={0.7}
+                onPress={() => toggleVerseSelection(item.verse)}
+                onLongPress={() => toggleVerseSelection(item.verse)}
+              >
+                {isSelected ? (
+                  <View style={{
+                    marginBottom: 12,
+                    borderRadius: 12,
+                    borderWidth: 2,
+                    borderColor: c.accent,
+                    backgroundColor: c.accent + '15',
+                  }}>
+                    <View style={{
+                      backgroundColor: c.accent,
+                      paddingHorizontal: 12,
+                      paddingVertical: 6,
+                      flexDirection: 'row',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                    }}>
+                      <Text style={{ color: '#fff', fontWeight: 'bold', fontSize: 13 }}>{item.verse}</Text>
+                      <Ionicons name="checkmark" size={13} color="#fff" />
+                    </View>
+                    <View style={{ padding: 12 }}>
+                      <Text style={{ fontSize, color: c.text, lineHeight: fontSize * 1.7 }}>{cleanText(item.text)}</Text>
+                    </View>
+                  </View>
+                ) : (
+                  <View style={[styles.verseRow, { borderBottomColor: c.divider }]}>
+                    <Text style={[styles.verseNumber, { fontSize: fontSize - 3, color: c.accent }]}>{item.verse}</Text>
+                    <Text style={[styles.verseText, { fontSize, color: c.text, lineHeight: fontSize * 1.7 }]}>{cleanText(item.text)}</Text>
+                  </View>
+                )}
+              </TouchableOpacity>
+            );
+          }}
         />
       )}
 
@@ -529,6 +622,12 @@ const styles = StyleSheet.create({
   verseJumpBar: { borderBottomWidth: 1, paddingVertical: 6 },
   verseJumpBtn: { height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center' },
   verseJumpText: { fontSize: 13, fontWeight: '700' },
+  selectionBar: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 12, gap: 8 },
+  selectionClear: { padding: 4 },
+  selectionCount: { flex: 1, color: '#fff', fontWeight: '700', fontSize: 14 },
+  selectionCopy: { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: 'rgba(255,255,255,0.2)', borderRadius: 8, paddingHorizontal: 12, paddingVertical: 6 },
+  selectionCopyText: { color: '#fff', fontWeight: '700', fontSize: 14 },
+  verseNumberWrap: { alignItems: 'center', minWidth: 26, marginTop: 2, gap: 2 },
   verseRow: { flexDirection: 'row', marginBottom: 12, gap: 8, paddingBottom: 12, borderBottomWidth: 0.5, alignItems: 'flex-start' },
   verseNumber: { fontWeight: 'bold', minWidth: 26, marginTop: 2 },
   verseText: { flex: 1 },
