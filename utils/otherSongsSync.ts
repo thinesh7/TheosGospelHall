@@ -1,4 +1,5 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { getAuth } from 'firebase/auth';
 import { collection, doc, getDocs, query, setDoc, updateDoc, where } from 'firebase/firestore';
 import { db } from '../firebaseConfig';
 
@@ -179,15 +180,17 @@ export async function addOtherSong(data: {
   isVisible: boolean;
   titleEnglish: string;
 }): Promise<OtherSong> {
-  const ref = doc(collection(db, FIRESTORE_COLLECTION));
   const songNumber = await getNextOtherSongNumber();
+  const docId = `OS_${songNumber}`;
+  const ref = doc(db, FIRESTORE_COLLECTION, docId);
   const now = Date.now();
+  const createdBy = getAuth().currentUser?.email ?? 'unknown';
 
   const strippedTitle = data.title.replace(/^\d+\.\s*/, '').trim();
   const finalTitle = `${songNumber}. ${strippedTitle}`;
 
   const song: OtherSong = {
-    songId: ref.id,
+    songId: docId,
     songNumber,
     title: finalTitle,
     lyrics: data.lyrics,
@@ -195,6 +198,8 @@ export async function addOtherSong(data: {
     version: 1,
     isVisible: data.isVisible,
     titleEnglish: data.titleEnglish,
+    createdBy,
+    createdDate: now,
   };
 
   await setDoc(ref, song);
@@ -223,8 +228,9 @@ export async function updateOtherSong(
 
   const ref = doc(db, FIRESTORE_COLLECTION, songId);
   const now = Date.now();
+  const modifiedBy = getAuth().currentUser?.email ?? 'unknown';
 
-  const finalUpdates: Partial<OtherSong> = { ...updates, lastModifiedTimestamp: now };
+  const finalUpdates: Partial<OtherSong> = { ...updates, lastModifiedTimestamp: now, modifiedBy };
 
   if (updates.title !== undefined) {
     const stripped = updates.title.replace(/^\d+\.\s*/, '').trim();

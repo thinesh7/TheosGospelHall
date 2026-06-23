@@ -55,10 +55,13 @@ export default function RootLayout() {
   useEffect(() => {
     if (appState !== 'ready') return;
     configureNotificationHandler();
-    registerForPushNotifications();
     const tokenSub = setupTokenRefreshListener();
     const removeListeners = setupNotificationListeners();
+    const delay = setTimeout(() => {
+      registerForPushNotifications();
+    }, 5000);
     return () => {
+      clearTimeout(delay);
       tokenSub.remove();
       removeListeners();
     };

@@ -140,8 +140,8 @@ const UpcomingEvents = forwardRef((props: {}, ref) => {
   useEffect(() => {
     Animated.loop(
       Animated.sequence([
-        Animated.timing(shimmerAnim, { toValue: 1, duration: 1800, useNativeDriver: true }),
-        Animated.timing(shimmerAnim, { toValue: -1, duration: 0, useNativeDriver: true }),
+        Animated.timing(shimmerAnim, { toValue: 1, duration: 1800, useNativeDriver: false }),
+        Animated.timing(shimmerAnim, { toValue: -1, duration: 0, useNativeDriver: false }),
         Animated.delay(1200),
       ])
     ).start();
@@ -186,22 +186,24 @@ const UpcomingEvents = forwardRef((props: {}, ref) => {
 
           <View style={styles.banner}>
             <Animated.View style={[styles.glowDot, { opacity: glowAnim }]} />
-            <Animated.View
-              style={[
-                styles.shimmerBar,
-                {
-                  transform: [
-                    {
-                      translateX: shimmerAnim.interpolate({
-                        inputRange: [-1, 1],
-                        outputRange: [-180, 420],
-                      }),
-                    },
-                    { rotate: '20deg' },
-                  ],
-                },
-              ]}
-            />
+            <View style={StyleSheet.absoluteFill} pointerEvents="none">
+              <Animated.View
+                style={[
+                  styles.shimmerBar,
+                  {
+                    transform: [
+                      {
+                        translateX: shimmerAnim.interpolate({
+                          inputRange: [-1, 1],
+                          outputRange: [-180, 420],
+                        }),
+                      },
+                      { rotate: '20deg' },
+                    ],
+                  },
+                ]}
+              />
+            </View>
             <Animated.View style={[styles.micWrap, { transform: [{ translateX: shakeAnim }] }]}>
               <Ionicons name="megaphone" size={26} color="#fff" />
             </Animated.View>
@@ -381,7 +383,7 @@ const UpcomingEvents = forwardRef((props: {}, ref) => {
           </View>
         ))}
         <Text style={styles.meetingLinkNote}>
-        📱 Meeting links will be shared in the appropriate church WhatsApp groups.
+          📱 Meeting links will be shared in the appropriate church WhatsApp groups.
         </Text>
       </View>
 

@@ -102,6 +102,66 @@ async function enrichDates(items: any[]): Promise<any[]> {
   });
 }
 
+function BrokenTvIcon() {
+  return (
+    <View style={errorStyles.iconWrap}>
+      <View style={errorStyles.tv}>
+        <View style={errorStyles.tvScreen}>
+          <View style={errorStyles.xEyesRow}>
+            <View style={errorStyles.xEye}>
+              <View style={[errorStyles.xLine, errorStyles.xLine1]} />
+              <View style={[errorStyles.xLine, errorStyles.xLine2]} />
+            </View>
+            <View style={errorStyles.xEye}>
+              <View style={[errorStyles.xLine, errorStyles.xLine1]} />
+              <View style={[errorStyles.xLine, errorStyles.xLine2]} />
+            </View>
+          </View>
+          <View style={errorStyles.mouth} />
+        </View>
+        <View style={errorStyles.tvBase} />
+        <View style={errorStyles.antenna1} />
+        <View style={errorStyles.antenna2} />
+        <View style={errorStyles.crack1} />
+        <View style={errorStyles.crack2} />
+      </View>
+      <View style={errorStyles.playBadge}>
+        <Ionicons name="play" size={12} color="#fff" />
+      </View>
+    </View>
+  );
+}
+
+interface VideoErrorProps {
+  onRetry: () => void;
+}
+
+function VideoErrorState({ onRetry }: VideoErrorProps) {
+  return (
+    <View style={errorStyles.container}>
+      <BrokenTvIcon />
+      <Text style={errorStyles.title}>Oh! No...</Text>
+      <Text style={errorStyles.subtitle}>Looks like something went wrong.</Text>
+      <View style={errorStyles.tipsBox}>
+        <View style={errorStyles.tipRow}>
+          <Ionicons name="wifi" size={18} color="#e05c5c" />
+          <Text style={errorStyles.tipText}>Please check your internet connection.</Text>
+        </View>
+        <View style={errorStyles.divider} />
+        <View style={errorStyles.tipRow}>
+          <Ionicons name="refresh-circle" size={18} color="#888" />
+          <Text style={errorStyles.tipText}>Close the app fully and try again.</Text>
+        </View>
+      </View>
+      <TouchableOpacity style={errorStyles.retryBtn} onPress={onRetry} activeOpacity={0.85}>
+        <Ionicons name="refresh" size={16} color="#fff" />
+        <Text style={errorStyles.retryText}>Try Again</Text>
+      </TouchableOpacity>
+      <Text style={errorStyles.footer}>Still not working? Please try again later.</Text>
+    </View>
+  );
+}
+
 interface VideoModalProps {
   visible: boolean;
   videoId: string | null;
@@ -138,18 +198,21 @@ export default function VideosScreen() {
 
   const [shorts, setShorts] = useState<any[]>([]);
   const [shortsLoaded, setShortsLoaded] = useState(false);
+  const [shortsError, setShortsError] = useState(false);
   const [shortsNextToken, setShortsNextToken] = useState('');
   const [loadingShorts, setLoadingShorts] = useState(false);
   const [loadingMoreShorts, setLoadingMoreShorts] = useState(false);
 
   const [videos, setVideos] = useState<any[]>([]);
   const [videosLoaded, setVideosLoaded] = useState(false);
+  const [videosError, setVideosError] = useState(false);
   const [videosNextToken, setVideosNextToken] = useState('');
   const [loadingVideos, setLoadingVideos] = useState(false);
   const [loadingMoreVideos, setLoadingMoreVideos] = useState(false);
 
   const [liveVideos, setLiveVideos] = useState<any[]>([]);
   const [liveLoaded, setLiveLoaded] = useState(false);
+  const [liveError, setLiveError] = useState(false);
   const [liveNextTokens, setLiveNextTokens] = useState<Record<string, string>>({});
   const [loadingLive, setLoadingLive] = useState(false);
   const [loadingMoreLive, setLoadingMoreLive] = useState(false);
@@ -157,6 +220,7 @@ export default function VideosScreen() {
 
   const [allVideos, setAllVideos] = useState<any[]>([]);
   const [allLoaded, setAllLoaded] = useState(false);
+  const [allError, setAllError] = useState(false);
   const [allNextToken, setAllNextToken] = useState('');
   const [loadingAll, setLoadingAll] = useState(false);
   const [loadingMoreAll, setLoadingMoreAll] = useState(false);
@@ -204,7 +268,7 @@ export default function VideosScreen() {
 
   const fetchShorts = async (pageToken = '') => {
     try {
-      if (!pageToken) setLoadingShorts(true); else setLoadingMoreShorts(true);
+      if (!pageToken) { setLoadingShorts(true); setShortsError(false); } else setLoadingMoreShorts(true);
       const data = await ytFetch('playlistItems', { playlistId: SHORTS_PLAYLIST_ID, part: 'snippet', maxResults: '50', ...(pageToken ? { pageToken } : {}) });
       const enriched = await enrichDates(mapItems(data.items || []));
       if (pageToken) {
@@ -212,12 +276,14 @@ export default function VideosScreen() {
       } else { setShorts(dedupeById(enriched)); }
       setShortsNextToken(data.nextPageToken || '');
       setShortsLoaded(true);
-    } catch (e) {} finally { setLoadingShorts(false); setLoadingMoreShorts(false); }
+    } catch {
+      if (!pageToken) setShortsError(true);
+    } finally { setLoadingShorts(false); setLoadingMoreShorts(false); }
   };
 
   const fetchVideos = async (pageToken = '') => {
     try {
-      if (!pageToken) setLoadingVideos(true); else setLoadingMoreVideos(true);
+      if (!pageToken) { setLoadingVideos(true); setVideosError(false); } else setLoadingMoreVideos(true);
       const data = await ytFetch('playlistItems', { playlistId: VIDEOS_PLAYLIST_ID, part: 'snippet', maxResults: '50', ...(pageToken ? { pageToken } : {}) });
       const enriched = (await enrichDates(mapItems(data.items || []))).sort(byDateDesc);
       if (pageToken) {
@@ -225,7 +291,9 @@ export default function VideosScreen() {
       } else { setVideos(dedupeById(enriched)); }
       setVideosNextToken(data.nextPageToken || '');
       setVideosLoaded(true);
-    } catch (e) {} finally { setLoadingVideos(false); setLoadingMoreVideos(false); }
+    } catch {
+      if (!pageToken) setVideosError(true);
+    } finally { setLoadingVideos(false); setLoadingMoreVideos(false); }
   };
 
   const loadLiveAndFetch = async () => {
@@ -242,7 +310,7 @@ export default function VideosScreen() {
 
   const fetchLive = async (loadMore: boolean, idsOverride?: string[]) => {
     try {
-      if (!loadMore) setLoadingLive(true); else setLoadingMoreLive(true);
+      if (!loadMore) { setLoadingLive(true); setLiveError(false); } else setLoadingMoreLive(true);
       const ids = idsOverride || liveIds;
       const toFetch = loadMore ? ids.filter(id => liveNextTokens[id]) : ids;
       if (!toFetch.length) return;
@@ -259,12 +327,14 @@ export default function VideosScreen() {
         setLiveVideos(prev => { const s = new Set(prev.map((v: any) => v.snippet.resourceId.videoId)); return [...prev, ...newItems.filter((v: any) => !s.has(v.snippet.resourceId.videoId))].sort(byDateDesc); });
       } else { setLiveVideos(dedupeById(newItems).sort(byDateDesc)); }
       setLiveLoaded(true);
-    } catch (e) {} finally { setLoadingLive(false); setLoadingMoreLive(false); }
+    } catch {
+      if (!loadMore) setLiveError(true);
+    } finally { setLoadingLive(false); setLoadingMoreLive(false); }
   };
 
   const fetchAll = async (pageToken = '') => {
     try {
-      if (!pageToken) setLoadingAll(true); else setLoadingMoreAll(true);
+      if (!pageToken) { setLoadingAll(true); setAllError(false); } else setLoadingMoreAll(true);
       const data = await ytFetch('playlistItems', { playlistId: UPLOADS_PLAYLIST_ID, part: 'snippet', maxResults: '50', ...(pageToken ? { pageToken } : {}) });
       const enriched = (await enrichDates(mapItems(data.items || []))).sort(byDateDesc);
       if (pageToken) {
@@ -272,7 +342,9 @@ export default function VideosScreen() {
       } else { setAllVideos(dedupeById(enriched)); }
       setAllNextToken(data.nextPageToken || '');
       setAllLoaded(true);
-    } catch (e) {} finally { setLoadingAll(false); setLoadingMoreAll(false); }
+    } catch {
+      if (!pageToken) setAllError(true);
+    } finally { setLoadingAll(false); setLoadingMoreAll(false); }
   };
 
   const doSearch = async (query: string) => {
@@ -303,15 +375,15 @@ export default function VideosScreen() {
             },
           }))
       );
-    } catch (e) {} finally { setSearching(false); }
+    } catch {} finally { setSearching(false); }
   };
 
   const onRefresh = async () => {
     setRefreshing(true);
-    setShorts([]); setShortsLoaded(false); setShortsNextToken('');
-    setVideos([]); setVideosLoaded(false); setVideosNextToken('');
-    setLiveVideos([]); setLiveLoaded(false); setLiveNextTokens({});
-    setAllVideos([]); setAllLoaded(false); setAllNextToken('');
+    setShorts([]); setShortsLoaded(false); setShortsNextToken(''); setShortsError(false);
+    setVideos([]); setVideosLoaded(false); setVideosNextToken(''); setVideosError(false);
+    setLiveVideos([]); setLiveLoaded(false); setLiveNextTokens({}); setLiveError(false);
+    setAllVideos([]); setAllLoaded(false); setAllNextToken(''); setAllError(false);
     await Promise.all([fetchShorts(), fetchVideos(), loadLiveAndFetch(), fetchAll()]);
     setShortsLoaded(true); setVideosLoaded(true); setLiveLoaded(true); setAllLoaded(true);
     setRefreshing(false);
@@ -488,65 +560,65 @@ export default function VideosScreen() {
       )}
 
       {!isSearching && activeTab === 'shorts' && (
-        loadingShorts
-          ? <ActivityIndicator size="large" color="#0f3460" style={{ marginTop: 40 }} />
-          : <FlatList
-              data={shorts}
-              keyExtractor={i => i.snippet.resourceId.videoId}
-              refreshing={refreshing}
-              onRefresh={onRefresh}
-              renderItem={({ item, index }) => <ShortCard item={item} index={index} />}
-              numColumns={2}
-              contentContainerStyle={styles.list}
-              columnWrapperStyle={{ gap: 8 }}
-              ListEmptyComponent={<Text style={styles.empty}>No shorts found</Text>}
-              ListFooterComponent={<LoadMore token={shortsNextToken} loading={loadingMoreShorts} onPress={() => fetchShorts(shortsNextToken)} />}
-            />
+        loadingShorts ? <ActivityIndicator size="large" color="#0f3460" style={{ marginTop: 40 }} />
+        : shortsError ? <VideoErrorState onRetry={() => { setShortsLoaded(false); fetchShorts(); }} />
+        : <FlatList
+            data={shorts}
+            keyExtractor={i => i.snippet.resourceId.videoId}
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            renderItem={({ item, index }) => <ShortCard item={item} index={index} />}
+            numColumns={2}
+            contentContainerStyle={styles.list}
+            columnWrapperStyle={{ gap: 8 }}
+            ListEmptyComponent={<Text style={styles.empty}>No shorts found</Text>}
+            ListFooterComponent={<LoadMore token={shortsNextToken} loading={loadingMoreShorts} onPress={() => fetchShorts(shortsNextToken)} />}
+          />
       )}
 
       {!isSearching && activeTab === 'videos' && (
-        loadingVideos
-          ? <ActivityIndicator size="large" color="#0f3460" style={{ marginTop: 40 }} />
-          : <FlatList
-              data={videos}
-              keyExtractor={i => i.snippet.resourceId.videoId}
-              refreshing={refreshing}
-              onRefresh={onRefresh}
-              renderItem={({ item }) => <VideoCard item={item} />}
-              contentContainerStyle={styles.list}
-              ListEmptyComponent={<Text style={styles.empty}>No videos found</Text>}
-              ListFooterComponent={<LoadMore token={videosNextToken} loading={loadingMoreVideos} onPress={() => fetchVideos(videosNextToken)} />}
-            />
+        loadingVideos ? <ActivityIndicator size="large" color="#0f3460" style={{ marginTop: 40 }} />
+        : videosError ? <VideoErrorState onRetry={() => { setVideosLoaded(false); fetchVideos(); }} />
+        : <FlatList
+            data={videos}
+            keyExtractor={i => i.snippet.resourceId.videoId}
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            renderItem={({ item }) => <VideoCard item={item} />}
+            contentContainerStyle={styles.list}
+            ListEmptyComponent={<Text style={styles.empty}>No videos found</Text>}
+            ListFooterComponent={<LoadMore token={videosNextToken} loading={loadingMoreVideos} onPress={() => fetchVideos(videosNextToken)} />}
+          />
       )}
 
       {!isSearching && activeTab === 'live' && (
-        loadingLive
-          ? <ActivityIndicator size="large" color="#0f3460" style={{ marginTop: 40 }} />
-          : <FlatList
-              data={liveVideos}
-              keyExtractor={i => i.snippet.resourceId.videoId}
-              refreshing={refreshing}
-              onRefresh={onRefresh}
-              renderItem={({ item }) => <LiveCard item={item} />}
-              contentContainerStyle={styles.list}
-              ListEmptyComponent={<Text style={styles.empty}>No live streams found</Text>}
-              ListFooterComponent={hasMoreLive ? <TouchableOpacity style={styles.loadMore} onPress={() => fetchLive(true)}>{loadingMoreLive ? <ActivityIndicator color="#fff" /> : <Text style={styles.loadMoreText}>Load More</Text>}</TouchableOpacity> : null}
-            />
+        loadingLive ? <ActivityIndicator size="large" color="#0f3460" style={{ marginTop: 40 }} />
+        : liveError ? <VideoErrorState onRetry={() => { setLiveLoaded(false); loadLiveAndFetch(); }} />
+        : <FlatList
+            data={liveVideos}
+            keyExtractor={i => i.snippet.resourceId.videoId}
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            renderItem={({ item }) => <LiveCard item={item} />}
+            contentContainerStyle={styles.list}
+            ListEmptyComponent={<Text style={styles.empty}>No live streams found</Text>}
+            ListFooterComponent={hasMoreLive ? <TouchableOpacity style={styles.loadMore} onPress={() => fetchLive(true)}>{loadingMoreLive ? <ActivityIndicator color="#fff" /> : <Text style={styles.loadMoreText}>Load More</Text>}</TouchableOpacity> : null}
+          />
       )}
 
       {!isSearching && activeTab === 'all' && (
-        loadingAll
-          ? <ActivityIndicator size="large" color="#0f3460" style={{ marginTop: 40 }} />
-          : <FlatList
-              data={allVideos}
-              keyExtractor={i => i.snippet.resourceId.videoId}
-              refreshing={refreshing}
-              onRefresh={onRefresh}
-              renderItem={({ item }) => <VideoCard item={item} />}
-              contentContainerStyle={styles.list}
-              ListEmptyComponent={<Text style={styles.empty}>No videos found</Text>}
-              ListFooterComponent={<LoadMore token={allNextToken} loading={loadingMoreAll} onPress={() => fetchAll(allNextToken)} />}
-            />
+        loadingAll ? <ActivityIndicator size="large" color="#0f3460" style={{ marginTop: 40 }} />
+        : allError ? <VideoErrorState onRetry={() => { setAllLoaded(false); fetchAll(); }} />
+        : <FlatList
+            data={allVideos}
+            keyExtractor={i => i.snippet.resourceId.videoId}
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            renderItem={({ item }) => <VideoCard item={item} />}
+            contentContainerStyle={styles.list}
+            ListEmptyComponent={<Text style={styles.empty}>No videos found</Text>}
+            ListFooterComponent={<LoadMore token={allNextToken} loading={loadingMoreAll} onPress={() => fetchAll(allNextToken)} />}
+          />
       )}
     </View>
   );
@@ -587,4 +659,32 @@ const styles = StyleSheet.create({
   videoModal: { flex: 1, backgroundColor: '#000', justifyContent: 'center' },
   videoModalTitle: { color: '#fff', fontSize: 15, fontWeight: '600', padding: 20, lineHeight: 22 },
   modalClose: { position: 'absolute', top: 50, right: 16, backgroundColor: 'rgba(0,0,0,0.5)', borderRadius: 20, padding: 8, zIndex: 10 },
+});
+
+const errorStyles = StyleSheet.create({
+  container: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 32, paddingBottom: 60 },
+  iconWrap: { width: 120, height: 120, marginBottom: 24, alignItems: 'center', justifyContent: 'center' },
+  tv: { width: 100, height: 80, backgroundColor: '#4a5568', borderRadius: 14, alignItems: 'center', justifyContent: 'center', position: 'relative' },
+  tvScreen: { width: 72, height: 52, backgroundColor: '#e8eaf0', borderRadius: 8, alignItems: 'center', justifyContent: 'center' },
+  xEyesRow: { flexDirection: 'row', gap: 14, marginBottom: 6 },
+  xEye: { width: 16, height: 16, position: 'relative', alignItems: 'center', justifyContent: 'center' },
+  xLine: { position: 'absolute', width: 14, height: 2.5, backgroundColor: '#2d3748', borderRadius: 2 },
+  xLine1: { transform: [{ rotate: '45deg' }] },
+  xLine2: { transform: [{ rotate: '-45deg' }] },
+  mouth: { width: 18, height: 3, backgroundColor: '#2d3748', borderRadius: 2 },
+  tvBase: { position: 'absolute', bottom: -6, width: 40, height: 6, backgroundColor: '#4a5568', borderRadius: 3 },
+  antenna1: { position: 'absolute', top: -18, left: 28, width: 2.5, height: 18, backgroundColor: '#4a5568', borderRadius: 2, transform: [{ rotate: '-15deg' }] },
+  antenna2: { position: 'absolute', top: -18, right: 28, width: 2.5, height: 18, backgroundColor: '#4a5568', borderRadius: 2, transform: [{ rotate: '15deg' }] },
+  crack1: { position: 'absolute', top: 8, right: 10, width: 2, height: 16, backgroundColor: '#2d3748', borderRadius: 1, transform: [{ rotate: '20deg' }] },
+  crack2: { position: 'absolute', top: 14, right: 8, width: 2, height: 10, backgroundColor: '#2d3748', borderRadius: 1, transform: [{ rotate: '-10deg' }] },
+  playBadge: { position: 'absolute', bottom: 12, left: 12, width: 24, height: 24, borderRadius: 12, backgroundColor: '#e05c5c', alignItems: 'center', justifyContent: 'center' },
+  title: { fontSize: 26, fontWeight: '800', color: '#1a1a2e', marginBottom: 6, letterSpacing: 0.3 },
+  subtitle: { fontSize: 14, color: '#666', marginBottom: 24, textAlign: 'center' },
+  tipsBox: { width: '100%', backgroundColor: '#fff', borderRadius: 14, paddingVertical: 4, paddingHorizontal: 16, marginBottom: 28, borderWidth: 1.5, borderColor: '#e8eaf0', borderStyle: 'dashed' },
+  tipRow: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 12 },
+  tipText: { fontSize: 13, color: '#444', flex: 1, lineHeight: 18 },
+  divider: { height: 1, backgroundColor: '#f0f0f0' },
+  retryBtn: { flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: '#7c83e5', paddingHorizontal: 32, paddingVertical: 14, borderRadius: 30, marginBottom: 16 },
+  retryText: { color: '#fff', fontSize: 15, fontWeight: '700' },
+  footer: { fontSize: 12, color: '#aaa', textAlign: 'center' },
 });

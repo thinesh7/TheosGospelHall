@@ -1,4 +1,5 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { getAuth } from 'firebase/auth';
 import { collection, getDocs, query, updateDoc, where } from 'firebase/firestore';
 import { db } from '../firebaseConfig';
 
@@ -190,7 +191,8 @@ export async function updateGeethangalumSong(
 
   const docRef = snap.docs[0].ref;
   const now = Date.now();
-  await updateDoc(docRef, { ...updates, lastModifiedTimestamp: now });
+  const lastModifiedBy = getAuth().currentUser?.email ?? 'unknown';
+  await updateDoc(docRef, { ...updates, lastModifiedTimestamp: now, lastModifiedBy });
 
   const existing = await getSongById(songId);
   if (existing) {

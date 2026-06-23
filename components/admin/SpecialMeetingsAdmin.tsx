@@ -1,5 +1,6 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { addDoc, collection, deleteDoc, doc, getDocs, orderBy, query, updateDoc } from 'firebase/firestore';
+import { addDoc, collection, deleteDoc, doc, getDocs, orderBy, query, setDoc, updateDoc } from 'firebase/firestore';
+import { getAuth } from 'firebase/auth';
 import { forwardRef, useEffect, useImperativeHandle, useState } from 'react';
 import {
   Alert,
@@ -164,10 +165,24 @@ const SpecialMeetingsAdmin = forwardRef<AdminScreenHandle, Props>(({ onEventsUpd
       const successTickets = allTickets.filter(t => t.ticketId);
       const failedTickets = allTickets.filter(t => t.error);
 
-      await addDoc(collection(db, 'notificationLogs'), {
+      const _d = new Date(sentAt);
+      const _months = ['JAN','FEB','MAR','APR','MAY','JUN','JUL','AUG','SEP','OCT','NOV','DEC'];
+      const _month = _months[_d.getMonth()];
+      const _year = _d.getFullYear();
+      const _day = _d.getDate();
+      const _h24 = _d.getHours();
+      const _ampm = _h24 >= 12 ? 'PM' : 'AM';
+      const _h12 = _h24 % 12 || 12;
+      const _min = String(_d.getMinutes()).padStart(2, '0');
+      const _sec = String(_d.getSeconds()).padStart(2, '0');
+      const _rand = Math.random().toString(36).substring(2, 5).toUpperCase();
+      const logDocId = `${_month}_${_year}_${_day}_${_h12}_${_min}_${_sec}_${_ampm}_${_rand}`;
+
+      await setDoc(doc(db, 'notificationLogs', logDocId), {
         title: meeting.title,
         body,
         sentAt,
+        sentBy: getAuth().currentUser?.email ?? 'unknown',
         totalDevices: tokenDocs.length,
         successCount: successTickets.length,
         failedCount: failedTickets.length,
