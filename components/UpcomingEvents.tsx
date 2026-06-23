@@ -52,7 +52,7 @@ const EVENTS = [
     id: '4',
     title: "Children's Meeting",
     date: 'Every Saturday',
-    time: 'Online',
+    time: '6:45 PM - 7:30 PM',
     location: 'Google Meet',
     type: 'children',
   },
@@ -380,6 +380,9 @@ const UpcomingEvents = forwardRef((props: {}, ref) => {
             </View>
           </View>
         ))}
+        <Text style={styles.meetingLinkNote}>
+        📱 Meeting links will be shared in the appropriate church WhatsApp groups.
+        </Text>
       </View>
 
       <View style={styles.youthCard}>
@@ -778,6 +781,7 @@ const styles = StyleSheet.create({
   academyNote: { fontSize: 13, color: '#d8f3dc', marginBottom: 14, lineHeight: 20 },
   whatsappBtn: { backgroundColor: '#25d366', borderRadius: 10, padding: 14, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 },
   btnText: { color: '#fff', fontWeight: 'bold', fontSize: 15 },
+  meetingLinkNote: { fontSize: 13, color: '#888', fontStyle: 'italic', textAlign: 'center', lineHeight: 18 },
 });
 
 export default UpcomingEvents;
