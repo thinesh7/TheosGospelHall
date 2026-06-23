@@ -1,8 +1,8 @@
 export const BIBLE_VERSIONS = [
   { code: 'TAMOVR', name: 'Tamil Bible (OV)', short: 'OV', lang: 'Tamil' },
   { code: 'TAMBL98', name: 'Tamil Bible (ERV)', short: 'ERV', lang: 'Tamil' },
-  { code: 'KJV', name: 'English (KJV)', short: 'KJV', lang: 'English' },
   { code: 'ERV', name: 'English (ERV)', short: 'ERV', lang: 'English' },
+  { code: 'KJV', name: 'English (KJV)', short: 'KJV', lang: 'English' },
 ];
 
 export const BOOKS = [
