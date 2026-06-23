@@ -18,9 +18,12 @@ import {
 import AdminPanel from '../../components/AdminPanel';
 import Paragraphs from '../../components/Paragraphs';
 import { auth } from '../../firebaseConfig';
+import { useTheme } from '../../utils/ThemeContext';
 import { getCachedHomeContent, getMemoryCachedHomeContent, HomeContent, subscribeHomeContent } from '../../utils/homeContentSync';
 
 export default function AboutScreen() {
+  const { colors } = useTheme();
+
   const tapCountRef = useRef(0);
   const tapTimerRef = useRef<any>(null);
 
@@ -105,7 +108,7 @@ export default function AboutScreen() {
 
   if (showLogin) {
     return (
-      <KeyboardAvoidingView style={styles.loginScreen} behavior="padding">
+      <KeyboardAvoidingView style={[styles.loginScreen, { backgroundColor: colors.bg }]} behavior="padding">
         <ScrollView
           contentContainerStyle={styles.loginScroll}
           keyboardShouldPersistTaps="handled"
@@ -116,14 +119,14 @@ export default function AboutScreen() {
             <Text style={styles.loginHeaderTitle}>🔐 Admin Access</Text>
             <Text style={styles.loginHeaderSub}>Theos Gospel Hall</Text>
           </LinearGradient>
-          <View style={styles.loginCard}>
-            <Text style={styles.loginCardTitle}>Sign In</Text>
-            <Text style={styles.loginCardSub}>Enter your admin credentials</Text>
-            <Text style={styles.loginLabel}>Email</Text>
+          <View style={[styles.loginCard, { backgroundColor: colors.surface }]}>
+            <Text style={[styles.loginCardTitle, { color: colors.text }]}>Sign In</Text>
+            <Text style={[styles.loginCardSub, { color: colors.subtext }]}>Enter your admin credentials</Text>
+            <Text style={[styles.loginLabel, { color: colors.subtext }]}>Email</Text>
             <TextInput
-              style={styles.loginInput}
+              style={[styles.loginInput, { backgroundColor: colors.surfaceAlt, borderColor: colors.divider, color: colors.text }]}
               placeholder="admin@example.com"
-              placeholderTextColor="#999"
+              placeholderTextColor={colors.subtext}
               keyboardType="email-address"
               autoCapitalize="none"
               value={email}
@@ -131,12 +134,12 @@ export default function AboutScreen() {
               autoFocus
               returnKeyType="next"
             />
-            <Text style={styles.loginLabel}>Password</Text>
-            <View style={styles.passwordWrapper}>
+            <Text style={[styles.loginLabel, { color: colors.subtext }]}>Password</Text>
+            <View style={[styles.passwordWrapper, { backgroundColor: colors.surfaceAlt, borderColor: colors.divider }]}>
               <TextInput
-                style={styles.passwordInput}
+                style={[styles.passwordInput, { color: colors.text }]}
                 placeholder="Password"
-                placeholderTextColor="#999"
+                placeholderTextColor={colors.subtext}
                 secureTextEntry={!showPassword}
                 value={password}
                 onChangeText={setPassword}
@@ -148,7 +151,7 @@ export default function AboutScreen() {
               </TouchableOpacity>
             </View>
             <TouchableOpacity
-              style={[styles.loginSubmitBtn, loggingIn && { opacity: 0.6 }]}
+              style={[styles.loginSubmitBtn, { backgroundColor: colors.accent }, loggingIn && { opacity: 0.6 }]}
               onPress={handleLogin}
               disabled={loggingIn}
             >
@@ -158,7 +161,7 @@ export default function AboutScreen() {
               style={styles.loginCancelBtn}
               onPress={() => { setShowLogin(false); setEmail(''); setPassword(''); setShowPassword(false); }}
             >
-              <Text style={styles.loginCancelText}>Cancel</Text>
+              <Text style={[styles.loginCancelText, { color: colors.subtext }]}>Cancel</Text>
             </TouchableOpacity>
           </View>
         </ScrollView>
@@ -167,7 +170,7 @@ export default function AboutScreen() {
   }
 
   return (
-    <ScrollView style={styles.container}>
+    <ScrollView style={[styles.container, { backgroundColor: colors.bg }]}>
       <TouchableOpacity activeOpacity={1} onPress={handleHeaderTap}>
         <LinearGradient colors={['#1a1a2e', '#16213e', '#0f3460']} style={styles.header}>
           <Text style={styles.churchName}>Theos Gospel Hall</Text>
@@ -177,21 +180,21 @@ export default function AboutScreen() {
 
       <ChurchInfo />
 
-      <View style={styles.card}>
-        <Text style={styles.cardTitle}>
-          <Ionicons name="share-social-outline" size={18} color="#0f3460" /> Follow Us
+      <View style={[styles.card, { backgroundColor: colors.surface }]}>
+        <Text style={[styles.cardTitle, { color: colors.text }]}>
+          <Ionicons name="share-social-outline" size={18} color={colors.accent} /> Follow Us
         </Text>
         <TouchableOpacity style={styles.row} onPress={() => Linking.openURL('https://www.youtube.com/@TheosGospelHall')}>
           <Ionicons name="logo-youtube" size={16} color="red" />
-          <Text style={[styles.rowText, styles.link]}>YouTube Channel</Text>
+          <Text style={[styles.rowText, styles.link, { color: colors.accent }]}>YouTube Channel</Text>
         </TouchableOpacity>
         <TouchableOpacity style={styles.row} onPress={() => Linking.openURL('https://www.facebook.com/theosgospelhall.tirupur/')}>
           <Ionicons name="logo-facebook" size={16} color="#1877f2" />
-          <Text style={[styles.rowText, styles.link]}>Facebook Page</Text>
+          <Text style={[styles.rowText, styles.link, { color: colors.accent }]}>Facebook Page</Text>
         </TouchableOpacity>
         <TouchableOpacity style={styles.row} onPress={() => Linking.openURL('https://www.instagram.com/theosgospelhall')}>
           <Ionicons name="logo-instagram" size={16} color="#e1306c" />
-          <Text style={[styles.rowText, styles.link]}>Instagram</Text>
+          <Text style={[styles.rowText, styles.link, { color: colors.accent }]}>Instagram</Text>
         </TouchableOpacity>
       </View>
 
@@ -201,13 +204,13 @@ export default function AboutScreen() {
         const hasAboutMinistry = !!aboutMinistryEnglish || !!aboutMinistryTamil;
         if (!hasAboutMinistry) return null;
         return (
-          <View style={styles.card}>
-            <Text style={styles.cardTitle}>
-              <Ionicons name="book-outline" size={18} color="#0f3460" /> About Ministry
+          <View style={[styles.card, { backgroundColor: colors.surface }]}>
+            <Text style={[styles.cardTitle, { color: colors.text }]}>
+              <Ionicons name="book-outline" size={18} color={colors.accent} /> About Ministry
             </Text>
-            {!!aboutMinistryEnglish && <Paragraphs text={aboutMinistryEnglish} style={styles.aboutText} />}
+            {!!aboutMinistryEnglish && <Paragraphs text={aboutMinistryEnglish} style={[styles.aboutText, { color: colors.subtext }]} />}
             {!!aboutMinistryEnglish && !!aboutMinistryTamil && <View style={{ height: 10 }} />}
-            {!!aboutMinistryTamil && <Paragraphs text={aboutMinistryTamil} style={styles.aboutText} />}
+            {!!aboutMinistryTamil && <Paragraphs text={aboutMinistryTamil} style={[styles.aboutText, { color: colors.subtext }]} />}
           </View>
         );
       })()}
@@ -224,32 +227,32 @@ export default function AboutScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#f5f5f5' },
+  container: { flex: 1 },
   header: { padding: 40, alignItems: 'center', paddingTop: 60 },
   churchName: { fontSize: 26, fontWeight: 'bold', color: '#fff', textAlign: 'center' },
-  tagline: { fontSize: 14, color: '#ffffff', marginTop: 8, fontStyle: 'italic', fontWeight: '600', letterSpacing: 0.5, textAlign: 'center' },
-  card: { backgroundColor: '#fff', margin: 16, marginBottom: 0, borderRadius: 16, padding: 20, elevation: 4 },
-  cardTitle: { fontSize: 16, fontWeight: 'bold', color: '#1a1a2e', marginBottom: 14 },
+  tagline: { fontSize: 14, color: '#ffffff', marginTop: 8, fontStyle: 'italic', fontWeight: '600', letterSpacing: 0.5, textAlign: 'center', width: '100%' },
+  card: { margin: 16, marginBottom: 0, borderRadius: 16, padding: 20, elevation: 4 },
+  cardTitle: { fontSize: 16, fontWeight: 'bold', marginBottom: 14 },
   row: { flexDirection: 'row', alignItems: 'center', marginBottom: 12, gap: 10 },
-  rowText: { fontSize: 14, color: '#444', flex: 1 },
-  link: { color: '#0f3460', textDecorationLine: 'underline' },
-  aboutText: { fontSize: 14, color: '#444', lineHeight: 24, textAlign: 'left' },
-  loginScreen: { flex: 1, backgroundColor: '#f5f5f5' },
+  rowText: { fontSize: 14, flex: 1 },
+  link: { textDecorationLine: 'underline' },
+  aboutText: { fontSize: 14, lineHeight: 24, textAlign: 'left' },
+  loginScreen: { flex: 1 },
   loginScroll: { flexGrow: 1 },
   loginHeader: { padding: 14, paddingTop: 20, alignItems: 'center' },
   loginHeaderTitle: { fontSize: 24, fontWeight: 'bold', color: '#fff', marginBottom: 6 },
   loginHeaderSub: { fontSize: 14, color: '#a8c0e8' },
-  loginCard: { backgroundColor: '#fff', margin: 20, borderRadius: 20, padding: 24, elevation: 4, marginBottom: 20 },
-  loginCardTitle: { fontSize: 22, fontWeight: 'bold', color: '#1a1a2e', marginBottom: 6 },
-  loginCardSub: { fontSize: 13, color: '#888', marginBottom: 24 },
-  loginLabel: { fontSize: 13, fontWeight: '600', color: '#555', marginBottom: 6 },
-  loginInput: { backgroundColor: '#f9f9f9', borderWidth: 1.5, borderColor: '#ddd', borderRadius: 12, padding: 14, fontSize: 15, color: '#1a1a2e', marginBottom: 18 },
-  passwordWrapper: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#f9f9f9', borderWidth: 1.5, borderColor: '#ddd', borderRadius: 12, marginBottom: 18 },
-  passwordInput: { flex: 1, padding: 14, fontSize: 15, color: '#1a1a2e' },
+  loginCard: { margin: 20, borderRadius: 20, padding: 24, elevation: 4, marginBottom: 20 },
+  loginCardTitle: { fontSize: 22, fontWeight: 'bold', marginBottom: 6 },
+  loginCardSub: { fontSize: 13, marginBottom: 24 },
+  loginLabel: { fontSize: 13, fontWeight: '600', marginBottom: 6 },
+  loginInput: { borderWidth: 1.5, borderRadius: 12, padding: 14, fontSize: 15, marginBottom: 18 },
+  passwordWrapper: { flexDirection: 'row', alignItems: 'center', borderWidth: 1.5, borderRadius: 12, marginBottom: 18 },
+  passwordInput: { flex: 1, padding: 14, fontSize: 15 },
   eyeBtn: { paddingHorizontal: 14 },
   eyeText: { fontSize: 18 },
-  loginSubmitBtn: { backgroundColor: '#0f3460', borderRadius: 12, paddingVertical: 16, alignItems: 'center', marginTop: 8, marginBottom: 14 },
+  loginSubmitBtn: { borderRadius: 12, paddingVertical: 16, alignItems: 'center', marginTop: 8, marginBottom: 14 },
   loginSubmitText: { color: '#fff', fontWeight: 'bold', fontSize: 16 },
   loginCancelBtn: { alignItems: 'center', paddingVertical: 10 },
-  loginCancelText: { color: '#888', fontSize: 14 },
+  loginCancelText: { fontSize: 14 },
 });

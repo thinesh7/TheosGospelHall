@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from 'react';
 import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import PagerView from 'react-native-pager-view';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useTheme } from '../../utils/ThemeContext';
 import BibleScreen from './bible';
 import ContactScreen from './contact';
 import HomeScreen from './index';
@@ -18,6 +19,7 @@ const TABS = [
 ];
 
 export default function TabLayout() {
+  const { colors } = useTheme();
   const [activeTab, setActiveTab] = useState(0);
   const [visitedTabs, setVisitedTabs] = useState<Set<number>>(new Set([0]));
   const activeTabRef = useRef(0);
@@ -42,7 +44,7 @@ export default function TabLayout() {
   const tabBarHeight = 60 + Math.max(insets.bottom, 8);
 
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, { backgroundColor: colors.bg }]}>
       <PagerView
         ref={pagerRef}
         style={styles.pager}
@@ -54,14 +56,22 @@ export default function TabLayout() {
           setActiveTab(index);
         }}
       >
-        <View key="0">{visitedTabs.has(0) ? <HomeScreen /> : null}</View>
-        <View key="1">{visitedTabs.has(1) ? <VideosScreen /> : null}</View>
-        <View key="2">{visitedTabs.has(2) ? <BibleScreen /> : null}</View>
-        <View key="3">{visitedTabs.has(3) ? <SongsHubScreen /> : null}</View>
-        <View key="4">{visitedTabs.has(4) ? <ContactScreen /> : null}</View>
+        <View key="0" style={{ flex: 1, backgroundColor: colors.bg }}>{visitedTabs.has(0) ? <HomeScreen /> : null}</View>
+        <View key="1" style={{ flex: 1, backgroundColor: colors.bg }}>{visitedTabs.has(1) ? <VideosScreen /> : null}</View>
+        <View key="2" style={{ flex: 1, backgroundColor: colors.bg }}>{visitedTabs.has(2) ? <BibleScreen /> : null}</View>
+        <View key="3" style={{ flex: 1, backgroundColor: colors.bg }}>{visitedTabs.has(3) ? <SongsHubScreen /> : null}</View>
+        <View key="4" style={{ flex: 1, backgroundColor: colors.bg }}>{visitedTabs.has(4) ? <ContactScreen /> : null}</View>
       </PagerView>
 
-      <View style={[styles.tabBar, { height: tabBarHeight, paddingBottom: Math.max(insets.bottom, 8) }]}>
+      <View style={[
+        styles.tabBar,
+        {
+          height: tabBarHeight,
+          paddingBottom: Math.max(insets.bottom, 8),
+          backgroundColor: colors.surface,
+          borderTopColor: colors.divider,
+        }
+      ]}>
         {TABS.map((tab, index) => (
           <TouchableOpacity
             key={index}
@@ -71,9 +81,9 @@ export default function TabLayout() {
             <Ionicons
               name={tab.icon as any}
               size={24}
-              color={activeTab === index ? '#0f3460' : '#999'}
+              color={activeTab === index ? colors.accent : colors.subtext}
             />
-            <Text style={[styles.tabLabel, activeTab === index && styles.tabLabelActive]}>
+            <Text style={[styles.tabLabel, { color: activeTab === index ? colors.accent : colors.subtext }, activeTab === index && styles.tabLabelActive]}>
               {tab.name}
             </Text>
           </TouchableOpacity>
@@ -88,12 +98,10 @@ const styles = StyleSheet.create({
   pager: { flex: 1 },
   tabBar: {
     flexDirection: 'row',
-    backgroundColor: '#fff',
     borderTopWidth: 1,
-    borderTopColor: '#eee',
     elevation: 8,
   },
   tab: { flex: 1, alignItems: 'center', justifyContent: 'center' },
-  tabLabel: { fontSize: 10, color: '#999', marginTop: 2 },
-  tabLabelActive: { color: '#0f3460', fontWeight: 'bold' },
+  tabLabel: { fontSize: 10, marginTop: 2 },
+  tabLabelActive: { fontWeight: 'bold' },
 });

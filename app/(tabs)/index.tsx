@@ -10,9 +10,12 @@ import {
   Text,
   View,
 } from 'react-native';
+import { useTheme } from '../../utils/ThemeContext';
 import { getCachedHomeContent, getMemoryCachedHomeContent, HomeContent, subscribeHomeContent } from '../../utils/homeContentSync';
 
 export default function HomeScreen() {
+  const { colors } = useTheme();
+
   const appStateRef = useRef(AppState.currentState);
   const upcomingEventsRef = useRef<{ reload: () => void }>(null);
   const [content, setContent] = useState<HomeContent | null>(() => getMemoryCachedHomeContent());
@@ -46,25 +49,25 @@ export default function HomeScreen() {
     : require('../../assets/images/pastor.png');
 
   return (
-    <ScrollView style={styles.container}>
+    <ScrollView style={[styles.container, { backgroundColor: colors.bg }]}>
       <LinearGradient colors={['#1a1a2e', '#16213e', '#0f3460']} style={styles.header}>
         <Text style={styles.churchName}>Theos Gospel Hall</Text>
         <Text style={styles.tagline}>"The Word of God is Living and Active"</Text>
       </LinearGradient>
 
-      <View style={styles.pastorCard}>
+      <View style={[styles.pastorCard, { backgroundColor: colors.surface }]}>
         <View style={styles.pastorAvatar}>
-          <Image source={photoSource} style={styles.pastorImage} />
+          <Image source={photoSource} style={[styles.pastorImage, { borderColor: colors.accent }]} />
         </View>
-        {!!pastorName && <Text style={styles.pastorName}>{pastorName}</Text>}
-        {!!pastorDesignation && <Text style={styles.pastorTitle}>{pastorDesignation}</Text>}
+        {!!pastorName && <Text style={[styles.pastorName, { color: colors.text }]}>{pastorName}</Text>}
+        {!!pastorDesignation && <Text style={[styles.pastorTitle, { color: colors.subtext }]}>{pastorDesignation}</Text>}
 
         {hasAboutPastor && (
           <>
-            <View style={styles.divider} />
-            {!!aboutPastorEnglish && <Paragraphs text={aboutPastorEnglish} style={styles.pastorAboutText} />}
+            <View style={[styles.divider, { backgroundColor: colors.divider }]} />
+            {!!aboutPastorEnglish && <Paragraphs text={aboutPastorEnglish} style={[styles.pastorAboutText, { color: colors.subtext }]} />}
             {!!aboutPastorEnglish && !!aboutPastorTamil && <View style={{ height: 10 }} />}
-            {!!aboutPastorTamil && <Paragraphs text={aboutPastorTamil} style={styles.pastorAboutText} />}
+            {!!aboutPastorTamil && <Paragraphs text={aboutPastorTamil} style={[styles.pastorAboutText, { color: colors.subtext }]} />}
           </>
         )}
       </View>
@@ -76,15 +79,15 @@ export default function HomeScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#f5f5f5' },
+  container: { flex: 1 },
   header: { padding: 40, alignItems: 'center', paddingTop: 60 },
   churchName: { fontSize: 26, fontWeight: 'bold', color: '#fff', textAlign: 'center' },
-  tagline: { fontSize: 14, color: '#ffffff', marginTop: 8, fontStyle: 'italic', fontWeight: '600', letterSpacing: 0.5, textAlign: 'center' },
-  pastorCard: { backgroundColor: '#fff', margin: 16, borderRadius: 16, padding: 20, alignItems: 'center', elevation: 4 },
+  tagline: { fontSize: 14, color: '#ffffff', marginTop: 8, fontStyle: 'italic', fontWeight: '600', letterSpacing: 0.5, textAlign: 'center', width: '100%' },
+  pastorCard: { margin: 16, borderRadius: 16, padding: 20, alignItems: 'center', elevation: 4 },
   pastorAvatar: { marginBottom: 10 },
-  pastorImage: { width: 120, height: 120, borderRadius: 60, borderWidth: 3, borderColor: '#0f3460' },
-  pastorName: { fontSize: 20, fontWeight: 'bold', color: '#1a1a2e' },
-  pastorTitle: { fontSize: 14, color: '#666', marginTop: 4 },
-  divider: { height: 1, backgroundColor: '#eee', width: '100%', marginVertical: 14 },
+  pastorImage: { width: 120, height: 120, borderRadius: 60, borderWidth: 3 },
+  pastorName: { fontSize: 20, fontWeight: 'bold' },
+  pastorTitle: { fontSize: 14, marginTop: 4 },
+  divider: { height: 1, width: '100%', marginVertical: 14 },
   pastorAboutText: { textAlign: 'center' },
 });

@@ -1,14 +1,14 @@
 import { useState } from 'react';
 import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { useTheme } from '../../utils/ThemeContext';
 import OtherSongsScreen from './other-songs';
 import SongsScreen from './songs';
-import { useTheme } from '../../utils/ThemeContext';
 
 type CollectionTab = 'geethangalum' | 'other';
 
 const OPTIONS: { id: CollectionTab; label: string }[] = [
   { id: 'geethangalum', label: 'Geethangalum Keerthanaigalum' },
-  { id: 'other', label: 'Other Songs' },
+  { id: 'other', label: 'Special Songs' },
 ];
 
 export default function SongsHubScreen() {

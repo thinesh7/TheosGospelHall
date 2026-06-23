@@ -2,7 +2,9 @@ import { Ionicons } from '@expo/vector-icons';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
+  Animated,
   Dimensions,
+  Easing,
   FlatList,
   Image,
   Modal,
@@ -14,6 +16,7 @@ import {
   View,
 } from 'react-native';
 import YoutubePlayer from 'react-native-youtube-iframe';
+import { useTheme } from '../../utils/ThemeContext';
 import { getCachedLivePlaylists, syncLivePlaylists } from '../../utils/livePlaylistsSync';
 import { ytFetch } from '../../utils/youtubeProxy';
 
@@ -137,31 +140,161 @@ interface VideoErrorProps {
 }
 
 function VideoErrorState({ onRetry }: VideoErrorProps) {
+  const { colors } = useTheme();
   return (
-    <View style={errorStyles.container}>
+    <View style={[errorStyles.container, { backgroundColor: colors.bg }]}>
       <BrokenTvIcon />
-      <Text style={errorStyles.title}>Oh! No...</Text>
-      <Text style={errorStyles.subtitle}>Looks like something went wrong.</Text>
-      <View style={errorStyles.tipsBox}>
+      <Text style={[errorStyles.title, { color: colors.text }]}>Oh! No...</Text>
+      <Text style={[errorStyles.subtitle, { color: colors.subtext }]}>Looks like something went wrong.</Text>
+      <View style={[errorStyles.tipsBox, { backgroundColor: colors.surface, borderColor: colors.divider }]}>
         <View style={errorStyles.tipRow}>
           <Ionicons name="wifi" size={18} color="#e05c5c" />
-          <Text style={errorStyles.tipText}>Please check your internet connection.</Text>
+          <Text style={[errorStyles.tipText, { color: colors.text }]}>Please check your internet connection.</Text>
         </View>
-        <View style={errorStyles.divider} />
+        <View style={[errorStyles.divider, { backgroundColor: colors.divider }]} />
         <View style={errorStyles.tipRow}>
-          <Ionicons name="refresh-circle" size={18} color="#888" />
-          <Text style={errorStyles.tipText}>Close the app fully and try again.</Text>
+          <Ionicons name="refresh-circle" size={18} color={colors.subtext} />
+          <Text style={[errorStyles.tipText, { color: colors.text }]}>Close the app fully and try again.</Text>
         </View>
       </View>
       <TouchableOpacity style={errorStyles.retryBtn} onPress={onRetry} activeOpacity={0.85}>
         <Ionicons name="refresh" size={16} color="#fff" />
         <Text style={errorStyles.retryText}>Try Again</Text>
       </TouchableOpacity>
-      <Text style={errorStyles.footer}>Still not working? Please try again later.</Text>
+      <Text style={[errorStyles.footer, { color: colors.subtext }]}>Still not working? Please try again later.</Text>
     </View>
   );
 }
 
+const LOADING_MESSAGES = [
+  '🎬 Preparing your video...',
+  '📡 Connecting to the stream...',
+  '🍿 Almost ready, your video is on the way...',
+  '✨ Getting everything ready for you...',
+];
+
+function VideoLoadingState() {
+  const spinAnim = useRef(new Animated.Value(0)).current;
+  const fadeAnim = useRef(new Animated.Value(1)).current;
+  const scaleAnim = useRef(new Animated.Value(0.95)).current;
+  const [msgIndex, setMsgIndex] = useState(0);
+
+  useEffect(() => {
+    Animated.loop(
+      Animated.timing(spinAnim, { toValue: 1, duration: 2000, easing: Easing.linear, useNativeDriver: true })
+    ).start();
+  }, []);
+
+  useEffect(() => {
+    Animated.loop(
+      Animated.sequence([
+        Animated.timing(scaleAnim, { toValue: 1.04, duration: 900, useNativeDriver: true }),
+        Animated.timing(scaleAnim, { toValue: 0.95, duration: 900, useNativeDriver: true }),
+      ])
+    ).start();
+  }, []);
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      Animated.timing(fadeAnim, { toValue: 0, duration: 300, useNativeDriver: true }).start(() => {
+        setMsgIndex(i => (i + 1) % LOADING_MESSAGES.length);
+        Animated.timing(fadeAnim, { toValue: 1, duration: 300, useNativeDriver: true }).start();
+      });
+    }, 2200);
+    return () => clearInterval(interval);
+  }, []);
+
+  const spin = spinAnim.interpolate({ inputRange: [0, 1], outputRange: ['0deg', '360deg'] });
+
+  return (
+    <View style={loadingStyles.container}>
+      <View style={loadingStyles.filmStrip}>
+        {[...Array(5)].map((_, i) => (
+          <View key={i} style={loadingStyles.filmHole} />
+        ))}
+      </View>
+      <Animated.View style={[loadingStyles.playCircle, { transform: [{ scale: scaleAnim }] }]}>
+        <Animated.View style={[loadingStyles.spinRing, { transform: [{ rotate: spin }] }]} />
+        <Ionicons name="play" size={36} color="#fff" style={{ marginLeft: 4 }} />
+      </Animated.View>
+      <View style={loadingStyles.filmStrip}>
+        {[...Array(5)].map((_, i) => (
+          <View key={i} style={loadingStyles.filmHole} />
+        ))}
+      </View>
+      <Animated.Text style={[loadingStyles.message, { opacity: fadeAnim }]}>
+        {LOADING_MESSAGES[msgIndex]}
+      </Animated.Text>
+      <Text style={loadingStyles.subMessage}>This may take a few seconds</Text>
+    </View>
+  );
+}
+
+const TAB_LOADING_MESSAGES: Record<string, string[]> = {
+  shorts: ['⚡ Loading Shorts...', '🎬 Fetching latest clips...', '✨ Almost there...'],
+  videos: ['🎬 Loading Videos...', '📡 Fetching sermons...', '✨ Almost there...'],
+  live: ['📡 Loading Live Streams...', '🔴 Fetching broadcasts...', '✨ Almost there...'],
+  all: ['🎬 Loading All Videos...', '📡 Fetching content...', '✨ Almost there...'],
+  search: ['🔍 Searching sermons...', '📡 Finding results...', '✨ Almost there...'],
+};
+
+function TabLoadingState({ tab }: { tab: string }) {
+  const { colors } = useTheme();
+  const spinAnim = useRef(new Animated.Value(0)).current;
+  const fadeAnim = useRef(new Animated.Value(1)).current;
+  const bar1 = useRef(new Animated.Value(0.3)).current;
+  const bar2 = useRef(new Animated.Value(0.6)).current;
+  const bar3 = useRef(new Animated.Value(1)).current;
+  const bar4 = useRef(new Animated.Value(0.5)).current;
+  const [msgIndex, setMsgIndex] = useState(0);
+  const messages = TAB_LOADING_MESSAGES[tab] || TAB_LOADING_MESSAGES.videos;
+
+  useEffect(() => {
+    Animated.loop(
+      Animated.timing(spinAnim, { toValue: 1, duration: 1800, easing: Easing.linear, useNativeDriver: true })
+    ).start();
+  }, []);
+
+  useEffect(() => {
+    const animBar = (anim: Animated.Value, delay: number) =>
+      Animated.loop(Animated.sequence([
+        Animated.delay(delay),
+        Animated.timing(anim, { toValue: 1, duration: 400, useNativeDriver: true }),
+        Animated.timing(anim, { toValue: 0.2, duration: 400, useNativeDriver: true }),
+      ]));
+    Animated.parallel([animBar(bar1, 0), animBar(bar2, 150), animBar(bar3, 300), animBar(bar4, 450)]).start();
+  }, []);
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      Animated.timing(fadeAnim, { toValue: 0, duration: 250, useNativeDriver: true }).start(() => {
+        setMsgIndex(i => (i + 1) % messages.length);
+        Animated.timing(fadeAnim, { toValue: 1, duration: 250, useNativeDriver: true }).start();
+      });
+    }, 2000);
+    return () => clearInterval(interval);
+  }, []);
+
+  const spin = spinAnim.interpolate({ inputRange: [0, 1], outputRange: ['0deg', '360deg'] });
+
+  return (
+    <View style={[tabLoadingStyles.container, { backgroundColor: colors.bg }]}>
+      <View style={tabLoadingStyles.iconArea}>
+        <Animated.View style={[tabLoadingStyles.spinRing, { borderTopColor: colors.accent, transform: [{ rotate: spin }] }]} />
+        <Ionicons name="play-circle" size={32} color={colors.accent} />
+      </View>
+      <View style={tabLoadingStyles.barsRow}>
+        {[bar1, bar2, bar3, bar4].map((bar, i) => (
+          <Animated.View key={i} style={[tabLoadingStyles.bar, { backgroundColor: colors.accent, opacity: bar }]} />
+        ))}
+      </View>
+      <Animated.Text style={[tabLoadingStyles.message, { color: colors.text, opacity: fadeAnim }]}>
+        {messages[msgIndex]}
+      </Animated.Text>
+      <Text style={[tabLoadingStyles.sub, { color: colors.subtext }]}>Fetching from YouTube...</Text>
+    </View>
+  );
+}
 interface VideoModalProps {
   visible: boolean;
   videoId: string | null;
@@ -170,17 +303,29 @@ interface VideoModalProps {
 }
 
 function VideoModal({ visible, videoId, title, onClose }: VideoModalProps) {
+  const [playerReady, setPlayerReady] = useState(false);
+
+  useEffect(() => {
+    if (!visible) setPlayerReady(false);
+  }, [visible]);
+
   return (
     <Modal visible={visible} animationType="slide" statusBarTranslucent onRequestClose={onClose}>
       <View style={styles.videoModal}>
         <StatusBar hidden />
+        {!playerReady && (
+          <View style={[StyleSheet.absoluteFillObject, { backgroundColor: '#0a0a0a', justifyContent: 'center', alignItems: 'center', zIndex: 10 }]}>
+            <VideoLoadingState />
+          </View>
+        )}
         <YoutubePlayer
-            height={PLAYER_H}
-            width={SW}
-            videoId={videoId || ''}
-            play={visible && !!videoId}
-            webViewProps={{ allowsInlineMediaPlayback: true, mediaPlaybackRequiresUserAction: false }}
-          />
+          height={PLAYER_H}
+          width={SW}
+          videoId={videoId || ''}
+          play={visible && !!videoId}
+          onReady={() => setPlayerReady(true)}
+          webViewProps={{ allowsInlineMediaPlayback: true, mediaPlaybackRequiresUserAction: false }}
+        />
         <Text style={styles.videoModalTitle} numberOfLines={3}>{title}</Text>
         <TouchableOpacity style={styles.modalClose} onPress={onClose}>
           <Ionicons name="close" size={26} color="#fff" />
@@ -191,6 +336,8 @@ function VideoModal({ visible, videoId, title, onClose }: VideoModalProps) {
 }
 
 export default function VideosScreen() {
+  const { colors } = useTheme();
+
   const [activeTab, setActiveTab] = useState<Tab>('shorts');
   const [search, setSearch] = useState('');
   const [searching, setSearching] = useState(false);
@@ -253,9 +400,23 @@ export default function VideosScreen() {
   }, [search]);
 
   useEffect(() => {
-    if (activeTab === 'videos' && !videosLoaded) fetchVideos();
-    if (activeTab === 'live' && !liveLoaded) loadLiveAndFetch();
-    if (activeTab === 'all' && !allLoaded) fetchAll();
+    if (activeTab === 'videos') {
+      if (videosError) { setVideosError(false); setVideosLoaded(false); }
+      if (!videosLoaded) fetchVideos();
+    }
+    if (activeTab === 'live') {
+      if (liveError) { setLiveError(false); setLiveLoaded(false); }
+      if (!liveLoaded) loadLiveAndFetch();
+    }
+    if (activeTab === 'all') {
+      if (allError) { setAllError(false); setAllLoaded(false); }
+      if (!allLoaded) fetchAll();
+    }
+    if (activeTab === 'shorts' && shortsError) {
+      setShortsError(false);
+      setShortsLoaded(false);
+      fetchShorts();
+    }
   }, [activeTab]);
 
   const openVideo = (videoId: string, title: string) => {
@@ -449,11 +610,11 @@ export default function VideosScreen() {
     const date = item?.snippet?.publishedAt || '';
     if (!videoId || !thumb) return null;
     return (
-      <TouchableOpacity style={styles.card} onPress={() => openVideo(videoId, title)}>
+      <TouchableOpacity style={[styles.card, { backgroundColor: colors.surface }]} onPress={() => openVideo(videoId, title)}>
         <Image source={{ uri: thumb }} style={styles.thumb} />
         <View style={styles.cardInfo}>
-          <Text style={styles.cardTitle} numberOfLines={2}>{title}</Text>
-          <Text style={styles.cardDate}>{formatDate(date)}</Text>
+          <Text style={[styles.cardTitle, { color: colors.text }]} numberOfLines={2}>{title}</Text>
+          <Text style={[styles.cardDate, { color: colors.subtext }]}>{formatDate(date)}</Text>
         </View>
       </TouchableOpacity>
     );
@@ -480,14 +641,14 @@ export default function VideosScreen() {
     const date = item?.snippet?.publishedAt || '';
     if (!videoId || !thumb) return null;
     return (
-      <TouchableOpacity style={styles.card} onPress={() => openVideo(videoId, title)}>
+      <TouchableOpacity style={[styles.card, { backgroundColor: colors.surface }]} onPress={() => openVideo(videoId, title)}>
         <View>
           <Image source={{ uri: thumb }} style={styles.thumb} />
           <View style={styles.liveBadge}><View style={styles.liveDot} /><Text style={styles.liveBadgeText}>LIVE</Text></View>
         </View>
         <View style={styles.cardInfo}>
-          <Text style={styles.cardTitle} numberOfLines={2}>{title}</Text>
-          <Text style={styles.cardDate}>{formatDate(date)}</Text>
+          <Text style={[styles.cardTitle, { color: colors.text }]} numberOfLines={2}>{title}</Text>
+          <Text style={[styles.cardDate, { color: colors.subtext }]}>{formatDate(date)}</Text>
         </View>
       </TouchableOpacity>
     );
@@ -495,7 +656,7 @@ export default function VideosScreen() {
 
   const LoadMore = ({ token, loading, onPress }: { token: string; loading: boolean; onPress: () => void }) =>
     token ? (
-      <TouchableOpacity style={styles.loadMore} onPress={onPress}>
+      <TouchableOpacity style={[styles.loadMore, { backgroundColor: colors.accent }]} onPress={onPress}>
         {loading ? <ActivityIndicator color="#fff" /> : <Text style={styles.loadMoreText}>Load More</Text>}
       </TouchableOpacity>
     ) : null;
@@ -511,7 +672,7 @@ export default function VideosScreen() {
   const hasMoreLive = Object.values(liveNextTokens).some(t => !!t);
 
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, { backgroundColor: colors.bg }]}>
       <VideoModal visible={videoModalVisible} videoId={activeVideoId} title={activeVideoTitle} onClose={closeVideo} />
 
       <Modal visible={shortsPlayerVisible} animationType="slide" statusBarTranslucent onRequestClose={() => { setShortsPlayerVisible(false); setPlayingShortId(null); }}>
@@ -535,19 +696,29 @@ export default function VideosScreen() {
         </View>
       </Modal>
 
-      <View style={styles.searchRow}>
-        <Ionicons name="search" size={20} color="#666" />
-        <TextInput style={styles.searchInput} placeholder="Search all sermons..." placeholderTextColor="#999" value={search} onChangeText={setSearch} />
-        {searching && <ActivityIndicator size="small" color="#0f3460" />}
-        {!!search && <TouchableOpacity onPress={() => setSearch('')}><Ionicons name="close-circle" size={20} color="#999" /></TouchableOpacity>}
+      <View style={[styles.searchRow, { backgroundColor: colors.surface }]}>
+        <Ionicons name="search" size={20} color={colors.subtext} />
+        <TextInput
+          style={[styles.searchInput, { color: colors.text }]}
+          placeholder="Search all sermons..."
+          placeholderTextColor={colors.subtext}
+          value={search}
+          onChangeText={setSearch}
+        />
+        {searching && <ActivityIndicator size="small" color={colors.accent} />}
+        {!!search && <TouchableOpacity onPress={() => setSearch('')}><Ionicons name="close-circle" size={20} color={colors.subtext} /></TouchableOpacity>}
       </View>
 
       {!isSearching && (
         <View style={styles.tabsRow}>
           {TABS.map(t => (
-            <TouchableOpacity key={t.key} style={[styles.tab, activeTab === t.key && styles.tabActive]} onPress={() => setActiveTab(t.key)}>
-              <Ionicons name={t.icon as any} size={14} color={activeTab === t.key ? '#fff' : '#555'} />
-              <Text style={[styles.tabText, activeTab === t.key && styles.tabTextActive]}>{t.label}</Text>
+            <TouchableOpacity
+              key={t.key}
+              style={[styles.tab, { backgroundColor: activeTab === t.key ? colors.accent : colors.surface }]}
+              onPress={() => setActiveTab(t.key)}
+            >
+              <Ionicons name={t.icon as any} size={14} color={activeTab === t.key ? '#fff' : colors.subtext} />
+              <Text style={[styles.tabText, { color: activeTab === t.key ? '#fff' : colors.subtext }]}>{t.label}</Text>
             </TouchableOpacity>
           ))}
         </View>
@@ -555,12 +726,18 @@ export default function VideosScreen() {
 
       {isSearching && (
         searching
-          ? <ActivityIndicator color="#0f3460" style={{ marginTop: 40 }} size="large" />
-          : <FlatList data={searchResults} keyExtractor={(_, i) => `sr${i}`} renderItem={({ item }) => <VideoCard item={item} />} contentContainerStyle={styles.list} ListEmptyComponent={<Text style={styles.empty}>No results found</Text>} />
+          ? <TabLoadingState tab="search" />
+          : <FlatList
+              data={searchResults}
+              keyExtractor={(_, i) => `sr${i}`}
+              renderItem={({ item }) => <VideoCard item={item} />}
+              contentContainerStyle={styles.list}
+              ListEmptyComponent={<Text style={[styles.empty, { color: colors.subtext }]}>No results found</Text>}
+            />
       )}
 
       {!isSearching && activeTab === 'shorts' && (
-        loadingShorts ? <ActivityIndicator size="large" color="#0f3460" style={{ marginTop: 40 }} />
+        loadingShorts ? <TabLoadingState tab="shorts" />
         : shortsError ? <VideoErrorState onRetry={() => { setShortsLoaded(false); fetchShorts(); }} />
         : <FlatList
             data={shorts}
@@ -571,13 +748,13 @@ export default function VideosScreen() {
             numColumns={2}
             contentContainerStyle={styles.list}
             columnWrapperStyle={{ gap: 8 }}
-            ListEmptyComponent={<Text style={styles.empty}>No shorts found</Text>}
+            ListEmptyComponent={<Text style={[styles.empty, { color: colors.subtext }]}>No shorts found</Text>}
             ListFooterComponent={<LoadMore token={shortsNextToken} loading={loadingMoreShorts} onPress={() => fetchShorts(shortsNextToken)} />}
           />
       )}
 
       {!isSearching && activeTab === 'videos' && (
-        loadingVideos ? <ActivityIndicator size="large" color="#0f3460" style={{ marginTop: 40 }} />
+        loadingVideos ? <TabLoadingState tab="videos" />
         : videosError ? <VideoErrorState onRetry={() => { setVideosLoaded(false); fetchVideos(); }} />
         : <FlatList
             data={videos}
@@ -586,13 +763,13 @@ export default function VideosScreen() {
             onRefresh={onRefresh}
             renderItem={({ item }) => <VideoCard item={item} />}
             contentContainerStyle={styles.list}
-            ListEmptyComponent={<Text style={styles.empty}>No videos found</Text>}
+            ListEmptyComponent={<Text style={[styles.empty, { color: colors.subtext }]}>No videos found</Text>}
             ListFooterComponent={<LoadMore token={videosNextToken} loading={loadingMoreVideos} onPress={() => fetchVideos(videosNextToken)} />}
           />
       )}
 
       {!isSearching && activeTab === 'live' && (
-        loadingLive ? <ActivityIndicator size="large" color="#0f3460" style={{ marginTop: 40 }} />
+        loadingLive ? <TabLoadingState tab="live" />
         : liveError ? <VideoErrorState onRetry={() => { setLiveLoaded(false); loadLiveAndFetch(); }} />
         : <FlatList
             data={liveVideos}
@@ -601,13 +778,17 @@ export default function VideosScreen() {
             onRefresh={onRefresh}
             renderItem={({ item }) => <LiveCard item={item} />}
             contentContainerStyle={styles.list}
-            ListEmptyComponent={<Text style={styles.empty}>No live streams found</Text>}
-            ListFooterComponent={hasMoreLive ? <TouchableOpacity style={styles.loadMore} onPress={() => fetchLive(true)}>{loadingMoreLive ? <ActivityIndicator color="#fff" /> : <Text style={styles.loadMoreText}>Load More</Text>}</TouchableOpacity> : null}
+            ListEmptyComponent={<Text style={[styles.empty, { color: colors.subtext }]}>No live streams found</Text>}
+            ListFooterComponent={hasMoreLive
+              ? <TouchableOpacity style={[styles.loadMore, { backgroundColor: colors.accent }]} onPress={() => fetchLive(true)}>
+                  {loadingMoreLive ? <ActivityIndicator color="#fff" /> : <Text style={styles.loadMoreText}>Load More</Text>}
+                </TouchableOpacity>
+              : null}
           />
       )}
 
       {!isSearching && activeTab === 'all' && (
-        loadingAll ? <ActivityIndicator size="large" color="#0f3460" style={{ marginTop: 40 }} />
+        loadingAll ? <TabLoadingState tab="all" />
         : allError ? <VideoErrorState onRetry={() => { setAllLoaded(false); fetchAll(); }} />
         : <FlatList
             data={allVideos}
@@ -616,7 +797,7 @@ export default function VideosScreen() {
             onRefresh={onRefresh}
             renderItem={({ item }) => <VideoCard item={item} />}
             contentContainerStyle={styles.list}
-            ListEmptyComponent={<Text style={styles.empty}>No videos found</Text>}
+            ListEmptyComponent={<Text style={[styles.empty, { color: colors.subtext }]}>No videos found</Text>}
             ListFooterComponent={<LoadMore token={allNextToken} loading={loadingMoreAll} onPress={() => fetchAll(allNextToken)} />}
           />
       )}
@@ -625,20 +806,18 @@ export default function VideosScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#f5f5f5' },
-  searchRow: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#fff', margin: 12, marginTop: 50, borderRadius: 12, paddingHorizontal: 12, paddingVertical: 10, elevation: 3 },
-  searchInput: { flex: 1, marginLeft: 8, fontSize: 15, color: '#1a1a2e' },
+  container: { flex: 1 },
+  searchRow: { flexDirection: 'row', alignItems: 'center', margin: 12, marginTop: 50, borderRadius: 12, paddingHorizontal: 12, paddingVertical: 10, elevation: 3 },
+  searchInput: { flex: 1, marginLeft: 8, fontSize: 15 },
   tabsRow: { flexDirection: 'row', paddingHorizontal: 12, paddingBottom: 10, gap: 8 },
-  tab: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 4, paddingVertical: 8, borderRadius: 20, backgroundColor: '#fff', elevation: 2 },
-  tabActive: { backgroundColor: '#0f3460' },
-  tabText: { fontSize: 12, color: '#555', fontWeight: '600' },
-  tabTextActive: { color: '#fff' },
+  tab: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 4, paddingVertical: 8, borderRadius: 20, elevation: 2 },
+  tabText: { fontSize: 12, fontWeight: '600' },
   list: { padding: 12, paddingBottom: 100 },
-  card: { backgroundColor: '#fff', borderRadius: 12, marginBottom: 12, overflow: 'hidden', elevation: 3 },
+  card: { borderRadius: 12, marginBottom: 12, overflow: 'hidden', elevation: 3 },
   thumb: { width: '100%', height: 185 },
   cardInfo: { padding: 10 },
-  cardTitle: { fontSize: 14, fontWeight: 'bold', color: '#1a1a2e' },
-  cardDate: { fontSize: 12, color: '#888', marginTop: 4 },
+  cardTitle: { fontSize: 14, fontWeight: 'bold' },
+  cardDate: { fontSize: 12, marginTop: 4 },
   shortCard: { flex: 1, borderRadius: 12, overflow: 'hidden', elevation: 3, marginBottom: 8, backgroundColor: '#000', minHeight: 220 },
   shortThumb: { width: '100%', height: 220 },
   shortPlayIcon: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, justifyContent: 'center', alignItems: 'center' },
@@ -647,8 +826,8 @@ const styles = StyleSheet.create({
   liveBadge: { position: 'absolute', top: 8, left: 8, backgroundColor: '#ff0000', borderRadius: 6, paddingHorizontal: 8, paddingVertical: 3, flexDirection: 'row', alignItems: 'center', gap: 4 },
   liveDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: '#fff' },
   liveBadgeText: { color: '#fff', fontSize: 10, fontWeight: 'bold' },
-  empty: { textAlign: 'center', color: '#888', marginTop: 40, fontSize: 14 },
-  loadMore: { backgroundColor: '#0f3460', borderRadius: 12, padding: 14, alignItems: 'center', marginBottom: 20 },
+  empty: { textAlign: 'center', marginTop: 40, fontSize: 14 },
+  loadMore: { borderRadius: 12, padding: 14, alignItems: 'center', marginBottom: 20 },
   loadMoreText: { color: '#fff', fontWeight: 'bold', fontSize: 14 },
   shortsItem: { width: SW, height: SH, backgroundColor: '#000', justifyContent: 'center', alignItems: 'center' },
   shortsVideoWrap: { width: SW, height: SHORTS_PLAYER_H, backgroundColor: '#000', justifyContent: 'center', alignItems: 'center', marginTop: SH * 0.15 },
@@ -678,13 +857,33 @@ const errorStyles = StyleSheet.create({
   crack1: { position: 'absolute', top: 8, right: 10, width: 2, height: 16, backgroundColor: '#2d3748', borderRadius: 1, transform: [{ rotate: '20deg' }] },
   crack2: { position: 'absolute', top: 14, right: 8, width: 2, height: 10, backgroundColor: '#2d3748', borderRadius: 1, transform: [{ rotate: '-10deg' }] },
   playBadge: { position: 'absolute', bottom: 12, left: 12, width: 24, height: 24, borderRadius: 12, backgroundColor: '#e05c5c', alignItems: 'center', justifyContent: 'center' },
-  title: { fontSize: 26, fontWeight: '800', color: '#1a1a2e', marginBottom: 6, letterSpacing: 0.3 },
-  subtitle: { fontSize: 14, color: '#666', marginBottom: 24, textAlign: 'center' },
-  tipsBox: { width: '100%', backgroundColor: '#fff', borderRadius: 14, paddingVertical: 4, paddingHorizontal: 16, marginBottom: 28, borderWidth: 1.5, borderColor: '#e8eaf0', borderStyle: 'dashed' },
+  title: { fontSize: 26, fontWeight: '800', marginBottom: 6, letterSpacing: 0.3 },
+  subtitle: { fontSize: 14, marginBottom: 24, textAlign: 'center' },
+  tipsBox: { width: '100%', borderRadius: 14, paddingVertical: 4, paddingHorizontal: 16, marginBottom: 28, borderWidth: 1.5, borderStyle: 'dashed' },
   tipRow: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 12 },
-  tipText: { fontSize: 13, color: '#444', flex: 1, lineHeight: 18 },
-  divider: { height: 1, backgroundColor: '#f0f0f0' },
+  tipText: { fontSize: 13, flex: 1, lineHeight: 18 },
+  divider: { height: 1 },
   retryBtn: { flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: '#7c83e5', paddingHorizontal: 32, paddingVertical: 14, borderRadius: 30, marginBottom: 16 },
   retryText: { color: '#fff', fontSize: 15, fontWeight: '700' },
-  footer: { fontSize: 12, color: '#aaa', textAlign: 'center' },
+  footer: { fontSize: 12, textAlign: 'center' },
+});
+
+const loadingStyles = StyleSheet.create({
+  container: { alignItems: 'center', justifyContent: 'center', gap: 24 },
+  filmStrip: { flexDirection: 'row', gap: 10 },
+  filmHole: { width: 16, height: 16, borderRadius: 4, backgroundColor: 'rgba(255,255,255,0.12)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.08)' },
+  playCircle: { width: 90, height: 90, borderRadius: 45, backgroundColor: 'rgba(255,255,255,0.08)', alignItems: 'center', justifyContent: 'center', borderWidth: 1.5, borderColor: 'rgba(255,255,255,0.15)' },
+  spinRing: { position: 'absolute', width: 90, height: 90, borderRadius: 45, borderWidth: 2.5, borderColor: 'transparent', borderTopColor: '#ff6b6b', borderRightColor: 'rgba(255,107,107,0.3)' },
+  message: { fontSize: 15, color: '#fff', fontWeight: '600', textAlign: 'center', paddingHorizontal: 32, lineHeight: 22 },
+  subMessage: { fontSize: 12, color: 'rgba(255,255,255,0.4)', textAlign: 'center' },
+});
+
+const tabLoadingStyles = StyleSheet.create({
+  container: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 20, paddingBottom: 60 },
+  iconArea: { width: 80, height: 80, alignItems: 'center', justifyContent: 'center' },
+  spinRing: { position: 'absolute', width: 80, height: 80, borderRadius: 40, borderWidth: 2.5, borderColor: 'transparent', borderRightColor: 'transparent' },
+  barsRow: { flexDirection: 'row', alignItems: 'flex-end', gap: 5, height: 28 },
+  bar: { width: 4, height: 28, borderRadius: 3 },
+  message: { fontSize: 15, fontWeight: '600', textAlign: 'center', paddingHorizontal: 40, lineHeight: 22 },
+  sub: { fontSize: 12, textAlign: 'center' },
 });
