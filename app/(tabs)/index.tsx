@@ -1,35 +1,16 @@
 import Paragraphs from '@/components/Paragraphs';
 import UpcomingEvents from '@/components/UpcomingEvents';
-import Constants from 'expo-constants';
-import * as Device from 'expo-device';
 import { LinearGradient } from 'expo-linear-gradient';
-import * as Notifications from 'expo-notifications';
-import { doc, setDoc } from 'firebase/firestore';
 import { useEffect, useRef, useState } from 'react';
 import {
   AppState,
   Image,
-  Platform,
   ScrollView,
   StyleSheet,
   Text,
   View,
 } from 'react-native';
-import { db } from '../../firebaseConfig';
 import { getCachedHomeContent, getMemoryCachedHomeContent, HomeContent, subscribeHomeContent } from '../../utils/homeContentSync';
-
-const isExpoGo = Constants.appOwnership === 'expo';
-if (!isExpoGo) {
-  Notifications.setNotificationHandler({
-    handleNotification: async () => ({
-      shouldShowAlert: true,
-      shouldShowBanner: true,
-      shouldShowList: true,
-      shouldPlaySound: true,
-      shouldSetBadge: false,
-    }),
-  });
-}
 
 export default function HomeScreen() {
   const appStateRef = useRef(AppState.currentState);
@@ -37,7 +18,6 @@ export default function HomeScreen() {
   const [content, setContent] = useState<HomeContent | null>(() => getMemoryCachedHomeContent());
 
   useEffect(() => {
-    registerForPushNotifications();
     const sub = AppState.addEventListener('change', nextState => {
       if (appStateRef.current.match(/inactive|background/) && nextState === 'active') {
         upcomingEventsRef.current?.reload();
@@ -54,42 +34,6 @@ export default function HomeScreen() {
     const unsubscribe = subscribeHomeContent(setContent);
     return unsubscribe;
   }, []);
-
-  const registerForPushNotifications = async () => {
-    if (!Device.isDevice) return;
-    if (isExpoGo) return;
-
-    const { status: existing } = await Notifications.getPermissionsAsync();
-    let finalStatus = existing;
-    if (existing !== 'granted') {
-      const { status } = await Notifications.requestPermissionsAsync();
-      finalStatus = status;
-    }
-    if (finalStatus !== 'granted') return;
-
-    if (Platform.OS === 'android') {
-      await Notifications.setNotificationChannelAsync('default', {
-        name: 'TGH Notifications',
-        importance: Notifications.AndroidImportance.MAX,
-        vibrationPattern: [0, 250, 250, 250],
-        lightColor: '#0f3460',
-      });
-    }
-
-    try {
-      const tokenData = await Notifications.getDevicePushTokenAsync();
-      const token = tokenData.data;
-      const safeId = token.replace(/[^a-zA-Z0-9]/g, '_');
-      await setDoc(doc(db, 'pushTokens', safeId), {
-        token,
-        platform: Platform.OS,
-        type: 'fcm',
-        updatedAt: new Date().toISOString(),
-      });
-    } catch (e) {
-      console.log('Token registration error:', e);
-    }
-  };
 
   const pastorName = content?.pastorName?.trim();
   const pastorDesignation = content?.pastorDesignation?.trim();

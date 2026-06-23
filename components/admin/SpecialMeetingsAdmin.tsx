@@ -64,17 +64,12 @@ const SpecialMeetingsAdmin = forwardRef<AdminScreenHandle, Props>(({ onEventsUpd
 
   useImperativeHandle(ref, () => ({
     goBack: () => {
-      if (showForm) {
-        setShowForm(false);
-        return true;
-      }
+      if (showForm) { setShowForm(false); return true; }
       return false;
     },
   }));
 
-  useEffect(() => {
-    loadMeetings();
-  }, []);
+  useEffect(() => { loadMeetings(); }, []);
 
   const loadMeetings = async () => {
     setLoadingAdmin(true);
@@ -112,33 +107,37 @@ const SpecialMeetingsAdmin = forwardRef<AdminScreenHandle, Props>(({ onEventsUpd
   const sendNotificationToAll = async (meeting: Omit<SpecialMeeting, 'id'>) => {
     try {
       const snap = await getDocs(collection(db, 'pushTokens'));
-      const tokens: string[] = snap.docs
-        .map(d => d.data().token)
-        .filter(t => t && t !== 'placeholder');
+      const tokenDocs = snap.docs
+        .map(d => ({ id: d.id, token: d.data().token, model: d.data().model ?? 'unknown' }))
+        .filter(d => d.token && typeof d.token === 'string' && d.token.startsWith('ExponentPushToken'));
 
-      if (tokens.length === 0) {
+      if (tokenDocs.length === 0) {
         Alert.alert('No users', 'No registered devices found.');
         return;
       }
 
-      const bodyParts = [];
+      const bodyParts: string[] = [];
       if (meeting.date) bodyParts.push(`📅 ${meeting.date}`);
       if (meeting.time) bodyParts.push(`🕐 ${meeting.time}`);
       if (meeting.location) bodyParts.push(`📍 ${meeting.location}`);
       const body = bodyParts.join('  •  ') || 'Tap to view details';
 
       const BATCH = 100;
-      for (let i = 0; i < tokens.length; i += BATCH) {
-        const batch = tokens.slice(i, i + BATCH);
-        const messages = batch.map(token => ({
-          to: token,
+      const allTickets: { token: string; model: string; ticketId?: string; error?: string }[] = [];
+
+      for (let i = 0; i < tokenDocs.length; i += BATCH) {
+        const batch = tokenDocs.slice(i, i + BATCH);
+        const messages = batch.map(d => ({
+          to: d.token,
           title: `📢 ${meeting.title}`,
           body,
           sound: 'default',
-          channelId: 'default',
+          channelId: 'tgh-default',
+          priority: 'high',
           data: { screen: 'home' },
         }));
-        await fetch('https://exp.host/--/api/v2/push/send', {
+
+        const res = await fetch('https://exp.host/--/api/v2/push/send', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -147,9 +146,43 @@ const SpecialMeetingsAdmin = forwardRef<AdminScreenHandle, Props>(({ onEventsUpd
           },
           body: JSON.stringify(messages),
         });
+
+        const result = await res.json();
+        const tickets = Array.isArray(result.data) ? result.data : [result.data];
+
+        tickets.forEach((ticket: any, idx: number) => {
+          const d = batch[idx];
+          if (ticket?.status === 'ok') {
+            allTickets.push({ token: d.token, model: d.model, ticketId: ticket.id });
+          } else {
+            allTickets.push({ token: d.token, model: d.model, error: ticket?.message ?? 'unknown error' });
+          }
+        });
       }
-    } catch (e) {
-      Alert.alert('Error', 'Could not send notifications.');
+
+      const sentAt = Date.now();
+      const successTickets = allTickets.filter(t => t.ticketId);
+      const failedTickets = allTickets.filter(t => t.error);
+
+      await addDoc(collection(db, 'notificationLogs'), {
+        title: meeting.title,
+        body,
+        sentAt,
+        totalDevices: tokenDocs.length,
+        successCount: successTickets.length,
+        failedCount: failedTickets.length,
+        ticketIds: successTickets.map(t => t.ticketId),
+        failures: failedTickets.map(t => ({ token: t.token.slice(-10), model: t.model, error: t.error })),
+      });
+
+      if (failedTickets.length > 0) {
+        Alert.alert(
+          'Partially Sent',
+          `✅ ${successTickets.length} delivered\n❌ ${failedTickets.length} failed\n\nCheck Firebase → notificationLogs for details.`
+        );
+      }
+    } catch (e: any) {
+      Alert.alert('Error', `Could not send notifications.\n\n${e?.message ?? String(e)}`);
     }
   };
 
@@ -182,14 +215,8 @@ const SpecialMeetingsAdmin = forwardRef<AdminScreenHandle, Props>(({ onEventsUpd
   };
 
   const saveMeeting = async () => {
-    if (!form.title.trim()) {
-      Alert.alert('Required', 'Please enter a title.');
-      return;
-    }
-    if (!form.date.trim()) {
-      Alert.alert('Required', 'Please enter a start date.');
-      return;
-    }
+    if (!form.title.trim()) { Alert.alert('Required', 'Please enter a title.'); return; }
+    if (!form.date.trim()) { Alert.alert('Required', 'Please enter a start date.'); return; }
     if (form.numberOfDays === 'multiple' && !form.endDate.trim()) {
       Alert.alert('Required', 'Please enter an end date for multi-day events.');
       return;
@@ -234,25 +261,21 @@ const SpecialMeetingsAdmin = forwardRef<AdminScreenHandle, Props>(({ onEventsUpd
   };
 
   const deleteMeeting = (meeting: SpecialMeeting) => {
-    Alert.alert(
-      'Delete Meeting',
-      `Delete "${meeting.title}"?`,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Delete', style: 'destructive',
-          onPress: async () => {
-            try {
-              await deleteDoc(doc(db, 'events', meeting.id));
-              await refreshCache();
-              Alert.alert('Deleted', 'Meeting removed.');
-            } catch (e) {
-              Alert.alert('Error', 'Could not delete.');
-            }
-          },
+    Alert.alert('Delete Meeting', `Delete "${meeting.title}"?`, [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Delete', style: 'destructive',
+        onPress: async () => {
+          try {
+            await deleteDoc(doc(db, 'events', meeting.id));
+            await refreshCache();
+            Alert.alert('Deleted', 'Meeting removed.');
+          } catch (e) {
+            Alert.alert('Error', 'Could not delete.');
+          }
         },
-      ]
-    );
+      },
+    ]);
   };
 
   const toggleActive = async (meeting: SpecialMeeting) => {
@@ -289,12 +312,8 @@ const SpecialMeetingsAdmin = forwardRef<AdminScreenHandle, Props>(({ onEventsUpd
                       {meeting.numberOfDays === 'multiple' && meeting.endDate ? ` → ${meeting.endDate}` : ''}
                       {meeting.time ? ` • ${meeting.time}` : ''}
                     </Text>
-                    {meeting.location ? (
-                      <Text style={styles.adminMeetingMeta}>📍 {meeting.location}</Text>
-                    ) : null}
-                    {meeting.youtubeLink ? (
-                      <Text style={styles.adminMeetingMeta}>▶ YouTube link added</Text>
-                    ) : null}
+                    {meeting.location ? <Text style={styles.adminMeetingMeta}>📍 {meeting.location}</Text> : null}
+                    {meeting.youtubeLink ? <Text style={styles.adminMeetingMeta}>▶ YouTube link added</Text> : null}
                   </View>
                   <Switch
                     value={meeting.isActive}
@@ -314,20 +333,16 @@ const SpecialMeetingsAdmin = forwardRef<AdminScreenHandle, Props>(({ onEventsUpd
                     style={[styles.notifBtn, !meeting.isActive && { opacity: 0.4 }]}
                     disabled={!meeting.isActive}
                     onPress={() => {
-                      Alert.alert(
-                        '📢 Send Notification',
-                        `Notify all users about "${meeting.title}"?`,
-                        [
-                          { text: 'Cancel', style: 'cancel' },
-                          {
-                            text: 'Send',
-                            onPress: async () => {
-                              await sendNotificationToAll(meeting);
-                              Alert.alert('✅ Sent!', 'Notification sent to all users.');
-                            },
+                      Alert.alert('📢 Send Notification', `Notify all users about "${meeting.title}"?`, [
+                        { text: 'Cancel', style: 'cancel' },
+                        {
+                          text: 'Send',
+                          onPress: async () => {
+                            await sendNotificationToAll(meeting);
+                            Alert.alert('✅ Sent!', 'Notification sent to all users.');
                           },
-                        ]
-                      );
+                        },
+                      ]);
                     }}
                   >
                     <Text style={styles.notifBtnText}>📢 Notify</Text>
@@ -351,56 +366,27 @@ const SpecialMeetingsAdmin = forwardRef<AdminScreenHandle, Props>(({ onEventsUpd
 
           <View style={styles.formField}>
             <Text style={styles.formLabel}>Title *</Text>
-            <TextInput
-              style={styles.formInput}
-              placeholder="e.g. TGH Special Meeting"
-              placeholderTextColor="#999"
-              value={form.title}
-              onChangeText={v => F('title', v)}
-            />
+            <TextInput style={styles.formInput} placeholder="e.g. TGH Special Meeting" placeholderTextColor="#999" value={form.title} onChangeText={v => F('title', v)} />
           </View>
 
           <View style={styles.formField}>
             <Text style={styles.formLabel}>Description</Text>
-            <TextInput
-              style={[styles.formInput, styles.formInputMulti]}
-              placeholder="Brief description"
-              placeholderTextColor="#999"
-              value={form.description}
-              onChangeText={v => F('description', v)}
-              multiline
-            />
+            <TextInput style={[styles.formInput, styles.formInputMulti]} placeholder="Brief description" placeholderTextColor="#999" value={form.description} onChangeText={v => F('description', v)} multiline />
           </View>
 
           <View style={styles.formField}>
             <Text style={styles.formLabel}>Start Date *</Text>
-            <TextInput
-              style={styles.formInput}
-              placeholder="e.g. August 15, 2026"
-              placeholderTextColor="#999"
-              value={form.date}
-              onChangeText={v => F('date', v)}
-            />
+            <TextInput style={styles.formInput} placeholder="e.g. August 15, 2026" placeholderTextColor="#999" value={form.date} onChangeText={v => F('date', v)} />
           </View>
 
           <View style={styles.formField}>
             <Text style={styles.formLabel}>Number of Days</Text>
             <View style={styles.segmentRow}>
-              <TouchableOpacity
-                style={[styles.segmentBtn, form.numberOfDays === '1' && styles.segmentBtnActive]}
-                onPress={() => F('numberOfDays', '1')}
-              >
-                <Text style={[styles.segmentBtnText, form.numberOfDays === '1' && styles.segmentBtnTextActive]}>
-                  1 Day
-                </Text>
+              <TouchableOpacity style={[styles.segmentBtn, form.numberOfDays === '1' && styles.segmentBtnActive]} onPress={() => F('numberOfDays', '1')}>
+                <Text style={[styles.segmentBtnText, form.numberOfDays === '1' && styles.segmentBtnTextActive]}>1 Day</Text>
               </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.segmentBtn, form.numberOfDays === 'multiple' && styles.segmentBtnActive]}
-                onPress={() => F('numberOfDays', 'multiple')}
-              >
-                <Text style={[styles.segmentBtnText, form.numberOfDays === 'multiple' && styles.segmentBtnTextActive]}>
-                  More Than One Day
-                </Text>
+              <TouchableOpacity style={[styles.segmentBtn, form.numberOfDays === 'multiple' && styles.segmentBtnActive]} onPress={() => F('numberOfDays', 'multiple')}>
+                <Text style={[styles.segmentBtnText, form.numberOfDays === 'multiple' && styles.segmentBtnTextActive]}>More Than One Day</Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -408,102 +394,47 @@ const SpecialMeetingsAdmin = forwardRef<AdminScreenHandle, Props>(({ onEventsUpd
           {form.numberOfDays === 'multiple' && (
             <View style={styles.formField}>
               <Text style={styles.formLabel}>End Date *</Text>
-              <TextInput
-                style={styles.formInput}
-                placeholder="e.g. August 17, 2026"
-                placeholderTextColor="#999"
-                value={form.endDate}
-                onChangeText={v => F('endDate', v)}
-              />
+              <TextInput style={styles.formInput} placeholder="e.g. August 17, 2026" placeholderTextColor="#999" value={form.endDate} onChangeText={v => F('endDate', v)} />
             </View>
           )}
 
           <View style={styles.formField}>
             <Text style={styles.formLabel}>Time</Text>
-            <TextInput
-              style={styles.formInput}
-              placeholder="e.g. 6:30 PM"
-              placeholderTextColor="#999"
-              value={form.time}
-              onChangeText={v => F('time', v)}
-            />
+            <TextInput style={styles.formInput} placeholder="e.g. 6:30 PM" placeholderTextColor="#999" value={form.time} onChangeText={v => F('time', v)} />
           </View>
 
           <View style={styles.formField}>
             <Text style={styles.formLabel}>Location</Text>
-            <TextInput
-              style={styles.formInput}
-              placeholder="Venue name & city"
-              placeholderTextColor="#999"
-              value={form.location}
-              onChangeText={v => F('location', v)}
-            />
+            <TextInput style={styles.formInput} placeholder="Venue name & city" placeholderTextColor="#999" value={form.location} onChangeText={v => F('location', v)} />
           </View>
 
           <View style={styles.formField}>
             <Text style={styles.formLabel}>Google Maps Link</Text>
-            <TextInput
-              style={styles.formInput}
-              placeholder="https://maps.app.goo.gl/..."
-              placeholderTextColor="#999"
-              value={form.mapLink}
-              onChangeText={v => F('mapLink', v)}
-              autoCapitalize="none"
-            />
+            <TextInput style={styles.formInput} placeholder="https://maps.app.goo.gl/..." placeholderTextColor="#999" value={form.mapLink} onChangeText={v => F('mapLink', v)} autoCapitalize="none" />
           </View>
 
           <View style={styles.formField}>
             <Text style={styles.formLabel}>YouTube Link</Text>
-            <TextInput
-              style={styles.formInput}
-              placeholder="https://youtube.com/watch?v=..."
-              placeholderTextColor="#999"
-              value={form.youtubeLink}
-              onChangeText={v => F('youtubeLink', v)}
-              autoCapitalize="none"
-            />
+            <TextInput style={styles.formInput} placeholder="https://youtube.com/watch?v=..." placeholderTextColor="#999" value={form.youtubeLink} onChangeText={v => F('youtubeLink', v)} autoCapitalize="none" />
           </View>
 
           <View style={styles.formField}>
             <Text style={styles.formLabel}>Additional Info</Text>
-            <TextInput
-              style={[styles.formInput, styles.formInputMulti]}
-              placeholder="Any extra details"
-              placeholderTextColor="#999"
-              value={form.additionalInfo}
-              onChangeText={v => F('additionalInfo', v)}
-              multiline
-            />
+            <TextInput style={[styles.formInput, styles.formInputMulti]} placeholder="Any extra details" placeholderTextColor="#999" value={form.additionalInfo} onChangeText={v => F('additionalInfo', v)} multiline />
           </View>
 
           <View style={styles.formField}>
             <Text style={styles.formLabel}>Order (display sequence)</Text>
-            <TextInput
-              style={styles.formInput}
-              placeholder="1"
-              placeholderTextColor="#999"
-              value={String(form.order)}
-              onChangeText={v => F('order', parseInt(v) || 1)}
-              keyboardType="number-pad"
-            />
+            <TextInput style={styles.formInput} placeholder="1" placeholderTextColor="#999" value={String(form.order)} onChangeText={v => F('order', parseInt(v) || 1)} keyboardType="number-pad" />
           </View>
 
           <View style={styles.toggleRow}>
             <Text style={styles.formLabel}>Show to users</Text>
-            <Switch
-              value={form.isActive}
-              onValueChange={v => F('isActive', v)}
-              trackColor={{ true: '#7209b7', false: '#ccc' }}
-            />
+            <Switch value={form.isActive} onValueChange={v => F('isActive', v)} trackColor={{ true: '#7209b7', false: '#ccc' }} />
           </View>
-          <TouchableOpacity
-            style={[styles.saveBtn, saving && { opacity: 0.6 }]}
-            onPress={saveMeeting}
-            disabled={saving}
-          >
-            <Text style={styles.saveBtnText}>
-              {saving ? 'Saving...' : editingId ? '💾 Update Meeting' : '💾 Add Meeting'}
-            </Text>
+
+          <TouchableOpacity style={[styles.saveBtn, saving && { opacity: 0.6 }]} onPress={saveMeeting} disabled={saving}>
+            <Text style={styles.saveBtnText}>{saving ? 'Saving...' : editingId ? '💾 Update Meeting' : '💾 Add Meeting'}</Text>
           </TouchableOpacity>
           <TouchableOpacity onPress={() => setShowForm(false)} style={styles.cancelBtn}>
             <Text style={styles.cancelBtnText}>Cancel</Text>
@@ -543,15 +474,7 @@ const styles = StyleSheet.create({
   formInput: { backgroundColor: '#fff', borderRadius: 10, padding: 12, fontSize: 15, elevation: 2, borderWidth: 1, borderColor: '#eee', color: '#1a1a2e' },
   formInputMulti: { minHeight: 80, textAlignVertical: 'top' },
   segmentRow: { flexDirection: 'row', gap: 10 },
-  segmentBtn: {
-    flex: 1,
-    paddingVertical: 12,
-    borderRadius: 10,
-    backgroundColor: '#fff',
-    borderWidth: 1,
-    borderColor: '#eee',
-    alignItems: 'center',
-  },
+  segmentBtn: { flex: 1, paddingVertical: 12, borderRadius: 10, backgroundColor: '#fff', borderWidth: 1, borderColor: '#eee', alignItems: 'center' },
   segmentBtnActive: { backgroundColor: '#7209b7', borderColor: '#7209b7' },
   segmentBtnText: { fontSize: 13, fontWeight: '600', color: '#555' },
   segmentBtnTextActive: { color: '#fff' },

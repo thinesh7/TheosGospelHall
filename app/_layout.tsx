@@ -6,15 +6,19 @@ import { StatusBar } from 'expo-status-bar';
 import { useEffect, useState } from 'react';
 import 'react-native-reanimated';
 
+import WelcomeSetupScreen from '@/components/WelcomeSetupScreen';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { loadBibleSettings } from '@/utils/bibleSettings';
 import { getCachedHomeContent } from '@/utils/homeContentSync';
+import {
+  configureNotificationHandler,
+  registerForPushNotifications,
+  setupNotificationListeners,
+  setupTokenRefreshListener,
+} from '@/utils/notifications';
 import { ThemeProvider as AppThemeProvider } from '@/utils/ThemeContext';
-import WelcomeSetupScreen from '@/components/WelcomeSetupScreen';
 
-export const unstable_settings = {
-  anchor: '(tabs)',
-};
+export const unstable_settings = { anchor: '(tabs)' };
 
 const SETUP_KEY = 'tgh_app_setup_complete';
 
@@ -27,7 +31,7 @@ export default function RootLayout() {
   const [appState, setAppState] = useState<AppState>('checking');
 
   useEffect(() => {
-    const init = async () => {
+    (async () => {
       try {
         const setupDone = await AsyncStorage.getItem(SETUP_KEY);
         if (!setupDone) {
@@ -36,7 +40,7 @@ export default function RootLayout() {
         } else {
           await Promise.race([
             Promise.all([getCachedHomeContent(), loadBibleSettings()]),
-            new Promise(resolve => setTimeout(resolve, 1500)),
+            new Promise(r => setTimeout(r, 1500)),
           ]);
           SplashScreen.hideAsync().catch(() => {});
           setAppState('ready');
@@ -45,14 +49,20 @@ export default function RootLayout() {
         SplashScreen.hideAsync().catch(() => {});
         setAppState('ready');
       }
-    };
-    init();
+    })();
   }, []);
 
-  const handleSetupComplete = async () => {
-    await AsyncStorage.setItem(SETUP_KEY, '1').catch(() => {});
-    setAppState('ready');
-  };
+  useEffect(() => {
+    if (appState !== 'ready') return;
+    configureNotificationHandler();
+    registerForPushNotifications();
+    const tokenSub = setupTokenRefreshListener();
+    const removeListeners = setupNotificationListeners();
+    return () => {
+      tokenSub.remove();
+      removeListeners();
+    };
+  }, [appState]);
 
   if (appState === 'checking') return null;
 
@@ -60,7 +70,10 @@ export default function RootLayout() {
     <AppThemeProvider>
       <NavThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
         {appState === 'welcome' ? (
-          <WelcomeSetupScreen onComplete={handleSetupComplete} />
+          <WelcomeSetupScreen onComplete={async () => {
+            await AsyncStorage.setItem(SETUP_KEY, '1').catch(() => {});
+            setAppState('ready');
+          }} />
         ) : (
           <Stack>
             <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
