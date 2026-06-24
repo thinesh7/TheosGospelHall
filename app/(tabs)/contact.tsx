@@ -1,5 +1,6 @@
 import ChurchInfo from '@/components/ChurchInfo';
 import { Ionicons } from '@expo/vector-icons';
+import Constants from 'expo-constants';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useFocusEffect } from 'expo-router';
 import { onAuthStateChanged, signInWithEmailAndPassword } from 'firebase/auth';
@@ -20,6 +21,8 @@ import Paragraphs from '../../components/Paragraphs';
 import { auth } from '../../firebaseConfig';
 import { useTheme } from '../../utils/ThemeContext';
 import { getCachedHomeContent, getMemoryCachedHomeContent, HomeContent, subscribeHomeContent } from '../../utils/homeContentSync';
+
+const APP_VERSION = Constants.expoConfig?.version ?? '1.0.0';
 
 export default function AboutScreen() {
   const { colors } = useTheme();
@@ -215,7 +218,11 @@ export default function AboutScreen() {
         );
       })()}
 
-      <View style={{ height: 40 }} />
+      <View style={[styles.footer, { borderTopColor: colors.divider }]}>
+        <Text style={[styles.footerVersion, { color: colors.subtext }]}>Version {APP_VERSION}</Text>
+        <Text style={[styles.footerCopy, { color: colors.subtext }]}>© {new Date().getFullYear()} Theos Gospel Hall</Text>
+        <Text style={[styles.footerRights, { color: colors.subtext }]}>All rights reserved.</Text>
+      </View>
 
       <AdminPanel
         visible={showAdmin}
@@ -237,6 +244,10 @@ const styles = StyleSheet.create({
   rowText: { fontSize: 14, flex: 1 },
   link: { textDecorationLine: 'underline' },
   aboutText: { fontSize: 14, lineHeight: 24, textAlign: 'left' },
+  footer: { alignItems: 'center', paddingVertical: 24, marginTop: 24, marginHorizontal: 16, borderTopWidth: 1 },
+  footerVersion: { fontSize: 12, fontWeight: '600', marginBottom: 4 },
+  footerCopy: { fontSize: 12, marginBottom: 2 },
+  footerRights: { fontSize: 11 },
   loginScreen: { flex: 1 },
   loginScroll: { flexGrow: 1 },
   loginHeader: { padding: 14, paddingTop: 20, alignItems: 'center' },
