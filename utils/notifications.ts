@@ -1,13 +1,38 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import * as Application from 'expo-application';
 import Constants from 'expo-constants';
 import * as Device from 'expo-device';
-import { doc, setDoc } from 'firebase/firestore';
+import { doc, increment, setDoc } from 'firebase/firestore';
 import { Alert, Linking, Platform } from 'react-native';
 import { db } from '../firebaseConfig';
 
 const isExpoGo = Constants.appOwnership === 'expo';
 const TOKEN_KEY = 'tgh_push_token';
+const TOKEN_FETCHED_AT_KEY = 'tgh_push_token_fetched_at';
+const TOKEN_MAX_AGE_MS = 30 * 24 * 60 * 60 * 1000;
 const CHANNEL_ID = 'tgh-default';
+
+const DEVICE_UUID_KEY = 'tgh_device_uuid';
+
+async function getStableDeviceId(): Promise<{ id: string; isGuaranteedUnique: boolean }> {
+  const androidId = Platform.OS === 'android'
+    ? (Application.getAndroidId?.() ?? null)
+    : null;
+  const model = (Device.modelName ?? 'unknown').replace(/[^a-zA-Z0-9]/g, '_').slice(0, 20);
+
+  if (androidId) {
+    return { id: `${model}_${androidId}`, isGuaranteedUnique: true };
+  }
+
+  const cached = await AsyncStorage.getItem(DEVICE_UUID_KEY).catch(() => null);
+  if (cached) {
+    return { id: `${model}_${cached}`, isGuaranteedUnique: false };
+  }
+
+  const uuid = `${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 10)}`;
+  await AsyncStorage.setItem(DEVICE_UUID_KEY, uuid).catch(() => {});
+  return { id: `${model}_${uuid}`, isGuaranteedUnique: false };
+}
 
 function getNotifications() {
   return require('expo-notifications') as typeof import('expo-notifications');
@@ -54,44 +79,63 @@ async function getProjectId(): Promise<string | undefined> {
 
 async function logTokenError(step: string, error: any) {
   try {
-    const d = new Date();
-    const months = ['JAN','FEB','MAR','APR','MAY','JUN','JUL','AUG','SEP','OCT','NOV','DEC'];
-    const month = months[d.getMonth()];
-    const year = d.getFullYear();
-    const day = d.getDate();
-    const h24 = d.getHours();
-    const ampm = h24 >= 12 ? 'PM' : 'AM';
-    const h12 = h24 % 12 || 12;
-    const min = String(d.getMinutes()).padStart(2, '0');
-    const sec = String(d.getSeconds()).padStart(2, '0');
-    const rand = Math.random().toString(36).substring(2, 5).toUpperCase();
-    const docId = `${month}_${year}_${day}_${h12}_${min}_${sec}_${ampm}_${rand}`;
-    await setDoc(
-      doc(db, 'tokenErrors', docId),
-      {
+    const errorMsg = String(error?.message ?? error ?? 'unknown');
+    const errorCode = FATAL_ERROR_CODES.find(c => errorMsg.includes(c)) ?? 'UNKNOWN';
+    const { id: deviceId, isGuaranteedUnique } = await getStableDeviceId();
+    const now = Date.now();
+
+    const docId = isGuaranteedUnique
+      ? `${deviceId}_${step}_${errorCode}`
+      : `${deviceId}_${step}_${errorCode}_${now}`;
+
+    const ref = doc(db, 'tokenErrors', docId);
+
+    if (isGuaranteedUnique) {
+      await setDoc(ref, {
         step,
-        error: String(error?.message ?? error ?? 'unknown'),
+        error: errorMsg,
         model: Device.modelName ?? 'unknown',
         brand: Device.brand ?? 'unknown',
         osVersion: Device.osVersion ?? 'unknown',
         androidVersion: Device.platformApiLevel ?? 'unknown',
+        osBuildId: Device.osBuildId ?? Device.osInternalBuildId ?? 'unknown',
         platform: Platform.OS,
-        timestamp: Date.now(),
-      }
-    );
+        lastSeen: now,
+        count: increment(1),
+      }, { merge: true });
+      await setDoc(ref, { firstSeen: now }, { merge: true });
+    } else {
+      await setDoc(ref, {
+        step,
+        error: errorMsg,
+        model: Device.modelName ?? 'unknown',
+        brand: Device.brand ?? 'unknown',
+        osVersion: Device.osVersion ?? 'unknown',
+        androidVersion: Device.platformApiLevel ?? 'unknown',
+        osBuildId: Device.osBuildId ?? Device.osInternalBuildId ?? 'unknown',
+        platform: Platform.OS,
+        firstSeen: now,
+        lastSeen: now,
+        count: 1,
+      });
+    }
   } catch {}
 }
 
 async function saveTokenToFirestore(token: string) {
-  const safeId = token.replace(/[^a-zA-Z0-9]/g, '_');
+  const { id: deviceId, isGuaranteedUnique } = await getStableDeviceId();
+  const docId = isGuaranteedUnique
+    ? deviceId
+    : `${deviceId}_${token.replace(/[^a-zA-Z0-9]/g, '').slice(-12)}`;
   await setDoc(
-    doc(db, 'pushTokens', safeId),
+    doc(db, 'pushTokens', docId),
     {
       token,
       platform: Platform.OS,
       model: Device.modelName ?? 'unknown',
       brand: Device.brand ?? 'unknown',
       osVersion: Device.osVersion ?? 'unknown',
+      osBuildId: Device.osBuildId ?? Device.osInternalBuildId ?? 'unknown',
       updatedAt: Date.now(),
     },
     { merge: true }
@@ -102,6 +146,7 @@ async function saveToken(token: string) {
   if (!token.startsWith('ExponentPushToken')) return;
   try {
     await AsyncStorage.setItem(TOKEN_KEY, token);
+    await AsyncStorage.setItem(TOKEN_FETCHED_AT_KEY, String(Date.now()));
   } catch {}
   try {
     await saveTokenToFirestore(token);
@@ -162,9 +207,13 @@ export async function registerForPushNotifications(): Promise<string | null> {
   }
 
   const cached = await AsyncStorage.getItem(TOKEN_KEY).catch(() => null);
-  if (cached && cached.startsWith('ExponentPushToken')) {
+  const fetchedAt = await AsyncStorage.getItem(TOKEN_FETCHED_AT_KEY).catch(() => null);
+  const tokenAge = fetchedAt ? Date.now() - parseInt(fetchedAt) : Infinity;
+  const isTokenFresh = cached && cached.startsWith('ExponentPushToken') && tokenAge < TOKEN_MAX_AGE_MS;
+
+  if (isTokenFresh) {
     try {
-      await saveTokenToFirestore(cached);
+      await saveTokenToFirestore(cached!);
     } catch (e) {
       await logTokenError('cachedTokenFirestoreSync', e);
     }

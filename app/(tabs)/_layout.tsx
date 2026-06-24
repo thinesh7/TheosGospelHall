@@ -1,4 +1,5 @@
 import { Ionicons } from '@expo/vector-icons';
+import * as ScreenOrientation from 'expo-screen-orientation';
 import { useEffect, useRef, useState } from 'react';
 import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import PagerView from 'react-native-pager-view';
@@ -18,6 +19,8 @@ const TABS = [
   { name: 'Contact', icon: 'call' },
 ];
 
+const PORTRAIT_LOCKED_TABS = [2, 3];
+
 export default function TabLayout() {
   const { colors } = useTheme();
   const [activeTab, setActiveTab] = useState(0);
@@ -33,6 +36,11 @@ export default function TabLayout() {
       next.add(activeTab);
       return next;
     });
+    if (PORTRAIT_LOCKED_TABS.includes(activeTab)) {
+      ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.PORTRAIT_UP);
+    } else {
+      ScreenOrientation.unlockAsync();
+    }
   }, [activeTab]);
 
   const goToTab = (index: number) => {

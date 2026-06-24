@@ -1,4 +1,5 @@
 import { Ionicons } from '@expo/vector-icons';
+import * as ScreenOrientation from 'expo-screen-orientation';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
@@ -27,9 +28,7 @@ const VIDEOS_PLAYLIST_ID = 'PLZISpWbe8RUgXpqMWjZCAZUTmYQ8b1qAb';
 const FALLBACK_LIVE_IDS = ['PLZISpWbe8RUidyhPJNs5xa8-WOnHq-NLj'];
 
 const getWindow = () => Dimensions.get('window');
-
-const { width: SW, height: SH } = getWindow();
-const SHORTS_PLAYER_H = SH * 0.55;
+const { width: SW } = getWindow();
 
 type Tab = 'shorts' | 'videos' | 'live' | 'all';
 
@@ -81,37 +80,22 @@ const mapItems = (raw: any[]) =>
 async function enrichDates(items: any[]): Promise<any[]> {
   const ids = items.map(i => i?.snippet?.resourceId?.videoId).filter(Boolean);
   if (!ids.length) return items;
-
   const chunks: string[][] = [];
   for (let i = 0; i < ids.length; i += 50) chunks.push(ids.slice(i, i + 50));
-
   const map: Record<string, string> = {};
-
   for (const chunk of chunks) {
     try {
-      const data = await ytFetch('videos', {
-        id: chunk.join(','),
-        part: 'snippet,liveStreamingDetails',
-      });
+      const data = await ytFetch('videos', { id: chunk.join(','), part: 'snippet,liveStreamingDetails' });
       (data.items || []).forEach((v: any) => {
         if (!v?.id) return;
-        const liveStart = v?.liveStreamingDetails?.actualStartTime;
-        const published = v?.snippet?.publishedAt;
-        map[v.id] = liveStart || published;
+        map[v.id] = v?.liveStreamingDetails?.actualStartTime || v?.snippet?.publishedAt;
       });
     } catch {}
   }
-
   return items.map(item => {
     const videoId = item?.snippet?.resourceId?.videoId;
     const authoritative = videoId ? map[videoId] : undefined;
-    return {
-      ...item,
-      snippet: {
-        ...item.snippet,
-        publishedAt: authoritative || item.snippet?.publishedAt,
-      },
-    };
+    return { ...item, snippet: { ...item.snippet, publishedAt: authoritative || item.snippet?.publishedAt } };
   });
 }
 
@@ -145,9 +129,7 @@ function BrokenTvIcon() {
   );
 }
 
-interface VideoErrorProps {
-  onRetry: () => void;
-}
+interface VideoErrorProps { onRetry: () => void; }
 
 function VideoErrorState({ onRetry }: VideoErrorProps) {
   const { colors } = useTheme();
@@ -190,18 +172,14 @@ function VideoLoadingState() {
   const [msgIndex, setMsgIndex] = useState(0);
 
   useEffect(() => {
-    Animated.loop(
-      Animated.timing(spinAnim, { toValue: 1, duration: 2000, easing: Easing.linear, useNativeDriver: true })
-    ).start();
+    Animated.loop(Animated.timing(spinAnim, { toValue: 1, duration: 2000, easing: Easing.linear, useNativeDriver: true })).start();
   }, []);
 
   useEffect(() => {
-    Animated.loop(
-      Animated.sequence([
-        Animated.timing(scaleAnim, { toValue: 1.04, duration: 900, useNativeDriver: true }),
-        Animated.timing(scaleAnim, { toValue: 0.95, duration: 900, useNativeDriver: true }),
-      ])
-    ).start();
+    Animated.loop(Animated.sequence([
+      Animated.timing(scaleAnim, { toValue: 1.04, duration: 900, useNativeDriver: true }),
+      Animated.timing(scaleAnim, { toValue: 0.95, duration: 900, useNativeDriver: true }),
+    ])).start();
   }, []);
 
   useEffect(() => {
@@ -219,22 +197,16 @@ function VideoLoadingState() {
   return (
     <View style={loadingStyles.container}>
       <View style={loadingStyles.filmStrip}>
-        {[...Array(5)].map((_, i) => (
-          <View key={i} style={loadingStyles.filmHole} />
-        ))}
+        {[...Array(5)].map((_, i) => <View key={i} style={loadingStyles.filmHole} />)}
       </View>
       <Animated.View style={[loadingStyles.playCircle, { transform: [{ scale: scaleAnim }] }]}>
         <Animated.View style={[loadingStyles.spinRing, { transform: [{ rotate: spin }] }]} />
         <Ionicons name="play" size={36} color="#fff" style={{ marginLeft: 4 }} />
       </Animated.View>
       <View style={loadingStyles.filmStrip}>
-        {[...Array(5)].map((_, i) => (
-          <View key={i} style={loadingStyles.filmHole} />
-        ))}
+        {[...Array(5)].map((_, i) => <View key={i} style={loadingStyles.filmHole} />)}
       </View>
-      <Animated.Text style={[loadingStyles.message, { opacity: fadeAnim }]}>
-        {LOADING_MESSAGES[msgIndex]}
-      </Animated.Text>
+      <Animated.Text style={[loadingStyles.message, { opacity: fadeAnim }]}>{LOADING_MESSAGES[msgIndex]}</Animated.Text>
       <Text style={loadingStyles.subMessage}>This may take a few seconds</Text>
     </View>
   );
@@ -260,9 +232,7 @@ function TabLoadingState({ tab }: { tab: string }) {
   const messages = TAB_LOADING_MESSAGES[tab] || TAB_LOADING_MESSAGES.videos;
 
   useEffect(() => {
-    Animated.loop(
-      Animated.timing(spinAnim, { toValue: 1, duration: 1800, easing: Easing.linear, useNativeDriver: true })
-    ).start();
+    Animated.loop(Animated.timing(spinAnim, { toValue: 1, duration: 1800, easing: Easing.linear, useNativeDriver: true })).start();
   }, []);
 
   useEffect(() => {
@@ -298,13 +268,12 @@ function TabLoadingState({ tab }: { tab: string }) {
           <Animated.View key={i} style={[tabLoadingStyles.bar, { backgroundColor: colors.accent, opacity: bar }]} />
         ))}
       </View>
-      <Animated.Text style={[tabLoadingStyles.message, { color: colors.text, opacity: fadeAnim }]}>
-        {messages[msgIndex]}
-      </Animated.Text>
+      <Animated.Text style={[tabLoadingStyles.message, { color: colors.text, opacity: fadeAnim }]}>{messages[msgIndex]}</Animated.Text>
       <Text style={[tabLoadingStyles.sub, { color: colors.subtext }]}>Fetching from YouTube...</Text>
     </View>
   );
 }
+
 interface VideoModalProps {
   visible: boolean;
   videoId: string | null;
@@ -314,38 +283,36 @@ interface VideoModalProps {
 
 function VideoModal({ visible, videoId, title, onClose }: VideoModalProps) {
   const { width, height } = useWindowDimensions();
-  const playerH = width * 9 / 16;
   const isLandscape = width > height;
   const [playerReady, setPlayerReady] = useState(false);
 
-  useEffect(() => {
-    if (!visible) setPlayerReady(false);
-  }, [visible]);
+  useEffect(() => { if (!visible) setPlayerReady(false); }, [visible]);
 
   return (
     <Modal visible={visible} animationType="slide" statusBarTranslucent onRequestClose={onClose}>
-      <View style={[styles.videoModal, isLandscape && { flexDirection: 'row' }]}>
+      <View style={[styles.videoModal, isLandscape && styles.videoModalLandscape]}>
         <StatusBar hidden />
         {!playerReady && (
           <View style={[StyleSheet.absoluteFillObject, { backgroundColor: '#0a0a0a', justifyContent: 'center', alignItems: 'center', zIndex: 10 }]}>
             <VideoLoadingState />
           </View>
         )}
-        <YoutubePlayer
-          height={isLandscape ? height : playerH}
-          width={isLandscape ? width * 0.65 : width}
-          videoId={videoId || ''}
-          play={visible && !!videoId}
-          onReady={() => setPlayerReady(true)}
-          webViewProps={{ allowsInlineMediaPlayback: true, mediaPlaybackRequiresUserAction: false }}
-        />
+        {(() => {
+          const videoH = isLandscape ? height : width * 9 / 16;
+          const videoW = isLandscape ? height * 16 / 9 : width;
+          return (
+            <YoutubePlayer
+              height={videoH}
+              width={videoW}
+              videoId={videoId || ''}
+              play={visible && !!videoId}
+              onReady={() => setPlayerReady(true)}
+              webViewProps={{ allowsInlineMediaPlayback: true, mediaPlaybackRequiresUserAction: false, allowsFullscreenVideo: true }}
+            />
+          );
+        })()}
         {!isLandscape && <Text style={styles.videoModalTitle} numberOfLines={3}>{title}</Text>}
-        {isLandscape && (
-          <View style={{ flex: 1, justifyContent: 'center', paddingHorizontal: 20 }}>
-            <Text style={styles.videoModalTitle} numberOfLines={4}>{title}</Text>
-          </View>
-        )}
-        <TouchableOpacity style={styles.modalClose} onPress={onClose}>
+        <TouchableOpacity style={[styles.modalClose, isLandscape && styles.modalCloseLandscape]} onPress={onClose}>
           <Ionicons name="close" size={26} color="#fff" />
         </TouchableOpacity>
       </View>
@@ -354,27 +321,27 @@ function VideoModal({ visible, videoId, title, onClose }: VideoModalProps) {
 }
 
 function ShortsPlayerItemInner({ item, index, isActive, onEnd, onClose, total }: any) {
-  const { width, height } = useWindowDimensions();
-  const shortsH = height * 0.55;
   const [shortReady, setShortReady] = useState(false);
   const videoId = item?.snippet?.resourceId?.videoId;
+  const { width: w, height: h } = useWindowDimensions();
+  const shortsH = h * 0.55;
 
   useEffect(() => { setShortReady(false); }, [videoId]);
 
   return (
-    <View style={{ width, height, backgroundColor: '#000', justifyContent: 'center', alignItems: 'center' }}>
+    <View style={{ width: w, height: h, backgroundColor: '#000', justifyContent: 'center', alignItems: 'center' }}>
       <StatusBar hidden />
-      <View style={{ width, height: shortsH, backgroundColor: '#000', justifyContent: 'center', alignItems: 'center', marginTop: height * 0.15 }}>
+      <View style={{ width: w, height: shortsH, backgroundColor: '#000', justifyContent: 'center', alignItems: 'center', marginTop: h * 0.15 }}>
         {isActive ? (
           <>
             {!shortReady && (
-              <View style={[StyleSheet.absoluteFillObject, { backgroundColor: '#0a0a0a', justifyContent: 'center', alignItems: 'center', zIndex: 10, marginBottom: height * 0.3 }]}>
+              <View style={[StyleSheet.absoluteFillObject, { backgroundColor: '#0a0a0a', justifyContent: 'center', alignItems: 'center', zIndex: 10, marginBottom: h * 0.2 }]}>
                 <VideoLoadingState />
               </View>
             )}
             <YoutubePlayer
               height={shortsH}
-              width={width}
+              width={w}
               videoId={videoId}
               play
               onReady={() => setShortReady(true)}
@@ -384,7 +351,7 @@ function ShortsPlayerItemInner({ item, index, isActive, onEnd, onClose, total }:
             />
           </>
         ) : (
-          <View style={{ width, height: shortsH, backgroundColor: '#000' }} />
+          <View style={{ width: w, height: shortsH, backgroundColor: '#000' }} />
         )}
       </View>
       <View style={styles.shortsOverlay}>
@@ -436,11 +403,9 @@ export default function VideosScreen() {
   const [loadingMoreAll, setLoadingMoreAll] = useState(false);
 
   const [refreshing, setRefreshing] = useState(false);
-
   const [videoModalVisible, setVideoModalVisible] = useState(false);
   const [activeVideoId, setActiveVideoId] = useState<string | null>(null);
   const [activeVideoTitle, setActiveVideoTitle] = useState('');
-
   const [shortsPlayerVisible, setShortsPlayerVisible] = useState(false);
   const [currentShortIndex, setCurrentShortIndex] = useState(0);
   const [playingShortId, setPlayingShortId] = useState<string | null>(null);
@@ -453,7 +418,6 @@ export default function VideosScreen() {
   useEffect(() => { shortsNextRef.current = shortsNextToken; }, [shortsNextToken]);
   useEffect(() => { loadingMoreShortsRef.current = loadingMoreShorts; }, [loadingMoreShorts]);
   useEffect(() => { shortsDataRef.current = shorts; }, [shorts]);
-
   useEffect(() => { fetchShorts(); }, []);
 
   useEffect(() => {
@@ -480,6 +444,15 @@ export default function VideosScreen() {
       fetchShorts('', true);
     }
   }, [activeTab]);
+
+  useEffect(() => {
+    if (shortsPlayerVisible) {
+      ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.PORTRAIT_UP);
+    } else {
+      ScreenOrientation.unlockAsync();
+    }
+    return () => { ScreenOrientation.unlockAsync(); };
+  }, [shortsPlayerVisible]);
 
   const openVideo = (videoId: string, title: string) => {
     setActiveVideoId(videoId);
@@ -573,22 +546,11 @@ export default function VideosScreen() {
   const doSearch = async (query: string) => {
     try {
       setSearching(true);
-      const data = await ytFetch('search', {
-        channelId: CHANNEL_ID,
-        part: 'snippet',
-        type: 'video',
-        maxResults: '50',
-        order: 'relevance',
-        q: query,
-      });
+      const data = await ytFetch('search', { channelId: CHANNEL_ID, part: 'snippet', type: 'video', maxResults: '50', order: 'relevance', q: query });
       const q = query.toLowerCase();
       setSearchResults(
         (data.items || [])
-          .filter((i: any) =>
-            i?.id?.videoId &&
-            i?.snippet?.thumbnails &&
-            decodeHtml(i.snippet.title).toLowerCase().includes(q)
-          )
+          .filter((i: any) => i?.id?.videoId && i?.snippet?.thumbnails && decodeHtml(i.snippet.title).toLowerCase().includes(q))
           .map((i: any) => ({
             snippet: {
               title: decodeHtml(i.snippet.title),
@@ -772,79 +734,31 @@ export default function VideosScreen() {
       {isSearching && (
         searching
           ? <TabLoadingState tab="search" />
-          : <FlatList
-              data={searchResults}
-              keyExtractor={(_, i) => `sr${i}`}
-              renderItem={({ item }) => <VideoCard item={item} />}
-              contentContainerStyle={styles.list}
-              ListEmptyComponent={<Text style={[styles.empty, { color: colors.subtext }]}>No results found</Text>}
-            />
+          : <FlatList data={searchResults} keyExtractor={(_, i) => `sr${i}`} renderItem={({ item }) => <VideoCard item={item} />} contentContainerStyle={styles.list} ListEmptyComponent={<Text style={[styles.empty, { color: colors.subtext }]}>No results found</Text>} />
       )}
 
       {!isSearching && activeTab === 'shorts' && (
         loadingShorts ? <TabLoadingState tab="shorts" />
         : shortsError ? <VideoErrorState onRetry={() => { setShortsLoaded(false); fetchShorts(); }} />
-        : <FlatList
-            data={shorts}
-            keyExtractor={i => i.snippet.resourceId.videoId}
-            refreshing={refreshing}
-            onRefresh={onRefresh}
-            renderItem={({ item, index }) => <ShortCard item={item} index={index} />}
-            numColumns={2}
-            contentContainerStyle={styles.list}
-            columnWrapperStyle={{ gap: 8 }}
-            ListEmptyComponent={<Text style={[styles.empty, { color: colors.subtext }]}>No shorts found</Text>}
-            ListFooterComponent={<LoadMore token={shortsNextToken} loading={loadingMoreShorts} onPress={() => fetchShorts(shortsNextToken)} />}
-          />
+        : <FlatList data={shorts} keyExtractor={i => i.snippet.resourceId.videoId} refreshing={refreshing} onRefresh={onRefresh} renderItem={({ item, index }) => <ShortCard item={item} index={index} />} numColumns={2} contentContainerStyle={styles.list} columnWrapperStyle={{ gap: 8 }} ListEmptyComponent={<Text style={[styles.empty, { color: colors.subtext }]}>No shorts found</Text>} ListFooterComponent={<LoadMore token={shortsNextToken} loading={loadingMoreShorts} onPress={() => fetchShorts(shortsNextToken)} />} />
       )}
 
       {!isSearching && activeTab === 'videos' && (
         loadingVideos ? <TabLoadingState tab="videos" />
         : videosError ? <VideoErrorState onRetry={() => { setVideosLoaded(false); fetchVideos(); }} />
-        : <FlatList
-            data={videos}
-            keyExtractor={i => i.snippet.resourceId.videoId}
-            refreshing={refreshing}
-            onRefresh={onRefresh}
-            renderItem={({ item }) => <VideoCard item={item} />}
-            contentContainerStyle={styles.list}
-            ListEmptyComponent={<Text style={[styles.empty, { color: colors.subtext }]}>No videos found</Text>}
-            ListFooterComponent={<LoadMore token={videosNextToken} loading={loadingMoreVideos} onPress={() => fetchVideos(videosNextToken)} />}
-          />
+        : <FlatList data={videos} keyExtractor={i => i.snippet.resourceId.videoId} refreshing={refreshing} onRefresh={onRefresh} renderItem={({ item }) => <VideoCard item={item} />} contentContainerStyle={styles.list} ListEmptyComponent={<Text style={[styles.empty, { color: colors.subtext }]}>No videos found</Text>} ListFooterComponent={<LoadMore token={videosNextToken} loading={loadingMoreVideos} onPress={() => fetchVideos(videosNextToken)} />} />
       )}
 
       {!isSearching && activeTab === 'live' && (
         loadingLive ? <TabLoadingState tab="live" />
         : liveError ? <VideoErrorState onRetry={() => { setLiveLoaded(false); loadLiveAndFetch(); }} />
-        : <FlatList
-            data={liveVideos}
-            keyExtractor={i => i.snippet.resourceId.videoId}
-            refreshing={refreshing}
-            onRefresh={onRefresh}
-            renderItem={({ item }) => <LiveCard item={item} />}
-            contentContainerStyle={styles.list}
-            ListEmptyComponent={<Text style={[styles.empty, { color: colors.subtext }]}>No live streams found</Text>}
-            ListFooterComponent={hasMoreLive
-              ? <TouchableOpacity style={[styles.loadMore, { backgroundColor: colors.accent }]} onPress={() => fetchLive(true)}>
-                  {loadingMoreLive ? <ActivityIndicator color="#fff" /> : <Text style={styles.loadMoreText}>Load More</Text>}
-                </TouchableOpacity>
-              : null}
-          />
+        : <FlatList data={liveVideos} keyExtractor={i => i.snippet.resourceId.videoId} refreshing={refreshing} onRefresh={onRefresh} renderItem={({ item }) => <LiveCard item={item} />} contentContainerStyle={styles.list} ListEmptyComponent={<Text style={[styles.empty, { color: colors.subtext }]}>No live streams found</Text>} ListFooterComponent={hasMoreLive ? <TouchableOpacity style={[styles.loadMore, { backgroundColor: colors.accent }]} onPress={() => fetchLive(true)}>{loadingMoreLive ? <ActivityIndicator color="#fff" /> : <Text style={styles.loadMoreText}>Load More</Text>}</TouchableOpacity> : null} />
       )}
 
       {!isSearching && activeTab === 'all' && (
         loadingAll ? <TabLoadingState tab="all" />
         : allError ? <VideoErrorState onRetry={() => { setAllLoaded(false); fetchAll(); }} />
-        : <FlatList
-            data={allVideos}
-            keyExtractor={i => i.snippet.resourceId.videoId}
-            refreshing={refreshing}
-            onRefresh={onRefresh}
-            renderItem={({ item }) => <VideoCard item={item} />}
-            contentContainerStyle={styles.list}
-            ListEmptyComponent={<Text style={[styles.empty, { color: colors.subtext }]}>No videos found</Text>}
-            ListFooterComponent={<LoadMore token={allNextToken} loading={loadingMoreAll} onPress={() => fetchAll(allNextToken)} />}
-          />
+        : <FlatList data={allVideos} keyExtractor={i => i.snippet.resourceId.videoId} refreshing={refreshing} onRefresh={onRefresh} renderItem={({ item }) => <VideoCard item={item} />} contentContainerStyle={styles.list} ListEmptyComponent={<Text style={[styles.empty, { color: colors.subtext }]}>No videos found</Text>} ListFooterComponent={<LoadMore token={allNextToken} loading={loadingMoreAll} onPress={() => fetchAll(allNextToken)} />} />
       )}
     </View>
   );
@@ -879,8 +793,10 @@ const styles = StyleSheet.create({
   shortsCounter: { color: 'rgba(255,255,255,0.7)', fontSize: 12 },
   shortsClose: { position: 'absolute', top: 50, right: 16, backgroundColor: 'rgba(0,0,0,0.5)', borderRadius: 20, padding: 6, zIndex: 10 },
   videoModal: { flex: 1, backgroundColor: '#000', justifyContent: 'center' },
+  videoModalLandscape: { justifyContent: 'center', alignItems: 'center' },
   videoModalTitle: { color: '#fff', fontSize: 15, fontWeight: '600', padding: 20, lineHeight: 22 },
   modalClose: { position: 'absolute', top: 50, right: 16, backgroundColor: 'rgba(0,0,0,0.5)', borderRadius: 20, padding: 8, zIndex: 10 },
+  modalCloseLandscape: { top: 16, right: 16 },
 });
 
 const errorStyles = StyleSheet.create({
