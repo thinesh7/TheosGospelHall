@@ -26,11 +26,21 @@ const SHORTS_PLAYLIST_ID = 'PLZISpWbe8RUjb_YX_C2yEEB7IZnhU9VRA';
 const VIDEOS_PLAYLIST_ID = 'PLZISpWbe8RUgXpqMWjZCAZUTmYQ8b1qAb';
 const FALLBACK_LIVE_IDS = ['PLZISpWbe8RUidyhPJNs5xa8-WOnHq-NLj'];
 
-const { width: SW, height: SH } = Dimensions.get('window');
-const PLAYER_H = SW * 9 / 16;
+const getWindow = () => Dimensions.get('window');
+
+const { width: SW, height: SH } = getWindow();
 const SHORTS_PLAYER_H = SH * 0.55;
 
 type Tab = 'shorts' | 'videos' | 'live' | 'all';
+
+function useWindowDimensions() {
+  const [dims, setDims] = useState(getWindow);
+  useEffect(() => {
+    const sub = Dimensions.addEventListener('change', ({ window }) => setDims(window));
+    return () => sub.remove();
+  }, []);
+  return dims;
+}
 
 const formatDate = (dateStr: string) => {
   try {
@@ -303,6 +313,9 @@ interface VideoModalProps {
 }
 
 function VideoModal({ visible, videoId, title, onClose }: VideoModalProps) {
+  const { width, height } = useWindowDimensions();
+  const playerH = width * 9 / 16;
+  const isLandscape = width > height;
   const [playerReady, setPlayerReady] = useState(false);
 
   useEffect(() => {
@@ -311,7 +324,7 @@ function VideoModal({ visible, videoId, title, onClose }: VideoModalProps) {
 
   return (
     <Modal visible={visible} animationType="slide" statusBarTranslucent onRequestClose={onClose}>
-      <View style={styles.videoModal}>
+      <View style={[styles.videoModal, isLandscape && { flexDirection: 'row' }]}>
         <StatusBar hidden />
         {!playerReady && (
           <View style={[StyleSheet.absoluteFillObject, { backgroundColor: '#0a0a0a', justifyContent: 'center', alignItems: 'center', zIndex: 10 }]}>
@@ -319,19 +332,69 @@ function VideoModal({ visible, videoId, title, onClose }: VideoModalProps) {
           </View>
         )}
         <YoutubePlayer
-          height={PLAYER_H}
-          width={SW}
+          height={isLandscape ? height : playerH}
+          width={isLandscape ? width * 0.65 : width}
           videoId={videoId || ''}
           play={visible && !!videoId}
           onReady={() => setPlayerReady(true)}
           webViewProps={{ allowsInlineMediaPlayback: true, mediaPlaybackRequiresUserAction: false }}
         />
-        <Text style={styles.videoModalTitle} numberOfLines={3}>{title}</Text>
+        {!isLandscape && <Text style={styles.videoModalTitle} numberOfLines={3}>{title}</Text>}
+        {isLandscape && (
+          <View style={{ flex: 1, justifyContent: 'center', paddingHorizontal: 20 }}>
+            <Text style={styles.videoModalTitle} numberOfLines={4}>{title}</Text>
+          </View>
+        )}
         <TouchableOpacity style={styles.modalClose} onPress={onClose}>
           <Ionicons name="close" size={26} color="#fff" />
         </TouchableOpacity>
       </View>
     </Modal>
+  );
+}
+
+function ShortsPlayerItemInner({ item, index, isActive, onEnd, onClose, total }: any) {
+  const { width, height } = useWindowDimensions();
+  const shortsH = height * 0.55;
+  const [shortReady, setShortReady] = useState(false);
+  const videoId = item?.snippet?.resourceId?.videoId;
+
+  useEffect(() => { setShortReady(false); }, [videoId]);
+
+  return (
+    <View style={{ width, height, backgroundColor: '#000', justifyContent: 'center', alignItems: 'center' }}>
+      <StatusBar hidden />
+      <View style={{ width, height: shortsH, backgroundColor: '#000', justifyContent: 'center', alignItems: 'center', marginTop: height * 0.15 }}>
+        {isActive ? (
+          <>
+            {!shortReady && (
+              <View style={[StyleSheet.absoluteFillObject, { backgroundColor: '#0a0a0a', justifyContent: 'center', alignItems: 'center', zIndex: 10, marginBottom: height * 0.3 }]}>
+                <VideoLoadingState />
+              </View>
+            )}
+            <YoutubePlayer
+              height={shortsH}
+              width={width}
+              videoId={videoId}
+              play
+              onReady={() => setShortReady(true)}
+              onChangeState={(s: string) => { if (s === 'ended') onEnd(index); }}
+              webViewProps={{ allowsInlineMediaPlayback: true, mediaPlaybackRequiresUserAction: false, allowsFullscreenVideo: true }}
+              initialPlayerParams={{ rel: 0, modestbranding: 1, controls: 1 }}
+            />
+          </>
+        ) : (
+          <View style={{ width, height: shortsH, backgroundColor: '#000' }} />
+        )}
+      </View>
+      <View style={styles.shortsOverlay}>
+        <Text style={styles.shortsTitle} numberOfLines={3}>{item?.snippet?.title}</Text>
+        <Text style={styles.shortsCounter}>{index + 1} / {total}</Text>
+      </View>
+      <TouchableOpacity style={styles.shortsClose} onPress={onClose}>
+        <Ionicons name="close" size={28} color="#fff" />
+      </TouchableOpacity>
+    </View>
   );
 }
 
@@ -401,21 +464,20 @@ export default function VideosScreen() {
 
   useEffect(() => {
     if (activeTab === 'videos') {
-      if (videosError) { setVideosError(false); setVideosLoaded(false); }
-      if (!videosLoaded) fetchVideos();
+      if (videosError) { setVideosError(false); fetchVideos('', true); }
+      else if (!videosLoaded) fetchVideos();
     }
     if (activeTab === 'live') {
-      if (liveError) { setLiveError(false); setLiveLoaded(false); }
-      if (!liveLoaded) loadLiveAndFetch();
+      if (liveError) { setLiveError(false); loadLiveAndFetch(); }
+      else if (!liveLoaded) loadLiveAndFetch();
     }
     if (activeTab === 'all') {
-      if (allError) { setAllError(false); setAllLoaded(false); }
-      if (!allLoaded) fetchAll();
+      if (allError) { setAllError(false); fetchAll('', true); }
+      else if (!allLoaded) fetchAll();
     }
     if (activeTab === 'shorts' && shortsError) {
       setShortsError(false);
-      setShortsLoaded(false);
-      fetchShorts();
+      fetchShorts('', true);
     }
   }, [activeTab]);
 
@@ -427,9 +489,9 @@ export default function VideosScreen() {
 
   const closeVideo = () => { setVideoModalVisible(false); setActiveVideoId(null); };
 
-  const fetchShorts = async (pageToken = '') => {
+  const fetchShorts = async (pageToken = '', forceLoad = false) => {
     try {
-      if (!pageToken) { setLoadingShorts(true); setShortsError(false); } else setLoadingMoreShorts(true);
+      if (!pageToken || forceLoad) { setLoadingShorts(true); setShortsError(false); setShortsLoaded(false); } else setLoadingMoreShorts(true);
       const data = await ytFetch('playlistItems', { playlistId: SHORTS_PLAYLIST_ID, part: 'snippet', maxResults: '50', ...(pageToken ? { pageToken } : {}) });
       const enriched = await enrichDates(mapItems(data.items || []));
       if (pageToken) {
@@ -442,9 +504,9 @@ export default function VideosScreen() {
     } finally { setLoadingShorts(false); setLoadingMoreShorts(false); }
   };
 
-  const fetchVideos = async (pageToken = '') => {
+  const fetchVideos = async (pageToken = '', forceLoad = false) => {
     try {
-      if (!pageToken) { setLoadingVideos(true); setVideosError(false); } else setLoadingMoreVideos(true);
+      if (!pageToken || forceLoad) { setLoadingVideos(true); setVideosError(false); setVideosLoaded(false); } else setLoadingMoreVideos(true);
       const data = await ytFetch('playlistItems', { playlistId: VIDEOS_PLAYLIST_ID, part: 'snippet', maxResults: '50', ...(pageToken ? { pageToken } : {}) });
       const enriched = (await enrichDates(mapItems(data.items || []))).sort(byDateDesc);
       if (pageToken) {
@@ -493,9 +555,9 @@ export default function VideosScreen() {
     } finally { setLoadingLive(false); setLoadingMoreLive(false); }
   };
 
-  const fetchAll = async (pageToken = '') => {
+  const fetchAll = async (pageToken = '', forceLoad = false) => {
     try {
-      if (!pageToken) { setLoadingAll(true); setAllError(false); } else setLoadingMoreAll(true);
+      if (!pageToken || forceLoad) { setLoadingAll(true); setAllError(false); setAllLoaded(false); } else setLoadingMoreAll(true);
       const data = await ytFetch('playlistItems', { playlistId: UPLOADS_PLAYLIST_ID, part: 'snippet', maxResults: '50', ...(pageToken ? { pageToken } : {}) });
       const enriched = (await enrichDates(mapItems(data.items || []))).sort(byDateDesc);
       if (pageToken) {
@@ -575,31 +637,14 @@ export default function VideosScreen() {
     const videoId = item?.snippet?.resourceId?.videoId;
     const isActive = playingShortId === videoId;
     return (
-      <View style={styles.shortsItem}>
-        <StatusBar hidden />
-        <View style={styles.shortsVideoWrap}>
-          {isActive ? (
-            <YoutubePlayer
-              height={SHORTS_PLAYER_H}
-              width={SW}
-              videoId={videoId}
-              play
-              onChangeState={(s: string) => { if (s === 'ended') handleShortEnd(index); }}
-              webViewProps={{ allowsInlineMediaPlayback: true, mediaPlaybackRequiresUserAction: false, allowsFullscreenVideo: true }}
-              initialPlayerParams={{ rel: 0, modestbranding: 1, controls: 1 }}
-            />
-          ) : (
-            <View style={{ width: SW, height: SHORTS_PLAYER_H, backgroundColor: '#000' }} />
-          )}
-        </View>
-        <View style={styles.shortsOverlay}>
-          <Text style={styles.shortsTitle} numberOfLines={3}>{item?.snippet?.title}</Text>
-          <Text style={styles.shortsCounter}>{index + 1} / {shortsDataRef.current.length}</Text>
-        </View>
-        <TouchableOpacity style={styles.shortsClose} onPress={() => { setShortsPlayerVisible(false); setPlayingShortId(null); }}>
-          <Ionicons name="close" size={28} color="#fff" />
-        </TouchableOpacity>
-      </View>
+      <ShortsPlayerItemInner
+        item={item}
+        index={index}
+        isActive={isActive}
+        onEnd={handleShortEnd}
+        onClose={() => { setShortsPlayerVisible(false); setPlayingShortId(null); }}
+        total={shortsDataRef.current.length}
+      />
     );
   }, [playingShortId, handleShortEnd]);
 
@@ -684,12 +729,12 @@ export default function VideosScreen() {
             renderItem={({ item, index }) => <ShortsPlayerItem item={item} index={index} />}
             pagingEnabled
             showsVerticalScrollIndicator={false}
-            snapToInterval={SH}
+            snapToInterval={Dimensions.get('window').height}
             snapToAlignment="start"
             decelerationRate="fast"
             onViewableItemsChanged={onShortsViewable}
             viewabilityConfig={shortsViewConfig}
-            getItemLayout={(_, index) => ({ length: SH, offset: SH * index, index })}
+            getItemLayout={(_, index) => ({ length: Dimensions.get('window').height, offset: Dimensions.get('window').height * index, index })}
             initialScrollIndex={currentShortIndex}
             onScrollToIndexFailed={() => {}}
           />
@@ -814,7 +859,7 @@ const styles = StyleSheet.create({
   tabText: { fontSize: 12, fontWeight: '600' },
   list: { padding: 12, paddingBottom: 100 },
   card: { borderRadius: 12, marginBottom: 12, overflow: 'hidden', elevation: 3 },
-  thumb: { width: '100%', height: 185 },
+  thumb: { width: '100%', height: SW * 0.52, resizeMode: 'cover' },
   cardInfo: { padding: 10 },
   cardTitle: { fontSize: 14, fontWeight: 'bold' },
   cardDate: { fontSize: 12, marginTop: 4 },
@@ -829,8 +874,6 @@ const styles = StyleSheet.create({
   empty: { textAlign: 'center', marginTop: 40, fontSize: 14 },
   loadMore: { borderRadius: 12, padding: 14, alignItems: 'center', marginBottom: 20 },
   loadMoreText: { color: '#fff', fontWeight: 'bold', fontSize: 14 },
-  shortsItem: { width: SW, height: SH, backgroundColor: '#000', justifyContent: 'center', alignItems: 'center' },
-  shortsVideoWrap: { width: SW, height: SHORTS_PLAYER_H, backgroundColor: '#000', justifyContent: 'center', alignItems: 'center', marginTop: SH * 0.15 },
   shortsOverlay: { position: 'absolute', bottom: 60, left: 16, right: 16 },
   shortsTitle: { color: '#fff', fontSize: 14, fontWeight: '600', marginBottom: 4 },
   shortsCounter: { color: 'rgba(255,255,255,0.7)', fontSize: 12 },
