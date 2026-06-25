@@ -55,6 +55,17 @@ const formatDate = (dateStr: string) => {
 const decodeHtml = (s: string) =>
   (s || '').replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&nbsp;/g, ' ');
 
+const parseDuration = (iso: string): string => {
+  if (!iso) return '';
+  const match = iso.match(/PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?/);
+  if (!match) return '';
+  const h = parseInt(match[1] || '0');
+  const m = parseInt(match[2] || '0');
+  const s = parseInt(match[3] || '0');
+  if (h > 0) return `${h}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+  return `${m}:${String(s).padStart(2, '0')}`;
+};
+
 const byDateDesc = (a: any, b: any) => (b?.snippet?.publishedAt || '').localeCompare(a?.snippet?.publishedAt || '');
 
 const dedupeById = (items: any[]) => {
@@ -76,6 +87,7 @@ const mapItems = (raw: any[]) =>
         publishedAt: i.snippet.publishedAt,
         thumbnails: i.snippet.thumbnails,
         resourceId: { videoId: i.snippet.resourceId.videoId },
+        duration: '',
       },
     }));
 
@@ -84,20 +96,30 @@ async function enrichDates(items: any[]): Promise<any[]> {
   if (!ids.length) return items;
   const chunks: string[][] = [];
   for (let i = 0; i < ids.length; i += 50) chunks.push(ids.slice(i, i + 50));
-  const map: Record<string, string> = {};
+  const map: Record<string, { date: string; duration: string }> = {};
   for (const chunk of chunks) {
     try {
-      const data = await ytFetch('videos', { id: chunk.join(','), part: 'snippet,liveStreamingDetails' });
+      const data = await ytFetch('videos', { id: chunk.join(','), part: 'snippet,liveStreamingDetails,contentDetails' });
       (data.items || []).forEach((v: any) => {
         if (!v?.id) return;
-        map[v.id] = v?.liveStreamingDetails?.actualStartTime || v?.snippet?.publishedAt;
+        map[v.id] = {
+          date: v?.liveStreamingDetails?.actualStartTime || v?.snippet?.publishedAt,
+          duration: parseDuration(v?.contentDetails?.duration || ''),
+        };
       });
     } catch {}
   }
   return items.map(item => {
     const videoId = item?.snippet?.resourceId?.videoId;
-    const authoritative = videoId ? map[videoId] : undefined;
-    return { ...item, snippet: { ...item.snippet, publishedAt: authoritative || item.snippet?.publishedAt } };
+    const info = videoId ? map[videoId] : undefined;
+    return {
+      ...item,
+      snippet: {
+        ...item.snippet,
+        publishedAt: info?.date || item.snippet?.publishedAt,
+        duration: info?.duration || '',
+      },
+    };
   });
 }
 
@@ -616,6 +638,7 @@ export default function VideosScreen() {
               publishedAt: i.snippet.publishedAt,
               thumbnails: i.snippet.thumbnails,
               resourceId: { videoId: i.id.videoId },
+              duration: '',
             },
           }))
       );
@@ -675,10 +698,18 @@ export default function VideosScreen() {
     const thumb = item?.snippet?.thumbnails?.medium?.url;
     const title = decodeHtml(item?.snippet?.title || '');
     const date = item?.snippet?.publishedAt || '';
+    const duration = item?.snippet?.duration || '';
     if (!videoId || !thumb) return null;
     return (
       <TouchableOpacity style={[styles.card, { backgroundColor: colors.surface }]} onPress={() => openVideo(videoId, title)}>
-        <Image source={{ uri: thumb }} style={[styles.thumb, { height: cardW * 0.52 }]} />
+        <View>
+          <Image source={{ uri: thumb }} style={[styles.thumb, { height: cardW * 0.52 }]} />
+          {!!duration && (
+            <View style={styles.durationBadge}>
+              <Text style={styles.durationText}>{duration}</Text>
+            </View>
+          )}
+        </View>
         <View style={styles.cardInfo}>
           <Text style={[styles.cardTitle, { color: colors.text }]} numberOfLines={2}>{title}</Text>
           <Text style={[styles.cardDate, { color: colors.subtext }]}>{formatDate(date)}</Text>
@@ -707,12 +738,18 @@ export default function VideosScreen() {
     const thumb = item?.snippet?.thumbnails?.medium?.url;
     const title = decodeHtml(item?.snippet?.title || '');
     const date = item?.snippet?.publishedAt || '';
+    const duration = item?.snippet?.duration || '';
     if (!videoId || !thumb) return null;
     return (
       <TouchableOpacity style={[styles.card, { backgroundColor: colors.surface }]} onPress={() => openVideo(videoId, title)}>
         <View>
           <Image source={{ uri: thumb }} style={[styles.thumb, { height: cardW * 0.52 }]} />
           <View style={styles.liveBadge}><View style={styles.liveDot} /><Text style={styles.liveBadgeText}>LIVE</Text></View>
+          {!!duration && (
+            <View style={styles.durationBadge}>
+              <Text style={styles.durationText}>{duration}</Text>
+            </View>
+          )}
         </View>
         <View style={styles.cardInfo}>
           <Text style={[styles.cardTitle, { color: colors.text }]} numberOfLines={2}>{title}</Text>
@@ -838,6 +875,8 @@ const styles = StyleSheet.create({
   cardInfo: { padding: 10 },
   cardTitle: { fontSize: 14, fontWeight: 'bold' },
   cardDate: { fontSize: 12, marginTop: 4 },
+  durationBadge: { position: 'absolute', bottom: 8, right: 8, backgroundColor: 'rgba(0,0,0,0.78)', borderRadius: 4, paddingHorizontal: 6, paddingVertical: 2 },
+  durationText: { color: '#fff', fontSize: 11, fontWeight: '700', letterSpacing: 0.3 },
   shortCard: { flex: 1, borderRadius: 12, overflow: 'hidden', elevation: 3, marginBottom: 8, backgroundColor: '#000', minHeight: 220 },
   shortThumb: { width: '100%', height: 220 },
   shortPlayIcon: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, justifyContent: 'center', alignItems: 'center' },
