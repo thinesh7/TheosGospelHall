@@ -8,7 +8,9 @@ import {
   Easing,
   FlatList,
   Image,
+  Linking,
   Modal,
+  Share,
   StatusBar,
   StyleSheet,
   Text,
@@ -274,6 +276,41 @@ function TabLoadingState({ tab }: { tab: string }) {
   );
 }
 
+function VideoActions({ videoId, title, absolute = false }: { videoId: string; title: string; absolute?: boolean }) {
+  const { colors } = useTheme();
+  const youtubeUrl = `https://www.youtube.com/watch?v=${videoId}`;
+
+  const openYouTube = () => {
+    Linking.openURL(`vnd.youtube://${videoId}`)
+      .catch(() => Linking.openURL(youtubeUrl));
+  };
+
+  const shareVideo = async () => {
+    await Share.share({
+      message: `${title}\n\n${youtubeUrl}`,
+      url: youtubeUrl,
+      title,
+    });
+  };
+
+  return (
+    <View style={[actionStyles.container, absolute && actionStyles.containerAbsolute]}>
+      <TouchableOpacity style={actionStyles.iconBtn} onPress={openYouTube} activeOpacity={0.8}>
+        <View style={[actionStyles.iconCircle, { backgroundColor: '#ff0000' }]}>
+          <Ionicons name="logo-youtube" size={22} color="#fff" />
+        </View>
+        <Text style={[actionStyles.iconLabel, { color: '#fff' }]}>YouTube</Text>
+      </TouchableOpacity>
+      <TouchableOpacity style={actionStyles.iconBtn} onPress={shareVideo} activeOpacity={0.8}>
+        <View style={[actionStyles.iconCircle, { backgroundColor: '#4f7fff' }]}>
+          <Ionicons name="share-social" size={22} color="#fff" />
+        </View>
+        <Text style={[actionStyles.iconLabel, { color: '#fff' }]}>Share</Text>
+      </TouchableOpacity>
+    </View>
+  );
+}
+
 interface VideoModalProps {
   visible: boolean;
   videoId: string | null;
@@ -311,7 +348,12 @@ function VideoModal({ visible, videoId, title, onClose }: VideoModalProps) {
             />
           );
         })()}
-        {!isLandscape && <Text style={styles.videoModalTitle} numberOfLines={3}>{title}</Text>}
+        {!isLandscape && (
+          <>
+            <Text style={styles.videoModalTitle} numberOfLines={3}>{title}</Text>
+            <VideoActions videoId={videoId || ''} title={title} />
+          </>
+        )}
         <TouchableOpacity style={[styles.modalClose, isLandscape && styles.modalCloseLandscape]} onPress={onClose}>
           <Ionicons name="close" size={26} color="#fff" />
         </TouchableOpacity>
@@ -323,25 +365,35 @@ function VideoModal({ visible, videoId, title, onClose }: VideoModalProps) {
 function ShortsPlayerItemInner({ item, index, isActive, onEnd, onClose, total }: any) {
   const [shortReady, setShortReady] = useState(false);
   const videoId = item?.snippet?.resourceId?.videoId;
+  const title = item?.snippet?.title ?? '';
   const { width: w, height: h } = useWindowDimensions();
-  const shortsH = h * 0.55;
+  const isLandscape = w > h;
+  const shortsH = isLandscape ? h : h * 0.55;
+  const shortsW = isLandscape ? h * 9 / 16 : w;
 
   useEffect(() => { setShortReady(false); }, [videoId]);
 
   return (
     <View style={{ width: w, height: h, backgroundColor: '#000', justifyContent: 'center', alignItems: 'center' }}>
       <StatusBar hidden />
-      <View style={{ width: w, height: shortsH, backgroundColor: '#000', justifyContent: 'center', alignItems: 'center', marginTop: h * 0.15 }}>
+      <View style={{
+        width: isLandscape ? w : w,
+        height: shortsH,
+        backgroundColor: '#000',
+        justifyContent: 'center',
+        alignItems: 'center',
+        marginTop: isLandscape ? 0 : h * 0.15,
+      }}>
         {isActive ? (
           <>
             {!shortReady && (
-              <View style={[StyleSheet.absoluteFillObject, { backgroundColor: '#0a0a0a', justifyContent: 'center', alignItems: 'center', zIndex: 10, marginBottom: h * 0.2 }]}>
+              <View style={[StyleSheet.absoluteFillObject, { backgroundColor: '#0a0a0a', justifyContent: 'center', alignItems: 'center', zIndex: 10, marginBottom: isLandscape ? 0 : h * 0.2 }]}>
                 <VideoLoadingState />
               </View>
             )}
             <YoutubePlayer
               height={shortsH}
-              width={w}
+              width={isLandscape ? shortsW : w}
               videoId={videoId}
               play
               onReady={() => setShortReady(true)}
@@ -351,16 +403,23 @@ function ShortsPlayerItemInner({ item, index, isActive, onEnd, onClose, total }:
             />
           </>
         ) : (
-          <View style={{ width: w, height: shortsH, backgroundColor: '#000' }} />
+          <View style={{ width: isLandscape ? shortsW : w, height: shortsH, backgroundColor: '#000' }} />
         )}
       </View>
-      <View style={styles.shortsOverlay}>
-        <Text style={styles.shortsTitle} numberOfLines={3}>{item?.snippet?.title}</Text>
-        <Text style={styles.shortsCounter}>{index + 1} / {total}</Text>
-      </View>
-      <TouchableOpacity style={styles.shortsClose} onPress={onClose}>
-        <Ionicons name="close" size={28} color="#fff" />
-      </TouchableOpacity>
+      {!isLandscape && shortReady && (
+        <>
+          <VideoActions videoId={videoId || ''} title={title} absolute />
+          <View style={styles.shortsOverlay}>
+            <Text style={styles.shortsTitle} numberOfLines={3}>{title}</Text>
+            <Text style={styles.shortsCounter}>{index + 1} / {total}</Text>
+          </View>
+        </>
+      )}
+      {shortReady && (
+        <TouchableOpacity style={[styles.shortsClose, isLandscape && { top: 16 }]} onPress={onClose}>
+          <Ionicons name="close" size={28} color="#fff" />
+        </TouchableOpacity>
+      )}
     </View>
   );
 }
@@ -780,7 +839,7 @@ const styles = StyleSheet.create({
   shortCard: { flex: 1, borderRadius: 12, overflow: 'hidden', elevation: 3, marginBottom: 8, backgroundColor: '#000', minHeight: 220 },
   shortThumb: { width: '100%', height: 220 },
   shortPlayIcon: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, justifyContent: 'center', alignItems: 'center' },
-  shortOverlay: { position: 'absolute', bottom: 0, left: 0, right: 0, backgroundColor: 'rgba(0,0,0,0.65)', padding: 8 },
+  shortOverlay: { position: 'absolute', bottom: 160, left: 16, right: 16 },
   shortTitle: { fontSize: 11, color: '#fff', fontWeight: '600' },
   liveBadge: { position: 'absolute', top: 8, left: 8, backgroundColor: '#ff0000', borderRadius: 6, paddingHorizontal: 8, paddingVertical: 3, flexDirection: 'row', alignItems: 'center', gap: 4 },
   liveDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: '#fff' },
@@ -788,11 +847,11 @@ const styles = StyleSheet.create({
   empty: { textAlign: 'center', marginTop: 40, fontSize: 14 },
   loadMore: { borderRadius: 12, padding: 14, alignItems: 'center', marginBottom: 20 },
   loadMoreText: { color: '#fff', fontWeight: 'bold', fontSize: 14 },
-  shortsOverlay: { position: 'absolute', bottom: 60, left: 16, right: 16 },
+  shortsOverlay: { position: 'absolute', bottom: 100, left: 16, right: 16 },
   shortsTitle: { color: '#fff', fontSize: 14, fontWeight: '600', marginBottom: 4 },
   shortsCounter: { color: 'rgba(255,255,255,0.7)', fontSize: 12 },
   shortsClose: { position: 'absolute', top: 50, right: 16, backgroundColor: 'rgba(0,0,0,0.5)', borderRadius: 20, padding: 6, zIndex: 10 },
-  videoModal: { flex: 1, backgroundColor: '#000', justifyContent: 'center' },
+  videoModal: { flex: 1, backgroundColor: '#000', justifyContent: 'flex-start', paddingTop: 60 },
   videoModalLandscape: { justifyContent: 'center', alignItems: 'center' },
   videoModalTitle: { color: '#fff', fontSize: 15, fontWeight: '600', padding: 20, lineHeight: 22 },
   modalClose: { position: 'absolute', top: 50, right: 16, backgroundColor: 'rgba(0,0,0,0.5)', borderRadius: 20, padding: 8, zIndex: 10 },
@@ -845,4 +904,12 @@ const tabLoadingStyles = StyleSheet.create({
   bar: { width: 4, height: 28, borderRadius: 3 },
   message: { fontSize: 15, fontWeight: '600', textAlign: 'center', paddingHorizontal: 40, lineHeight: 22 },
   sub: { fontSize: 12, textAlign: 'center' },
+});
+
+const actionStyles = StyleSheet.create({
+  container: { flexDirection: 'row', justifyContent: 'center', gap: 32, paddingVertical: 16 },
+  containerAbsolute: { position: 'absolute', bottom: 200, left: 0, right: 0 },
+  iconBtn: { alignItems: 'center', gap: 6 },
+  iconCircle: { width: 52, height: 52, borderRadius: 26, alignItems: 'center', justifyContent: 'center' },
+  iconLabel: { fontSize: 11, fontWeight: '600' },
 });

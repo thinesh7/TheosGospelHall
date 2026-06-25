@@ -2,7 +2,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Application from 'expo-application';
 import Constants from 'expo-constants';
 import * as Device from 'expo-device';
-import { doc, increment, setDoc } from 'firebase/firestore';
+import { doc, increment, setDoc, updateDoc } from 'firebase/firestore';
 import { Alert, Linking, Platform } from 'react-native';
 import { db } from '../firebaseConfig';
 
@@ -77,6 +77,19 @@ async function getProjectId(): Promise<string | undefined> {
   );
 }
 
+const FATAL_ERROR_CODES = [
+  'TOO_MANY_REGISTRATIONS',
+  'INVALID_CREDENTIALS',
+  'PROJECT_NOT_FOUND',
+  'INVALID_PROJECT_ID',
+  'SENDER_ID_MISMATCH',
+];
+
+function isFatalTokenError(error: any): boolean {
+  const msg = String(error?.message ?? error ?? '');
+  return FATAL_ERROR_CODES.some(code => msg.includes(code));
+}
+
 async function logTokenError(step: string, error: any) {
   try {
     const errorMsg = String(error?.message ?? error ?? 'unknown');
@@ -91,19 +104,23 @@ async function logTokenError(step: string, error: any) {
     const ref = doc(db, 'tokenErrors', docId);
 
     if (isGuaranteedUnique) {
-      await setDoc(ref, {
-        step,
-        error: errorMsg,
-        model: Device.modelName ?? 'unknown',
-        brand: Device.brand ?? 'unknown',
-        osVersion: Device.osVersion ?? 'unknown',
-        androidVersion: Device.platformApiLevel ?? 'unknown',
-        osBuildId: Device.osBuildId ?? Device.osInternalBuildId ?? 'unknown',
-        platform: Platform.OS,
-        lastSeen: now,
-        count: increment(1),
-      }, { merge: true });
-      await setDoc(ref, { firstSeen: now }, { merge: true });
+      try {
+        await updateDoc(ref, { lastSeen: now, count: increment(1), error: errorMsg });
+      } catch {
+        await setDoc(ref, {
+          step,
+          error: errorMsg,
+          model: Device.modelName ?? 'unknown',
+          brand: Device.brand ?? 'unknown',
+          osVersion: Device.osVersion ?? 'unknown',
+          androidVersion: Device.platformApiLevel ?? 'unknown',
+          osBuildId: Device.osBuildId ?? Device.osInternalBuildId ?? 'unknown',
+          platform: Platform.OS,
+          firstSeen: now,
+          lastSeen: now,
+          count: 1,
+        });
+      }
     } else {
       await setDoc(ref, {
         step,
@@ -163,19 +180,6 @@ async function retryFirestoreIfNeeded() {
   } catch (e) {
     await logTokenError('retryFirestoreSync', e);
   }
-}
-
-const FATAL_ERROR_CODES = [
-  'TOO_MANY_REGISTRATIONS',
-  'INVALID_CREDENTIALS',
-  'PROJECT_NOT_FOUND',
-  'INVALID_PROJECT_ID',
-  'SENDER_ID_MISMATCH',
-];
-
-function isFatalTokenError(error: any): boolean {
-  const msg = String(error?.message ?? error ?? '');
-  return FATAL_ERROR_CODES.some(code => msg.includes(code));
 }
 
 export async function registerForPushNotifications(): Promise<string | null> {
