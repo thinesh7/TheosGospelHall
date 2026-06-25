@@ -1,6 +1,6 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { addDoc, collection, deleteDoc, doc, getDocs, orderBy, query, setDoc, updateDoc } from 'firebase/firestore';
 import { getAuth } from 'firebase/auth';
+import { addDoc, collection, deleteDoc, doc, getDocs, orderBy, query, serverTimestamp, setDoc, Timestamp, updateDoc } from 'firebase/firestore';
 import { forwardRef, useEffect, useImperativeHandle, useState } from 'react';
 import {
   Alert,
@@ -30,6 +30,10 @@ interface SpecialMeeting {
   additionalInfo: string;
   isActive: boolean;
   order: number;
+  createdBy?: string;
+  createdAt?: Timestamp | number;
+  modifiedBy?: string;
+  modifiedAt?: Timestamp | number;
 }
 
 const EMPTY_MEETING: Omit<SpecialMeeting, 'id'> = {
@@ -54,6 +58,7 @@ export interface AdminScreenHandle {
 interface Props {
   onEventsUpdated: () => void;
 }
+
 
 const SpecialMeetingsAdmin = forwardRef<AdminScreenHandle, Props>(({ onEventsUpdated }, ref) => {
   const [adminMeetings, setAdminMeetings] = useState<SpecialMeeting[]>([]);
@@ -176,7 +181,7 @@ const SpecialMeetingsAdmin = forwardRef<AdminScreenHandle, Props>(({ onEventsUpd
       const _min = String(_d.getMinutes()).padStart(2, '0');
       const _sec = String(_d.getSeconds()).padStart(2, '0');
       const _rand = Math.random().toString(36).substring(2, 5).toUpperCase();
-      const logDocId = `${_month}_${_year}_${_day}_${_h12}_${_min}_${_sec}_${_ampm}_${_rand}`;
+      const logDocId = `${_month}_${_year}_${_day}_${_ampm}_${_h12}_${_min}_${_sec}_${_rand}`;
 
       await setDoc(doc(db, 'notificationLogs', logDocId), {
         title: meeting.title,
@@ -240,14 +245,26 @@ const SpecialMeetingsAdmin = forwardRef<AdminScreenHandle, Props>(({ onEventsUpd
     setSaving(true);
     try {
       const isNew = !editingId;
+      const currentUser = getAuth().currentUser?.email ?? 'unknown';
       const payload = {
         ...form,
         endDate: form.numberOfDays === 'multiple' ? form.endDate.trim() : '',
       };
+
       if (editingId) {
-        await updateDoc(doc(db, 'events', editingId), { ...payload });
+        await updateDoc(doc(db, 'events', editingId), {
+          ...payload,
+          modifiedBy: currentUser,
+          modifiedAt: serverTimestamp(),
+        });
       } else {
-        await addDoc(collection(db, 'events'), { ...payload });
+        await addDoc(collection(db, 'events'), {
+          ...payload,
+          createdBy: currentUser,
+          createdAt: serverTimestamp(),
+          modifiedBy: currentUser,
+          modifiedAt: serverTimestamp(),
+        });
       }
       await refreshCache();
       setShowForm(false);
@@ -295,7 +312,12 @@ const SpecialMeetingsAdmin = forwardRef<AdminScreenHandle, Props>(({ onEventsUpd
 
   const toggleActive = async (meeting: SpecialMeeting) => {
     try {
-      await updateDoc(doc(db, 'events', meeting.id), { isActive: !meeting.isActive });
+      const currentUser = getAuth().currentUser?.email ?? 'unknown';
+      await updateDoc(doc(db, 'events', meeting.id), {
+        isActive: !meeting.isActive,
+        modifiedBy: currentUser,
+        modifiedAt: serverTimestamp(),
+      });
       await refreshCache();
     } catch (e) {
       Alert.alert('Error', 'Could not update.');
@@ -471,7 +493,7 @@ const styles = StyleSheet.create({
   adminCardTop: { flexDirection: 'row', alignItems: 'flex-start', marginBottom: 8 },
   adminMeetingTitle: { fontSize: 15, fontWeight: 'bold', color: '#1a1a2e', marginBottom: 4 },
   adminMeetingMeta: { fontSize: 12, color: '#666', marginBottom: 2 },
-  adminCardStatus: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 12 },
+  adminCardStatus: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 8 },
   statusDot: { width: 8, height: 8, borderRadius: 4 },
   statusText: { fontSize: 12, color: '#666' },
   adminCardActions: { flexDirection: 'row', gap: 8 },
