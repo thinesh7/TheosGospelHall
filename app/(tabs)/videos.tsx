@@ -670,6 +670,7 @@ export default function VideosScreen() {
   }, [playingShortId, handleShortEnd]);
 
   const VideoCard = ({ item }: any) => {
+    const { width: cardW } = useWindowDimensions();
     const videoId = item?.snippet?.resourceId?.videoId;
     const thumb = item?.snippet?.thumbnails?.medium?.url;
     const title = decodeHtml(item?.snippet?.title || '');
@@ -677,7 +678,7 @@ export default function VideosScreen() {
     if (!videoId || !thumb) return null;
     return (
       <TouchableOpacity style={[styles.card, { backgroundColor: colors.surface }]} onPress={() => openVideo(videoId, title)}>
-        <Image source={{ uri: thumb }} style={styles.thumb} />
+        <Image source={{ uri: thumb }} style={[styles.thumb, { height: cardW * 0.52 }]} />
         <View style={styles.cardInfo}>
           <Text style={[styles.cardTitle, { color: colors.text }]} numberOfLines={2}>{title}</Text>
           <Text style={[styles.cardDate, { color: colors.subtext }]}>{formatDate(date)}</Text>
@@ -701,6 +702,7 @@ export default function VideosScreen() {
   };
 
   const LiveCard = ({ item }: any) => {
+    const { width: cardW } = useWindowDimensions();
     const videoId = item?.snippet?.resourceId?.videoId;
     const thumb = item?.snippet?.thumbnails?.medium?.url;
     const title = decodeHtml(item?.snippet?.title || '');
@@ -709,7 +711,7 @@ export default function VideosScreen() {
     return (
       <TouchableOpacity style={[styles.card, { backgroundColor: colors.surface }]} onPress={() => openVideo(videoId, title)}>
         <View>
-          <Image source={{ uri: thumb }} style={styles.thumb} />
+          <Image source={{ uri: thumb }} style={[styles.thumb, { height: cardW * 0.52 }]} />
           <View style={styles.liveBadge}><View style={styles.liveDot} /><Text style={styles.liveBadgeText}>LIVE</Text></View>
         </View>
         <View style={styles.cardInfo}>
@@ -832,7 +834,7 @@ const styles = StyleSheet.create({
   tabText: { fontSize: 12, fontWeight: '600' },
   list: { padding: 12, paddingBottom: 100 },
   card: { borderRadius: 12, marginBottom: 12, overflow: 'hidden', elevation: 3 },
-  thumb: { width: '100%', height: SW * 0.52, resizeMode: 'cover' },
+  thumb: { width: '100%', resizeMode: 'cover' },
   cardInfo: { padding: 10 },
   cardTitle: { fontSize: 14, fontWeight: 'bold' },
   cardDate: { fontSize: 12, marginTop: 4 },
@@ -851,7 +853,7 @@ const styles = StyleSheet.create({
   shortsTitle: { color: '#fff', fontSize: 14, fontWeight: '600', marginBottom: 4 },
   shortsCounter: { color: 'rgba(255,255,255,0.7)', fontSize: 12 },
   shortsClose: { position: 'absolute', top: 50, right: 16, backgroundColor: 'rgba(0,0,0,0.5)', borderRadius: 20, padding: 6, zIndex: 10 },
-  videoModal: { flex: 1, backgroundColor: '#000', justifyContent: 'flex-start', paddingTop: 60 },
+  videoModal: { flex: 1, backgroundColor: '#000', justifyContent: 'center', paddingTop: 10 },
   videoModalLandscape: { justifyContent: 'center', alignItems: 'center' },
   videoModalTitle: { color: '#fff', fontSize: 15, fontWeight: '600', padding: 20, lineHeight: 22 },
   modalClose: { position: 'absolute', top: 50, right: 16, backgroundColor: 'rgba(0,0,0,0.5)', borderRadius: 20, padding: 8, zIndex: 10 },
