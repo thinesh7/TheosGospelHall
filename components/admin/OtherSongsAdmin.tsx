@@ -186,7 +186,7 @@ const OtherSongsAdmin = forwardRef<AdminScreenHandle, {}>((_props, ref) => {
             <Text style={styles.formBackText}>← Back</Text>
           </TouchableOpacity>
           <Text style={styles.formTitle}>
-            {form.songId ? `Edit Song #${form.songNumber}` : 'New Song'}
+            {form.songId ? `Edit Special Song #${form.songNumber}` : 'New Special Song'}
           </Text>
         </View>
 

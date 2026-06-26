@@ -38,7 +38,7 @@ const VIEW_META: Record<ViewKey, ViewMeta> = {
   specialMeetings: { title: '📅 Special Meetings', subtitle: 'Manage upcoming meetings' },
   songsMenu: { title: '🎵 Songs', subtitle: 'Choose a collection to manage' },
   songsGeethangalum: { title: '📖 Geethangalum Keerthanaigalum', subtitle: 'Edit existing songs' },
-  songsOther: { title: '🎶 Other Songs', subtitle: 'Add, edit, show/hide songs' },
+  songsOther: { title: '🎶 Special Songs', subtitle: 'Add, edit, show/hide songs' },
   livePlaylists: { title: '🎬 Live Playlists', subtitle: 'Manage YouTube playlists' },
   homeContent: { title: '🏠 Home Screen Content', subtitle: 'Pastor & Ministry info' },
 };

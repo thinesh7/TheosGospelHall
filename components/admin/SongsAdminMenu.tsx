@@ -19,7 +19,7 @@ const MODULES: ModuleCard[] = [
   {
     id: 'otherSongs',
     icon: '🎶',
-    title: 'Other Songs',
+    title: 'Special Songs',
     subtitle: 'Add, edit, and show/hide songs',
   },
 ];
