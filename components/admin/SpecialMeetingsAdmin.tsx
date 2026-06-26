@@ -41,7 +41,7 @@ const EMPTY_MEETING: Omit<SpecialMeeting, 'id'> = {
   description: '',
   date: '',
   endDate: '',
-  numberOfDays: '',
+  numberOfDays: '1',
   time: '',
   location: '',
   mapLink: '',
@@ -355,7 +355,7 @@ const SpecialMeetingsAdmin = forwardRef<AdminScreenHandle, Props>(({ onEventsUpd
                   <Switch
                     value={meeting.isActive}
                     onValueChange={() => toggleActive(meeting)}
-                    trackColor={{ true: '#7209b7', false: '#ccc' }}
+                    trackColor={{ true: '#0f3460', false: '#ccc' }}
                   />
                 </View>
                 <View style={styles.adminCardStatus}>
@@ -467,7 +467,7 @@ const SpecialMeetingsAdmin = forwardRef<AdminScreenHandle, Props>(({ onEventsUpd
 
           <View style={styles.toggleRow}>
             <Text style={styles.formLabel}>Show to users</Text>
-            <Switch value={form.isActive} onValueChange={v => F('isActive', v)} trackColor={{ true: '#7209b7', false: '#ccc' }} />
+            <Switch value={form.isActive} onValueChange={v => F('isActive', v)} trackColor={{ true: '#0f3460', false: '#ccc' }} />
           </View>
 
           <TouchableOpacity style={[styles.saveBtn, saving && { opacity: 0.6 }]} onPress={saveMeeting} disabled={saving}>
@@ -485,11 +485,11 @@ const SpecialMeetingsAdmin = forwardRef<AdminScreenHandle, Props>(({ onEventsUpd
 export default SpecialMeetingsAdmin;
 
 const styles = StyleSheet.create({
-  addBtn: { backgroundColor: '#7209b7', borderRadius: 14, padding: 16, alignItems: 'center', marginBottom: 16, elevation: 4 },
+  addBtn: { backgroundColor: '#0f3460', borderRadius: 14, padding: 16, alignItems: 'center', marginBottom: 16, elevation: 4 },
   addBtnText: { color: '#fff', fontWeight: 'bold', fontSize: 16 },
   loadingText: { textAlign: 'center', color: '#888', marginTop: 20 },
   emptyText: { textAlign: 'center', color: '#aaa', marginTop: 30, fontSize: 14, fontStyle: 'italic' },
-  adminMeetingCard: { backgroundColor: '#fff', borderRadius: 14, padding: 16, marginBottom: 12, elevation: 3, borderLeftWidth: 5, borderLeftColor: '#7209b7' },
+  adminMeetingCard: { backgroundColor: '#fff', borderRadius: 14, padding: 16, marginBottom: 12, elevation: 3, borderLeftWidth: 5, borderLeftColor: '#0f3460' },
   adminCardTop: { flexDirection: 'row', alignItems: 'flex-start', marginBottom: 8 },
   adminMeetingTitle: { fontSize: 15, fontWeight: 'bold', color: '#1a1a2e', marginBottom: 4 },
   adminMeetingMeta: { fontSize: 12, color: '#666', marginBottom: 2 },
@@ -512,11 +512,11 @@ const styles = StyleSheet.create({
   formInputMulti: { minHeight: 80, textAlignVertical: 'top' },
   segmentRow: { flexDirection: 'row', gap: 10 },
   segmentBtn: { flex: 1, paddingVertical: 12, borderRadius: 10, backgroundColor: '#fff', borderWidth: 1, borderColor: '#eee', alignItems: 'center' },
-  segmentBtnActive: { backgroundColor: '#7209b7', borderColor: '#7209b7' },
+  segmentBtnActive: { backgroundColor: '#0f3460', borderColor: '#0f3460' },
   segmentBtnText: { fontSize: 13, fontWeight: '600', color: '#555' },
   segmentBtnTextActive: { color: '#fff' },
   toggleRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', backgroundColor: '#fff', padding: 14, borderRadius: 12, marginBottom: 20, elevation: 2 },
-  saveBtn: { backgroundColor: '#7209b7', borderRadius: 14, padding: 16, alignItems: 'center', marginBottom: 12, elevation: 4 },
+  saveBtn: { backgroundColor: '#0f3460', borderRadius: 14, padding: 16, alignItems: 'center', marginBottom: 12, elevation: 4 },
   saveBtnText: { color: '#fff', fontWeight: 'bold', fontSize: 16 },
   cancelBtn: { alignItems: 'center', padding: 12, marginBottom: 20 },
   cancelBtnText: { color: '#888', fontSize: 14 },

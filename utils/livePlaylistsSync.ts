@@ -42,19 +42,20 @@ export async function syncLivePlaylists(): Promise<LivePlaylist[]> {
   }
 }
 
-export async function addLivePlaylist(data: { playlistId: string; label: string; isActive: boolean }): Promise<void> {
-  await addDoc(collection(db, FIRESTORE_COLLECTION), {
+export async function addLivePlaylist(data: { playlistId: string; label: string; isActive: boolean }): Promise<string> {
+  const ref = await addDoc(collection(db, FIRESTORE_COLLECTION), {
     playlistId: data.playlistId.trim(),
     label: data.label.trim(),
     isActive: data.isActive,
     createdAt: Date.now(),
   });
   await syncLivePlaylists();
+  return ref.id;
 }
 
 export async function updateLivePlaylist(
   id: string,
-  updates: { playlistId?: string; label?: string }
+  updates: { playlistId?: string; label?: string; isActive?: boolean }
 ): Promise<void> {
   const ref = doc(db, FIRESTORE_COLLECTION, id);
   await updateDoc(ref, { ...updates });
@@ -64,5 +65,12 @@ export async function updateLivePlaylist(
 export async function setLivePlaylistActive(id: string, isActive: boolean): Promise<void> {
   const ref = doc(db, FIRESTORE_COLLECTION, id);
   await updateDoc(ref, { isActive });
+  await syncLivePlaylists();
+}
+
+export async function deleteLivePlaylist(id: string): Promise<void> {
+  const { deleteDoc } = await import('firebase/firestore');
+  const ref = doc(db, FIRESTORE_COLLECTION, id);
+  await deleteDoc(ref);
   await syncLivePlaylists();
 }

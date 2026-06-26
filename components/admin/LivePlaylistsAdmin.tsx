@@ -10,9 +10,13 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
+import { getAuth } from 'firebase/auth';
+import { doc, serverTimestamp, updateDoc } from 'firebase/firestore';
+import { db } from '../../firebaseConfig';
 import {
   LivePlaylist,
   addLivePlaylist,
+  deleteLivePlaylist,
   getCachedLivePlaylists,
   setLivePlaylistActive,
   syncLivePlaylists,
@@ -73,30 +77,57 @@ const LivePlaylistsAdmin = forwardRef<AdminScreenHandle, {}>((_props, ref) => {
   };
 
   const save = async () => {
-    if (!form.playlistId.trim()) {
-      Alert.alert('Required', 'Please enter a playlist ID.');
-      return;
-    }
     if (!form.label.trim()) {
       Alert.alert('Required', 'Please enter a label.');
       return;
     }
+    if (!form.playlistId.trim()) {
+      Alert.alert('Required', 'Please enter a playlist ID.');
+      return;
+    }
     setSaving(true);
+    const currentUser = getAuth().currentUser?.email ?? 'unknown';
     try {
       if (form.id) {
-        await updateLivePlaylist(form.id, { playlistId: form.playlistId.trim(), label: form.label.trim() });
+        await updateLivePlaylist(form.id, { playlistId: form.playlistId.trim(), label: form.label.trim(), isActive: form.isActive });
+        await updateDoc(doc(db, 'LivePlaylists', form.id), {
+          modifiedBy: currentUser,
+          modifiedAt: serverTimestamp(),
+        });
       } else {
-        await addLivePlaylist({ playlistId: form.playlistId.trim(), label: form.label.trim(), isActive: form.isActive });
+        const newId = await addLivePlaylist({ playlistId: form.playlistId.trim(), label: form.label.trim(), isActive: form.isActive });
+        await updateDoc(doc(db, 'LivePlaylists', newId), {
+          createdBy: currentUser,
+          modifiedBy: currentUser,
+          modifiedAt: serverTimestamp(),
+        });
       }
       const fresh = await getCachedLivePlaylists();
       setPlaylists(fresh);
       Alert.alert('✅ Saved', form.id ? 'Playlist updated.' : 'Playlist added.');
       setShowForm(false);
     } catch (e) {
-      console.error('[LivePlaylistsAdmin] save failed:', e);
       Alert.alert('Error', `Could not save: ${(e as any)?.message || 'Unknown error'}`);
     }
     setSaving(false);
+  };
+
+  const deletePlaylist = (item: LivePlaylist) => {
+    Alert.alert('Delete Playlist', `Delete "${item.label}"?`, [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Delete', style: 'destructive',
+        onPress: async () => {
+          try {
+            await deleteLivePlaylist(item.id);
+            setPlaylists(prev => prev.filter(p => p.id !== item.id));
+            Alert.alert('Deleted', 'Playlist removed.');
+          } catch (e) {
+            Alert.alert('Error', 'Could not delete.');
+          }
+        },
+      },
+    ]);
   };
 
   const toggleActive = async (item: LivePlaylist) => {
@@ -120,7 +151,7 @@ const LivePlaylistsAdmin = forwardRef<AdminScreenHandle, {}>((_props, ref) => {
         </View>
 
         <View style={{ padding: 16 }}>
-          <Text style={styles.fieldLabel}>Label (for your reference)</Text>
+          <Text style={styles.fieldLabel}>Label *</Text>
           <TextInput
             style={styles.input}
             value={form.label}
@@ -129,7 +160,7 @@ const LivePlaylistsAdmin = forwardRef<AdminScreenHandle, {}>((_props, ref) => {
             placeholderTextColor="#999"
           />
 
-          <Text style={styles.fieldLabel}>YouTube Playlist ID</Text>
+          <Text style={styles.fieldLabel}>YouTube Playlist ID *</Text>
           <Text style={styles.fieldHint}>Found in the playlist URL after "list="</Text>
           <TextInput
             style={styles.input}
@@ -140,16 +171,14 @@ const LivePlaylistsAdmin = forwardRef<AdminScreenHandle, {}>((_props, ref) => {
             autoCapitalize="none"
           />
 
-          {!form.id && (
-            <View style={styles.toggleRow}>
-              <Text style={styles.fieldLabel}>Active</Text>
-              <Switch
-                value={form.isActive}
-                onValueChange={v => setForm(prev => ({ ...prev, isActive: v }))}
-                trackColor={{ true: '#0f3460', false: '#ccc' }}
-              />
-            </View>
-          )}
+          <View style={styles.toggleRow}>
+            <Text style={styles.fieldLabel}>Active</Text>
+            <Switch
+              value={form.isActive}
+              onValueChange={v => setForm(prev => ({ ...prev, isActive: v }))}
+              trackColor={{ true: '#0f3460', false: '#ccc' }}
+            />
+          </View>
 
           <TouchableOpacity
             style={[styles.saveBtn, saving && { opacity: 0.6 }]}
@@ -194,6 +223,9 @@ const LivePlaylistsAdmin = forwardRef<AdminScreenHandle, {}>((_props, ref) => {
                 onValueChange={() => toggleActive(item)}
                 trackColor={{ true: '#0f3460', false: '#ccc' }}
               />
+              <TouchableOpacity style={styles.deleteBtn} onPress={() => deletePlaylist(item)}>
+                <Text style={styles.deleteBtnText}>🗑</Text>
+              </TouchableOpacity>
             </View>
           )}
           ListEmptyComponent={
@@ -225,6 +257,8 @@ const styles = StyleSheet.create({
   rowLabel: { fontSize: 14, fontWeight: 'bold', color: '#1a1a2e', marginBottom: 2 },
   rowId: { fontSize: 11, color: '#888', marginBottom: 4 },
   statusText: { fontSize: 11, fontWeight: '600' },
+  deleteBtn: { backgroundColor: '#fdecea', borderRadius: 10, padding: 10, alignItems: 'center', width: 44 },
+  deleteBtnText: { color: '#c62828', fontWeight: '600', fontSize: 13 },
   emptyText: { textAlign: 'center', color: '#999', marginTop: 40, fontStyle: 'italic' },
   formContainer: { flex: 1 },
   formHeader: { flexDirection: 'row', alignItems: 'center', gap: 16, padding: 16, backgroundColor: '#fff', elevation: 2 },

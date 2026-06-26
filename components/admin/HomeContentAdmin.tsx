@@ -9,6 +9,7 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
+import { getAuth } from 'firebase/auth';
 import { EMPTY_HOME_CONTENT, HomeContent, subscribeHomeContent, updateHomeContent } from '../../utils/homeContentSync';
 import { AdminScreenHandle } from './SpecialMeetingsAdmin';
 
@@ -33,10 +34,17 @@ const HomeContentAdmin = forwardRef<AdminScreenHandle, {}>((_props, ref) => {
     setForm(prev => ({ ...prev, [field]: val }));
 
   const save = async () => {
+    if (!form.pastorName.trim()) { Alert.alert('Required', 'Pastor Name cannot be empty.'); return; }
+    if (!form.pastorDesignation.trim()) { Alert.alert('Required', 'Designation cannot be empty.'); return; }
+    if (!form.aboutPastorEnglish.trim()) { Alert.alert('Required', 'About Pastor (English) cannot be empty.'); return; }
+    if (!form.aboutPastorTamil.trim()) { Alert.alert('Required', 'About Pastor (Tamil) cannot be empty.'); return; }
+    if (!form.aboutMinistryEnglish.trim()) { Alert.alert('Required', 'About Ministry (English) cannot be empty.'); return; }
+    if (!form.aboutMinistryTamil.trim()) { Alert.alert('Required', 'About Ministry (Tamil) cannot be empty.'); return; }
     setSaving(true);
     try {
+      const currentUser = getAuth().currentUser?.email ?? 'unknown';
       const { lastModifiedTimestamp, ...payload } = form;
-      await updateHomeContent(payload);
+      await updateHomeContent({ ...payload, modifiedBy: currentUser } as any);
       Alert.alert('✅ Saved', 'Home screen content updated. Changes will appear immediately for users.');
     } catch (e) {
       Alert.alert('Error', 'Could not save. Check internet.');
@@ -66,7 +74,7 @@ const HomeContentAdmin = forwardRef<AdminScreenHandle, {}>((_props, ref) => {
       </View>
 
       <View style={styles.formField}>
-        <Text style={styles.formLabel}>Pastor Name</Text>
+        <Text style={styles.formLabel}>Pastor Name *</Text>
         <TextInput
           style={styles.formInput}
           placeholder="e.g. Bro. Salaman Tirupur"
@@ -77,7 +85,7 @@ const HomeContentAdmin = forwardRef<AdminScreenHandle, {}>((_props, ref) => {
       </View>
 
       <View style={styles.formField}>
-        <Text style={styles.formLabel}>Designation</Text>
+        <Text style={styles.formLabel}>Designation *</Text>
         <TextInput
           style={styles.formInput}
           placeholder="e.g. Pastor & Founder"
@@ -88,7 +96,7 @@ const HomeContentAdmin = forwardRef<AdminScreenHandle, {}>((_props, ref) => {
       </View>
 
       <View style={styles.formField}>
-        <Text style={styles.formLabel}>About Pastor (English)</Text>
+        <Text style={styles.formLabel}>About Pastor (English) *</Text>
         <Text style={styles.fieldHint}>Line breaks and paragraph spacing are preserved exactly as typed</Text>
         <TextInput
           style={[styles.formInput, styles.formInputMulti]}
@@ -102,7 +110,7 @@ const HomeContentAdmin = forwardRef<AdminScreenHandle, {}>((_props, ref) => {
       </View>
 
       <View style={styles.formField}>
-        <Text style={styles.formLabel}>About Pastor (Tamil)</Text>
+        <Text style={styles.formLabel}>About Pastor (Tamil) *</Text>
         <TextInput
           style={[styles.formInput, styles.formInputMulti]}
           placeholder="போதகரைப் பற்றி, தமிழில்..."
@@ -119,7 +127,7 @@ const HomeContentAdmin = forwardRef<AdminScreenHandle, {}>((_props, ref) => {
       <Text style={styles.sectionHeader}>⛪ About Ministry Section</Text>
 
       <View style={styles.formField}>
-        <Text style={styles.formLabel}>About Ministry (English)</Text>
+        <Text style={styles.formLabel}>About Ministry (English) *</Text>
         <Text style={styles.fieldHint}>Line breaks and paragraph spacing are preserved exactly as typed</Text>
         <TextInput
           style={[styles.formInput, styles.formInputMulti, { minHeight: 160 }]}
@@ -133,7 +141,7 @@ const HomeContentAdmin = forwardRef<AdminScreenHandle, {}>((_props, ref) => {
       </View>
 
       <View style={styles.formField}>
-        <Text style={styles.formLabel}>About Ministry (Tamil)</Text>
+        <Text style={styles.formLabel}>About Ministry (Tamil) *</Text>
         <TextInput
           style={[styles.formInput, styles.formInputMulti, { minHeight: 160 }]}
           placeholder="ஊழியத்தைப் பற்றி, தமிழில்..."

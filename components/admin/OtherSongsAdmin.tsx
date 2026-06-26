@@ -119,7 +119,19 @@ const OtherSongsAdmin = forwardRef<AdminScreenHandle, {}>((_props, ref) => {
 
   const save = async () => {
     if (!form.title.trim()) {
-      Alert.alert('Required', 'Title cannot be empty.');
+      Alert.alert('Required', 'Title (Tamil) cannot be empty.');
+      return;
+    }
+    if (!form.titleEnglish.trim()) {
+      Alert.alert('Required', 'Title (English) cannot be empty.');
+      return;
+    }
+    if (!form.lyricsTamil.trim()) {
+      Alert.alert('Required', 'Tamil lyrics cannot be empty.');
+      return;
+    }
+    if (!form.lyricsEnglish.trim()) {
+      Alert.alert('Required', 'English lyrics cannot be empty.');
       return;
     }
     setSaving(true);
@@ -183,7 +195,7 @@ const OtherSongsAdmin = forwardRef<AdminScreenHandle, {}>((_props, ref) => {
           keyExtractor={() => 'form'}
           renderItem={() => (
             <View style={{ padding: 16 }}>
-              <Text style={styles.fieldLabel}>Title (Tamil)</Text>
+              <Text style={styles.fieldLabel}>Title (Tamil) *</Text>
               <TextInput
                 style={styles.input}
                 value={form.title}
@@ -192,8 +204,7 @@ const OtherSongsAdmin = forwardRef<AdminScreenHandle, {}>((_props, ref) => {
                 placeholderTextColor="#999"
               />
 
-              <Text style={styles.fieldLabel}>Title (English)</Text>
-              <Text style={styles.fieldHint}>Used for English search. Leave blank to auto-fill from English lyrics.</Text>
+              <Text style={styles.fieldLabel}>Title (English) *</Text>
               <TextInput
                 style={styles.input}
                 value={form.titleEnglish}
@@ -202,7 +213,7 @@ const OtherSongsAdmin = forwardRef<AdminScreenHandle, {}>((_props, ref) => {
                 placeholderTextColor="#999"
               />
 
-              <Text style={styles.fieldLabel}>Lyrics (Tamil)</Text>
+              <Text style={styles.fieldLabel}>Lyrics (Tamil) *</Text>
               <TextInput
                 style={[styles.input, styles.textArea]}
                 value={form.lyricsTamil}
@@ -213,12 +224,12 @@ const OtherSongsAdmin = forwardRef<AdminScreenHandle, {}>((_props, ref) => {
                 textAlignVertical="top"
               />
 
-              <Text style={styles.fieldLabel}>Lyrics (English)</Text>
+              <Text style={styles.fieldLabel}>Lyrics (English) *</Text>
               <TextInput
                 style={[styles.input, styles.textArea]}
                 value={form.lyricsEnglish}
                 onChangeText={v => setForm(prev => ({ ...prev, lyricsEnglish: v }))}
-                placeholder="English lyrics"
+                placeholder="English transliteration of lyrics"
                 placeholderTextColor="#999"
                 multiline
                 textAlignVertical="top"
@@ -229,7 +240,7 @@ const OtherSongsAdmin = forwardRef<AdminScreenHandle, {}>((_props, ref) => {
                 <Switch
                   value={form.isVisible}
                   onValueChange={v => setForm(prev => ({ ...prev, isVisible: v }))}
-                  trackColor={{ true: '#7209b7', false: '#ccc' }}
+                  trackColor={{ true: '#0f3460', false: '#ccc' }}
                 />
               </View>
 
@@ -258,7 +269,7 @@ const OtherSongsAdmin = forwardRef<AdminScreenHandle, {}>((_props, ref) => {
             <Text style={styles.addBtnText}>＋ Add New Song</Text>
           </TouchableOpacity>
           <View style={styles.syncSlot}>
-            {syncing && <ActivityIndicator size="small" color="#7209b7" />}
+            {syncing && <ActivityIndicator size="small" color="#0f3460" />}
           </View>
         </View>
         <View style={styles.searchBar}>
@@ -273,7 +284,7 @@ const OtherSongsAdmin = forwardRef<AdminScreenHandle, {}>((_props, ref) => {
       </View>
 
       {loading ? (
-        <ActivityIndicator size="large" color="#7209b7" style={{ marginTop: 40 }} />
+        <ActivityIndicator size="large" color="#0f3460" style={{ marginTop: 40 }} />
       ) : (
         <FlatList
           data={filtered}
@@ -302,7 +313,7 @@ const OtherSongsAdmin = forwardRef<AdminScreenHandle, {}>((_props, ref) => {
                 <Switch
                   value={isVisible}
                   onValueChange={() => toggleVisibility(item)}
-                  trackColor={{ true: '#7209b7', false: '#ccc' }}
+                  trackColor={{ true: '#0f3460', false: '#ccc' }}
                 />
               </View>
             );
@@ -321,7 +332,7 @@ const styles = StyleSheet.create({
   addRow: { flexDirection: 'row', alignItems: 'center' },
   syncSlot: { width: 36, alignItems: 'center', justifyContent: 'center' },
   addBtn: {
-    backgroundColor: '#7209b7',
+    backgroundColor: '#0f3460',
     borderRadius: 14,
     padding: 16,
     alignItems: 'center',
@@ -355,7 +366,7 @@ const styles = StyleSheet.create({
     width: 36,
     height: 36,
     borderRadius: 18,
-    backgroundColor: '#7209b7',
+    backgroundColor: '#0f3460',
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -398,7 +409,7 @@ const styles = StyleSheet.create({
     elevation: 2,
   },
   saveBtn: {
-    backgroundColor: '#7209b7',
+    backgroundColor: '#0f3460',
     borderRadius: 14,
     padding: 16,
     alignItems: 'center',

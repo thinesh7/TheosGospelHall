@@ -4,11 +4,13 @@ import {
   KeyboardAvoidingView,
   Modal,
   Platform,
+  StatusBar,
   StyleSheet,
   Text,
   TouchableOpacity,
   View,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import AdminDashboard, { AdminModule } from './admin/AdminDashboard';
 import GeethangalumAdmin from './admin/GeethangalumAdmin';
 import HomeContentAdmin from './admin/HomeContentAdmin';
@@ -48,6 +50,10 @@ interface Props {
 }
 
 export default function AdminPanel({ visible, onClose, onEventsUpdated }: Props) {
+  const insets = useSafeAreaInsets();
+  const statusBarHeight = Platform.OS === 'android'
+    ? (StatusBar.currentHeight ?? insets.top)
+    : insets.top;
   const [stack, setStack] = useState<ViewKey[]>(['dashboard']);
   const activeScreenRef = useRef<AdminScreenHandle>(null);
 
@@ -99,6 +105,7 @@ export default function AdminPanel({ visible, onClose, onEventsUpdated }: Props)
     <Modal
       visible={visible}
       animationType="slide"
+      statusBarTranslucent
       onRequestClose={() => {
         if (activeScreenRef.current?.goBack()) return;
         if (stack.length > 1) { popView(); return; }
@@ -107,7 +114,7 @@ export default function AdminPanel({ visible, onClose, onEventsUpdated }: Props)
     >
       <KeyboardAvoidingView behavior={Platform.OS === 'android' ? 'height' : 'padding'} style={{ flex: 1 }}>
         <View style={styles.container}>
-          <View style={styles.header}>
+          <View style={[styles.header, { paddingTop: statusBarHeight + 12 }]}>
             <View style={styles.headerLeft}>
               {stack.length > 1 && (
                 <TouchableOpacity onPress={popView} style={styles.backBtn}>
@@ -163,7 +170,6 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#f5f5f5' },
   header: {
     backgroundColor: '#0f3460',
-    paddingTop: 54,
     paddingBottom: 16,
     paddingHorizontal: 20,
     flexDirection: 'row',

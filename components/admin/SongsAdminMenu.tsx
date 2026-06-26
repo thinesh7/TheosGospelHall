@@ -56,7 +56,7 @@ const styles = StyleSheet.create({
     marginBottom: 14,
     elevation: 3,
     borderLeftWidth: 5,
-    borderLeftColor: '#7209b7',
+    borderLeftColor: '#0f3460',
   },
   cardIcon: { fontSize: 28, marginRight: 16 },
   cardTextWrap: { flex: 1 },

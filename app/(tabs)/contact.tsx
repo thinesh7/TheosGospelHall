@@ -16,6 +16,7 @@ import {
   TouchableOpacity,
   View
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import AdminPanel from '../../components/AdminPanel';
 import Paragraphs from '../../components/Paragraphs';
 import { auth } from '../../firebaseConfig';
@@ -26,6 +27,7 @@ const APP_VERSION = Constants.expoConfig?.version ?? '1.0.0';
 
 export default function AboutScreen() {
   const { colors } = useTheme();
+  const insets = useSafeAreaInsets();
 
   const tapCountRef = useRef(0);
   const tapTimerRef = useRef<any>(null);
@@ -74,7 +76,7 @@ export default function AboutScreen() {
     }, [showLogin, showAdmin])
   );
 
-  const handleHeaderTap = () => {
+  const handleFooterTap = () => {
     tapCountRef.current += 1;
     if (tapTimerRef.current) clearTimeout(tapTimerRef.current);
     tapTimerRef.current = setTimeout(() => { tapCountRef.current = 0; }, 1500);
@@ -118,7 +120,7 @@ export default function AboutScreen() {
           showsVerticalScrollIndicator={false}
           bounces={false}
         >
-          <LinearGradient colors={['#1a1a2e', '#16213e', '#0f3460']} style={styles.loginHeader}>
+          <LinearGradient colors={['#1a1a2e', '#16213e', '#0f3460']} style={[styles.loginHeader, { paddingTop: insets.top + 16 }]}>
             <Text style={styles.loginHeaderTitle}>🔐 Admin Access</Text>
             <Text style={styles.loginHeaderSub}>Theos Gospel Hall</Text>
           </LinearGradient>
@@ -174,12 +176,10 @@ export default function AboutScreen() {
 
   return (
     <ScrollView style={[styles.container, { backgroundColor: colors.bg }]}>
-      <TouchableOpacity activeOpacity={1} onPress={handleHeaderTap}>
-        <LinearGradient colors={['#1a1a2e', '#16213e', '#0f3460']} style={styles.header}>
-          <Text style={styles.churchName}>Theos Gospel Hall</Text>
-          <Text style={styles.tagline}>"Proclaiming the Word of God"</Text>
-        </LinearGradient>
-      </TouchableOpacity>
+      <LinearGradient colors={['#1a1a2e', '#16213e', '#0f3460']} style={styles.header}>
+        <Text style={styles.churchName}>Theos Gospel Hall</Text>
+        <Text style={styles.tagline}>"Proclaiming the Word of God"</Text>
+      </LinearGradient>
 
       <ChurchInfo />
 
@@ -218,11 +218,13 @@ export default function AboutScreen() {
         );
       })()}
 
-      <View style={[styles.footer, { borderTopColor: colors.divider }]}>
-        <Text style={[styles.footerVersion, { color: colors.subtext }]}>Version {APP_VERSION}</Text>
-        <Text style={[styles.footerCopy, { color: colors.subtext }]}>© {new Date().getFullYear()} Theos Gospel Hall</Text>
-        <Text style={[styles.footerRights, { color: colors.subtext }]}>All rights reserved.</Text>
-      </View>
+      <TouchableOpacity activeOpacity={1} onPress={handleFooterTap}>
+        <View style={[styles.footer, { borderTopColor: colors.divider }]}>
+          <Text style={[styles.footerVersion, { color: colors.subtext }]}>Version {APP_VERSION}</Text>
+          <Text style={[styles.footerCopy, { color: colors.subtext }]}>© {new Date().getFullYear()} Theos Gospel Hall</Text>
+          <Text style={[styles.footerRights, { color: colors.subtext }]}>All rights reserved.</Text>
+        </View>
+      </TouchableOpacity>
 
       <AdminPanel
         visible={showAdmin}

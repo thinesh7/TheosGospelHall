@@ -92,6 +92,14 @@ const GeethangalumAdmin = forwardRef<AdminScreenHandle, {}>((_props, ref) => {
       Alert.alert('Required', 'Title cannot be empty.');
       return;
     }
+    if (!editForm.lyricsTamil.trim()) {
+      Alert.alert('Required', 'Tamil lyrics cannot be empty.');
+      return;
+    }
+    if (!editForm.lyricsEnglish.trim()) {
+      Alert.alert('Required', 'English lyrics cannot be empty.');
+      return;
+    }
     setSaving(true);
     try {
       await updateGeethangalumSong(editForm.songId, {
@@ -129,7 +137,7 @@ const GeethangalumAdmin = forwardRef<AdminScreenHandle, {}>((_props, ref) => {
                 <Text style={styles.lockedFieldText}>{editForm.songNumber}</Text>
               </View>
 
-              <Text style={styles.fieldLabel}>Title</Text>
+              <Text style={styles.fieldLabel}>Title *</Text>
               <TextInput
                 style={styles.input}
                 value={editForm.title}
@@ -138,7 +146,7 @@ const GeethangalumAdmin = forwardRef<AdminScreenHandle, {}>((_props, ref) => {
                 placeholderTextColor="#999"
               />
 
-              <Text style={styles.fieldLabel}>Lyrics (Tamil)</Text>
+              <Text style={styles.fieldLabel}>Lyrics (Tamil) *</Text>
               <TextInput
                 style={[styles.input, styles.textArea]}
                 value={editForm.lyricsTamil}
@@ -149,7 +157,7 @@ const GeethangalumAdmin = forwardRef<AdminScreenHandle, {}>((_props, ref) => {
                 textAlignVertical="top"
               />
 
-              <Text style={styles.fieldLabel}>Lyrics (English)</Text>
+              <Text style={styles.fieldLabel}>Lyrics (English) *</Text>
               <TextInput
                 style={[styles.input, styles.textArea]}
                 value={editForm.lyricsEnglish}
@@ -261,6 +269,7 @@ const styles = StyleSheet.create({
   formBackText: { color: '#0f3460', fontWeight: '600', fontSize: 15 },
   formTitle: { fontSize: 16, fontWeight: 'bold', color: '#1a1a2e' },
   fieldLabel: { fontSize: 13, fontWeight: '600', color: '#555', marginBottom: 6, marginTop: 14 },
+  fieldHint: { fontSize: 11, color: '#999', marginBottom: 6, fontStyle: 'italic' },
   input: {
     backgroundColor: '#fff',
     borderRadius: 10,
