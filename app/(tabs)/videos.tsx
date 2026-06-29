@@ -10,6 +10,7 @@ import {
   Image,
   Linking,
   Modal,
+  ScrollView,
   Share,
   StatusBar,
   StyleSheet,
@@ -19,6 +20,7 @@ import {
   View,
 } from 'react-native';
 import YoutubePlayer from 'react-native-youtube-iframe';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme } from '../../utils/ThemeContext';
 import { getCachedLivePlaylists, syncLivePlaylists } from '../../utils/livePlaylistsSync';
 import { ytFetch } from '../../utils/youtubeProxy';
@@ -27,12 +29,13 @@ const CHANNEL_ID = 'UCFg0eNTRs2UIcihQAVpyrJA';
 const UPLOADS_PLAYLIST_ID = 'UUFg0eNTRs2UIcihQAVpyrJA';
 const SHORTS_PLAYLIST_ID = 'PLZISpWbe8RUjb_YX_C2yEEB7IZnhU9VRA';
 const VIDEOS_PLAYLIST_ID = 'PLZISpWbe8RUgXpqMWjZCAZUTmYQ8b1qAb';
+const SONGS_PLAYLIST_ID = 'PLKm9fFPbrDuw';
 const FALLBACK_LIVE_IDS = ['PLZISpWbe8RUidyhPJNs5xa8-WOnHq-NLj'];
 
 const getWindow = () => Dimensions.get('window');
 const { width: SW } = getWindow();
 
-type Tab = 'shorts' | 'videos' | 'live' | 'all';
+type Tab = 'shorts' | 'videos' | 'songs' | 'live' | 'all';
 
 function useWindowDimensions() {
   const [dims, setDims] = useState(getWindow);
@@ -189,7 +192,7 @@ const LOADING_MESSAGES = [
   '✨ Getting everything ready for you...',
 ];
 
-function VideoLoadingState() {
+function VideoLoadingState({ accentColor = '#ff6b6b' }: { accentColor?: string }) {
   const spinAnim = useRef(new Animated.Value(0)).current;
   const fadeAnim = useRef(new Animated.Value(1)).current;
   const scaleAnim = useRef(new Animated.Value(0.95)).current;
@@ -224,7 +227,7 @@ function VideoLoadingState() {
         {[...Array(5)].map((_, i) => <View key={i} style={loadingStyles.filmHole} />)}
       </View>
       <Animated.View style={[loadingStyles.playCircle, { transform: [{ scale: scaleAnim }] }]}>
-        <Animated.View style={[loadingStyles.spinRing, { transform: [{ rotate: spin }] }]} />
+        <Animated.View style={[loadingStyles.spinRing, { borderTopColor: accentColor, borderRightColor: accentColor + '4D', transform: [{ rotate: spin }] }]} />
         <Ionicons name="play" size={36} color="#fff" style={{ marginLeft: 4 }} />
       </Animated.View>
       <View style={loadingStyles.filmStrip}>
@@ -239,6 +242,7 @@ function VideoLoadingState() {
 const TAB_LOADING_MESSAGES: Record<string, string[]> = {
   shorts: ['⚡ Loading Shorts...', '🎬 Fetching latest clips...', '✨ Almost there...'],
   videos: ['🎬 Loading Videos...', '📡 Fetching sermons...', '✨ Almost there...'],
+  songs: ['🎵 Loading Songs...', '📡 Fetching music...', '✨ Almost there...'],
   live: ['📡 Loading Live Streams...', '🔴 Fetching broadcasts...', '✨ Almost there...'],
   all: ['🎬 Loading All Videos...', '📡 Fetching content...', '✨ Almost there...'],
   search: ['🔍 Searching sermons...', '📡 Finding results...', '✨ Almost there...'],
@@ -342,10 +346,33 @@ interface VideoModalProps {
 
 function VideoModal({ visible, videoId, title, onClose }: VideoModalProps) {
   const { width, height } = useWindowDimensions();
+  const { colors } = useTheme();
   const isLandscape = width > height;
   const [playerReady, setPlayerReady] = useState(false);
+  const [isInFullscreen, setIsInFullscreen] = useState(false);
+  const playerRef = useRef<any>(null);
+  const mountedRef = useRef(true);
+  useEffect(() => () => { mountedRef.current = false; }, []);
+  useEffect(() => { if (!visible) { setPlayerReady(false); setIsInFullscreen(false); } }, [visible]);
 
-  useEffect(() => { if (!visible) setPlayerReady(false); }, [visible]);
+  const onChangeState = useCallback((state: string) => {
+    if (state === 'paused' && playerReady) {
+      setTimeout(async () => {
+        if (!mountedRef.current) return;
+        const currentTime = await playerRef.current?.getCurrentTime();
+        if (currentTime !== undefined) playerRef.current?.seekTo(currentTime, true);
+      }, 300);
+    }
+  }, [playerReady]);
+
+  const onFullScreenChange = useCallback((isFs: boolean) => {
+    if (!mountedRef.current) return;
+    if (!isFs) {
+      setIsInFullscreen(false);
+    } else {
+      setIsInFullscreen(true);
+    }
+  }, []);
 
   return (
     <Modal visible={visible} animationType="slide" statusBarTranslucent onRequestClose={onClose}>
@@ -353,7 +380,7 @@ function VideoModal({ visible, videoId, title, onClose }: VideoModalProps) {
         <StatusBar hidden />
         {!playerReady && (
           <View style={[StyleSheet.absoluteFillObject, { backgroundColor: '#0a0a0a', justifyContent: 'center', alignItems: 'center', zIndex: 10 }]}>
-            <VideoLoadingState />
+            <VideoLoadingState accentColor={colors.accent} />
           </View>
         )}
         {(() => {
@@ -361,12 +388,17 @@ function VideoModal({ visible, videoId, title, onClose }: VideoModalProps) {
           const videoW = isLandscape ? height * 16 / 9 : width;
           return (
             <YoutubePlayer
+              ref={playerRef}
               height={videoH}
               width={videoW}
               videoId={videoId || ''}
               play={visible && !!videoId}
+              forceAndroidAutoplay={true}
               onReady={() => setPlayerReady(true)}
+              onChangeState={onChangeState}
+              onFullScreenChange={onFullScreenChange}
               webViewProps={{ allowsInlineMediaPlayback: true, mediaPlaybackRequiresUserAction: false, allowsFullscreenVideo: true }}
+              initialPlayerParams={{ rel: 0, modestbranding: 1, controls: 1, playsinline: 1 }}
             />
           );
         })()}
@@ -384,63 +416,267 @@ function VideoModal({ visible, videoId, title, onClose }: VideoModalProps) {
   );
 }
 
-function ShortsPlayerItemInner({ item, index, isActive, onEnd, onClose, total }: any) {
+interface SongsPlayerProps {
+  visible: boolean;
+  songs: any[];
+  startIndex: number;
+  onClose: () => void;
+  onEndReached: () => void;
+}
+
+interface SongItemProps {
+  item: any;
+  index: number;
+  isActive: boolean;
+  currentIndex: number;
+  playerReady: boolean;
+  colors: any;
+  onReady: () => void;
+  onChangeState: (state: string) => void;
+  playerRef: React.RefObject<any>;
+}
+
+function SongItem({ item, index, isActive, playerReady, colors, onReady, onChangeState, playerRef }: SongItemProps) {
+  const videoId = item?.snippet?.resourceId?.videoId;
+  const title = item?.snippet?.title || '';
+  const dimsRef = useRef(Dimensions.get('window'));
+  const videoH = dimsRef.current.width * 9 / 16;
+  const videoW = dimsRef.current.width;
+  const containerW = dimsRef.current.width;
+  const containerH = dimsRef.current.height;
+  const mountedRef = useRef(true);
+  useEffect(() => () => { mountedRef.current = false; }, []);
+
+  const onFullScreenChange = useCallback((isFs: boolean) => {
+    if (!mountedRef.current) return;
+    if (isFs) {
+      ScreenOrientation.unlockAsync();
+    } else {
+      ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.PORTRAIT);
+    }
+  }, []);
+
+  return (
+    <View style={{ width: containerW, height: containerH, backgroundColor: '#000', justifyContent: 'center' }}>
+      {!playerReady && isActive && (
+        <View style={[StyleSheet.absoluteFillObject, { backgroundColor: '#0a0a0a', justifyContent: 'center', alignItems: 'center', zIndex: 10 }]}>
+          <VideoLoadingState accentColor={colors.accent} />
+        </View>
+      )}
+      {isActive ? (
+        <YoutubePlayer
+          ref={playerRef}
+          height={videoH}
+          width={videoW}
+          videoId={videoId}
+          play={true}
+          forceAndroidAutoplay={true}
+          onReady={onReady}
+          onChangeState={onChangeState}
+          onFullScreenChange={onFullScreenChange}
+          webViewProps={{ allowsInlineMediaPlayback: true, mediaPlaybackRequiresUserAction: false, allowsFullscreenVideo: true }}
+          initialPlayerParams={{ rel: 0, modestbranding: 1, controls: 1, mute: 1, playsinline: 1 }}
+        />
+      ) : (
+        <View style={{ width: videoW, height: videoH, backgroundColor: '#000' }} />
+      )}
+      {isActive && playerReady && (
+        <>
+          <Text style={styles.videoModalTitle} numberOfLines={3}>{title}</Text>
+          <VideoActions videoId={videoId || ''} title={title} />
+        </>
+      )}
+    </View>
+  );
+}
+
+function SongsPlayer({ visible, songs, startIndex, onClose, onEndReached }: SongsPlayerProps) {
+  const dims = useWindowDimensions();
+  const { colors } = useTheme();
+  const insets = useSafeAreaInsets();
+  const width = dims.width;
+  const height = dims.height;
+  const [currentIndex, setCurrentIndex] = useState(startIndex);
+  const [playerReady, setPlayerReady] = useState(false);
+  const listRef = useRef<FlatList>(null);
+  const currentIndexRef = useRef(startIndex);
+  const playerRef = useRef<any>(null);
+  const itemSizeRef = useRef(height);
+  const itemSize = itemSizeRef.current;
+
+  useEffect(() => {
+    if (visible) {
+      setCurrentIndex(startIndex);
+      currentIndexRef.current = startIndex;
+      setPlayerReady(false);
+    }
+  }, [visible, startIndex]);
+
+  useEffect(() => {
+    setPlayerReady(false);
+  }, [currentIndex]);
+
+  const onViewable = useRef(({ viewableItems }: any) => {
+    if (!viewableItems.length) return;
+    const idx = viewableItems[0].index ?? 0;
+    currentIndexRef.current = idx;
+    setCurrentIndex(idx);
+    if (idx === songs.length - 1) onEndReached();
+  }).current;
+
+  const handleVideoEnd = useCallback(() => {
+    const next = currentIndexRef.current + 1;
+    if (next < songs.length) {
+      listRef.current?.scrollToIndex({ index: next, animated: true });
+    } else {
+      onEndReached();
+    }
+  }, [songs.length, onEndReached]);
+
+  const viewConfig = useRef({ itemVisiblePercentThreshold: 60 }).current;
+
+  return (
+    <Modal visible={visible} animationType="slide" statusBarTranslucent supportedOrientations={["portrait"]} onRequestClose={onClose}>
+      <View style={{ flex: 1, backgroundColor: '#000' }}>
+        <StatusBar hidden />
+        <FlatList
+          ref={listRef}
+          data={songs}
+          keyExtractor={item => item.snippet.resourceId.videoId}
+          pagingEnabled
+          showsVerticalScrollIndicator={false}
+          snapToInterval={itemSize}
+          snapToAlignment="start"
+          decelerationRate="fast"
+          onViewableItemsChanged={onViewable}
+          viewabilityConfig={viewConfig}
+          getItemLayout={(_, index) => ({ length: itemSize, offset: itemSize * index, index })}
+          initialScrollIndex={startIndex}
+          onScrollToIndexFailed={() => {}}
+          extraData={{ currentIndex, playerReady }}
+          renderItem={({ item, index }) => {
+            const isActive = index === currentIndex;
+            return (
+              <SongItem
+                item={item}
+                index={index}
+                isActive={isActive}
+                currentIndex={currentIndex}
+                playerReady={playerReady}
+                colors={colors}
+                playerRef={playerRef}
+                onReady={() => {
+                  setPlayerReady(true);
+                  playerRef.current?.seekTo(0, true);
+                }}
+                onChangeState={async (state: string) => {
+                  if (state === 'ended') {
+                    handleVideoEnd();
+                  } else if (state === 'paused' && playerReady) {
+                    setTimeout(async () => {
+                      const currentTime = await playerRef.current?.getCurrentTime();
+                      if (currentTime !== undefined) playerRef.current?.seekTo(currentTime, true);
+                    }, 300);
+                  }
+                }}
+              />
+            );
+          }}
+        />
+        <TouchableOpacity style={styles.modalClose} onPress={onClose}>
+          <Ionicons name="close" size={26} color="#fff" />
+        </TouchableOpacity>
+        <View style={[styles.songsSwipeHint, { bottom: insets.bottom + 16 }]}>
+          <Ionicons name="chevron-up" size={16} color="rgba(255,255,255,0.5)" />
+          <Text style={styles.songsSwipeHintText}>Swipe to navigate</Text>
+          <Ionicons name="chevron-down" size={16} color="rgba(255,255,255,0.5)" />
+        </View>
+      </View>
+    </Modal>
+  );
+}
+
+function ShortsPlayerItemInner({ item, index, isActive, onEnd, onClose, total, onTransitionChange }: any) {
   const [shortReady, setShortReady] = useState(false);
   const videoId = item?.snippet?.resourceId?.videoId;
   const title = item?.snippet?.title ?? '';
-  const { width: w, height: h } = useWindowDimensions();
-  const isLandscape = w > h;
-  const shortsH = isLandscape ? h : h * 0.55;
-  const shortsW = isLandscape ? h * 9 / 16 : w;
-
+  const { colors } = useTheme();
+  const insets = useSafeAreaInsets();
+  const playerRef = useRef<any>(null);
+  const dimsRef = useRef((() => {
+    const s = Dimensions.get('screen');
+    const w = Math.min(s.width, s.height);
+    const h = Math.max(s.width, s.height);
+    return { width: w, height: h };
+  })());
+  const videoH = dimsRef.current.width * 9 / 16;
+  const videoW = dimsRef.current.width;
+  const containerW = dimsRef.current.width;
+  const containerH = dimsRef.current.height;
+  const mountedRef = useRef(true);
+  useEffect(() => () => { mountedRef.current = false; }, []);
   useEffect(() => { setShortReady(false); }, [videoId]);
 
+  const onFullScreenChange = useCallback((isFs: boolean) => {
+    if (!mountedRef.current) return;
+    if (isFs) {
+      ScreenOrientation.unlockAsync();
+    } else {
+      onTransitionChange(true);
+      ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.PORTRAIT);
+      setTimeout(() => { if (mountedRef.current) onTransitionChange(false); }, 500);
+    }
+  }, [onTransitionChange]);
+
   return (
-    <View style={{ width: w, height: h, backgroundColor: '#000', justifyContent: 'center', alignItems: 'center' }}>
+    <View style={{ width: containerW, height: containerH, backgroundColor: '#000', justifyContent: 'center' }}>
       <StatusBar hidden />
-      <View style={{
-        width: isLandscape ? w : w,
-        height: shortsH,
-        backgroundColor: '#000',
-        justifyContent: 'center',
-        alignItems: 'center',
-        marginTop: isLandscape ? 0 : h * 0.15,
-      }}>
-        {isActive ? (
-          <>
-            {!shortReady && (
-              <View style={[StyleSheet.absoluteFillObject, { backgroundColor: '#0a0a0a', justifyContent: 'center', alignItems: 'center', zIndex: 10, marginBottom: isLandscape ? 0 : h * 0.2 }]}>
-                <VideoLoadingState />
-              </View>
-            )}
-            <YoutubePlayer
-              height={shortsH}
-              width={isLandscape ? shortsW : w}
-              videoId={videoId}
-              play
-              onReady={() => setShortReady(true)}
-              onChangeState={(s: string) => { if (s === 'ended') onEnd(index); }}
-              webViewProps={{ allowsInlineMediaPlayback: true, mediaPlaybackRequiresUserAction: false, allowsFullscreenVideo: true }}
-              initialPlayerParams={{ rel: 0, modestbranding: 1, controls: 1 }}
-            />
-          </>
-        ) : (
-          <View style={{ width: isLandscape ? shortsW : w, height: shortsH, backgroundColor: '#000' }} />
-        )}
-      </View>
-      {!isLandscape && shortReady && (
-        <>
-          <VideoActions videoId={videoId || ''} title={title} absolute />
-          <View style={styles.shortsOverlay}>
-            <Text style={styles.shortsTitle} numberOfLines={3}>{title}</Text>
-            <Text style={styles.shortsCounter}>{index + 1} / {total}</Text>
-          </View>
-        </>
+      {!shortReady && (
+        <View style={[StyleSheet.absoluteFillObject, { backgroundColor: '#0a0a0a', justifyContent: 'center', alignItems: 'center', zIndex: 10 }]}>
+          <VideoLoadingState accentColor={colors.accent} />
+        </View>
+      )}
+      {isActive ? (
+        <YoutubePlayer
+          ref={playerRef}
+          height={videoH}
+          width={videoW}
+          videoId={videoId}
+          play
+          forceAndroidAutoplay={true}
+          onReady={() => setShortReady(true)}
+          onFullScreenChange={onFullScreenChange}
+          onChangeState={async (s: string) => {
+            if (s === 'ended') { setTimeout(() => onEnd(index), 300); }
+            if (s === 'paused' && shortReady) {
+              setTimeout(async () => {
+                if (!mountedRef.current) return;
+                const currentTime = await playerRef.current?.getCurrentTime();
+                if (currentTime !== undefined) playerRef.current?.seekTo(currentTime, true);
+              }, 300);
+            }
+          }}
+          webViewProps={{ allowsInlineMediaPlayback: true, mediaPlaybackRequiresUserAction: false, allowsFullscreenVideo: true }}
+          initialPlayerParams={{ rel: 0, modestbranding: 1, controls: 1, playsinline: 1 }}
+        />
+      ) : (
+        <View style={{ width: videoW, height: videoH, backgroundColor: '#000' }} />
       )}
       {shortReady && (
-        <TouchableOpacity style={[styles.shortsClose, isLandscape && { top: 16 }]} onPress={onClose}>
-          <Ionicons name="close" size={28} color="#fff" />
-        </TouchableOpacity>
+        <>
+          <Text style={styles.videoModalTitle} numberOfLines={3}>{title}</Text>
+          <VideoActions videoId={videoId || ''} title={title} />
+        </>
+      )}
+      <TouchableOpacity style={styles.modalClose} onPress={onClose}>
+        <Ionicons name="close" size={26} color="#fff" />
+      </TouchableOpacity>
+      {shortReady && (
+        <View style={[styles.songsSwipeHint, { bottom: insets.bottom + 16 }]}>
+          <Ionicons name="chevron-up" size={16} color="rgba(255,255,255,0.5)" />
+          <Text style={styles.songsSwipeHintText}>Swipe to navigate</Text>
+          <Ionicons name="chevron-down" size={16} color="rgba(255,255,255,0.5)" />
+        </View>
       )}
     </View>
   );
@@ -468,6 +704,15 @@ export default function VideosScreen() {
   const [loadingVideos, setLoadingVideos] = useState(false);
   const [loadingMoreVideos, setLoadingMoreVideos] = useState(false);
 
+  const [songs, setSongs] = useState<any[]>([]);
+  const [songsLoaded, setSongsLoaded] = useState(false);
+  const [songsError, setSongsError] = useState(false);
+  const [songsNextToken, setSongsNextToken] = useState('');
+  const [loadingSongs, setLoadingSongs] = useState(false);
+  const [loadingMoreSongs, setLoadingMoreSongs] = useState(false);
+  const [songsPlayerVisible, setSongsPlayerVisible] = useState(false);
+  const [currentSongIndex, setCurrentSongIndex] = useState(0);
+
   const [liveVideos, setLiveVideos] = useState<any[]>([]);
   const [liveLoaded, setLiveLoaded] = useState(false);
   const [liveError, setLiveError] = useState(false);
@@ -488,6 +733,7 @@ export default function VideosScreen() {
   const [activeVideoId, setActiveVideoId] = useState<string | null>(null);
   const [activeVideoTitle, setActiveVideoTitle] = useState('');
   const [shortsPlayerVisible, setShortsPlayerVisible] = useState(false);
+  const [shortsTransitioning, setShortsTransitioning] = useState(false);
   const [currentShortIndex, setCurrentShortIndex] = useState(0);
   const [playingShortId, setPlayingShortId] = useState<string | null>(null);
 
@@ -495,11 +741,24 @@ export default function VideosScreen() {
   const shortsNextRef = useRef('');
   const loadingMoreShortsRef = useRef(false);
   const shortsDataRef = useRef<any[]>([]);
+  const shortItemSizeRef = useRef(Dimensions.get('screen').height);
 
   useEffect(() => { shortsNextRef.current = shortsNextToken; }, [shortsNextToken]);
   useEffect(() => { loadingMoreShortsRef.current = loadingMoreShorts; }, [loadingMoreShorts]);
   useEffect(() => { shortsDataRef.current = shorts; }, [shorts]);
   useEffect(() => { fetchShorts(); }, []);
+
+  useEffect(() => {
+    if (songsPlayerVisible || shortsPlayerVisible) {
+      ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.PORTRAIT);
+      if (shortsPlayerVisible) {
+        const screen = Dimensions.get('screen');
+        shortItemSizeRef.current = Math.max(screen.height, screen.width);
+      }
+    } else {
+      ScreenOrientation.unlockAsync();
+    }
+  }, [songsPlayerVisible, shortsPlayerVisible]);
 
   useEffect(() => {
     if (!search.trim()) { setSearchResults([]); return; }
@@ -511,6 +770,10 @@ export default function VideosScreen() {
     if (activeTab === 'videos') {
       if (videosError) { setVideosError(false); fetchVideos('', true); }
       else if (!videosLoaded) fetchVideos();
+    }
+    if (activeTab === 'songs') {
+      if (songsError) { setSongsError(false); fetchSongs('', true); }
+      else if (!songsLoaded) fetchSongs();
     }
     if (activeTab === 'live') {
       if (liveError) { setLiveError(false); loadLiveAndFetch(); }
@@ -525,15 +788,6 @@ export default function VideosScreen() {
       fetchShorts('', true);
     }
   }, [activeTab]);
-
-  useEffect(() => {
-    if (shortsPlayerVisible) {
-      ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.PORTRAIT_UP);
-    } else {
-      ScreenOrientation.unlockAsync();
-    }
-    return () => { ScreenOrientation.unlockAsync(); };
-  }, [shortsPlayerVisible]);
 
   const openVideo = (videoId: string, title: string) => {
     setActiveVideoId(videoId);
@@ -571,6 +825,21 @@ export default function VideosScreen() {
     } catch {
       if (!pageToken) setVideosError(true);
     } finally { setLoadingVideos(false); setLoadingMoreVideos(false); }
+  };
+
+  const fetchSongs = async (pageToken = '', forceLoad = false) => {
+    try {
+      if (!pageToken || forceLoad) { setLoadingSongs(true); setSongsError(false); setSongsLoaded(false); } else setLoadingMoreSongs(true);
+      const data = await ytFetch('playlistItems', { playlistId: SONGS_PLAYLIST_ID, part: 'snippet', maxResults: '50', ...(pageToken ? { pageToken } : {}) });
+      const enriched = await enrichDates(mapItems(data.items || []));
+      if (pageToken) {
+        setSongs(prev => { const s = new Set(prev.map((v: any) => v.snippet.resourceId.videoId)); return [...prev, ...enriched.filter((v: any) => !s.has(v.snippet.resourceId.videoId))]; });
+      } else { setSongs(dedupeById(enriched)); }
+      setSongsNextToken(data.nextPageToken || '');
+      setSongsLoaded(true);
+    } catch {
+      if (!pageToken) setSongsError(true);
+    } finally { setLoadingSongs(false); setLoadingMoreSongs(false); }
   };
 
   const loadLiveAndFetch = async () => {
@@ -649,10 +918,11 @@ export default function VideosScreen() {
     setRefreshing(true);
     setShorts([]); setShortsLoaded(false); setShortsNextToken(''); setShortsError(false);
     setVideos([]); setVideosLoaded(false); setVideosNextToken(''); setVideosError(false);
+    setSongs([]); setSongsLoaded(false); setSongsNextToken(''); setSongsError(false);
     setLiveVideos([]); setLiveLoaded(false); setLiveNextTokens({}); setLiveError(false);
     setAllVideos([]); setAllLoaded(false); setAllNextToken(''); setAllError(false);
-    await Promise.all([fetchShorts(), fetchVideos(), loadLiveAndFetch(), fetchAll()]);
-    setShortsLoaded(true); setVideosLoaded(true); setLiveLoaded(true); setAllLoaded(true);
+    await Promise.all([fetchShorts(), fetchVideos(), fetchSongs(), loadLiveAndFetch(), fetchAll()]);
+    setShortsLoaded(true); setVideosLoaded(true); setSongsLoaded(true); setLiveLoaded(true); setAllLoaded(true);
     setRefreshing(false);
   };
 
@@ -687,6 +957,7 @@ export default function VideosScreen() {
         isActive={isActive}
         onEnd={handleShortEnd}
         onClose={() => { setShortsPlayerVisible(false); setPlayingShortId(null); }}
+        onTransitionChange={setShortsTransitioning}
         total={shortsDataRef.current.length}
       />
     );
@@ -713,6 +984,37 @@ export default function VideosScreen() {
         <View style={styles.cardInfo}>
           <Text style={[styles.cardTitle, { color: colors.text }]} numberOfLines={2}>{title}</Text>
           <Text style={[styles.cardDate, { color: colors.subtext }]}>{formatDate(date)}</Text>
+        </View>
+      </TouchableOpacity>
+    );
+  };
+
+  const SongCard = ({ item, index }: any) => {
+    const { width: cardW } = useWindowDimensions();
+    const videoId = item?.snippet?.resourceId?.videoId;
+    const thumb = item?.snippet?.thumbnails?.medium?.url;
+    const title = decodeHtml(item?.snippet?.title || '');
+    const duration = item?.snippet?.duration || '';
+    if (!videoId || !thumb) return null;
+    return (
+      <TouchableOpacity
+        style={[styles.card, { backgroundColor: colors.surface }]}
+        onPress={() => { setCurrentSongIndex(index); setSongsPlayerVisible(true); }}
+      >
+        <View>
+          <Image source={{ uri: thumb }} style={[styles.thumb, { height: cardW * 0.52 }]} />
+          <View style={styles.songPlayOverlay}>
+            <Ionicons name="musical-notes" size={20} color="#fff" />
+          </View>
+          {!!duration && (
+            <View style={styles.durationBadge}>
+              <Text style={styles.durationText}>{duration}</Text>
+            </View>
+          )}
+        </View>
+        <View style={styles.cardInfo}>
+          <Text style={[styles.cardTitle, { color: colors.text }]} numberOfLines={2}>{title}</Text>
+          <Text style={[styles.cardDate, { color: colors.subtext }]}>#{index + 1}</Text>
         </View>
       </TouchableOpacity>
     );
@@ -769,6 +1071,7 @@ export default function VideosScreen() {
   const TABS: { key: Tab; label: string; icon: string }[] = [
     { key: 'shorts', label: 'Shorts', icon: 'flash' },
     { key: 'videos', label: 'Videos', icon: 'videocam' },
+    { key: 'songs', label: 'Songs', icon: 'musical-notes' },
     { key: 'live', label: 'Live', icon: 'radio' },
     { key: 'all', label: 'All', icon: 'grid' },
   ];
@@ -780,8 +1083,19 @@ export default function VideosScreen() {
     <View style={[styles.container, { backgroundColor: colors.bg }]}>
       <VideoModal visible={videoModalVisible} videoId={activeVideoId} title={activeVideoTitle} onClose={closeVideo} />
 
-      <Modal visible={shortsPlayerVisible} animationType="slide" statusBarTranslucent onRequestClose={() => { setShortsPlayerVisible(false); setPlayingShortId(null); }}>
+      <SongsPlayer
+        visible={songsPlayerVisible}
+        songs={songs}
+        startIndex={currentSongIndex}
+        onClose={() => setSongsPlayerVisible(false)}
+        onEndReached={() => { if (songsNextToken && !loadingMoreSongs) fetchSongs(songsNextToken); }}
+      />
+
+      <Modal visible={shortsPlayerVisible} animationType="slide" statusBarTranslucent supportedOrientations={["portrait"]} onRequestClose={() => { setShortsPlayerVisible(false); setPlayingShortId(null); }}>
         <View style={{ flex: 1, backgroundColor: '#000' }}>
+          {shortsTransitioning && (
+            <View style={[StyleSheet.absoluteFillObject, { backgroundColor: '#000', zIndex: 999 }]} />
+          )}
           <FlatList
             ref={shortsListRef}
             data={shorts}
@@ -789,12 +1103,12 @@ export default function VideosScreen() {
             renderItem={({ item, index }) => <ShortsPlayerItem item={item} index={index} />}
             pagingEnabled
             showsVerticalScrollIndicator={false}
-            snapToInterval={Dimensions.get('window').height}
+            snapToInterval={shortItemSizeRef.current}
             snapToAlignment="start"
             decelerationRate="fast"
             onViewableItemsChanged={onShortsViewable}
             viewabilityConfig={shortsViewConfig}
-            getItemLayout={(_, index) => ({ length: Dimensions.get('window').height, offset: Dimensions.get('window').height * index, index })}
+            getItemLayout={(_, index) => ({ length: shortItemSizeRef.current, offset: shortItemSizeRef.current * index, index })}
             initialScrollIndex={currentShortIndex}
             onScrollToIndexFailed={() => {}}
           />
@@ -815,18 +1129,18 @@ export default function VideosScreen() {
       </View>
 
       {!isSearching && (
-        <View style={styles.tabsRow}>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.tabsScroll} contentContainerStyle={styles.tabsRow}>
           {TABS.map(t => (
             <TouchableOpacity
               key={t.key}
               style={[styles.tab, { backgroundColor: activeTab === t.key ? colors.accent : colors.surface }]}
               onPress={() => setActiveTab(t.key)}
             >
-              <Ionicons name={t.icon as any} size={14} color={activeTab === t.key ? '#fff' : colors.subtext} />
+              <Ionicons name={t.icon as any} size={15} color={activeTab === t.key ? '#fff' : colors.subtext} />
               <Text style={[styles.tabText, { color: activeTab === t.key ? '#fff' : colors.subtext }]}>{t.label}</Text>
             </TouchableOpacity>
           ))}
-        </View>
+        </ScrollView>
       )}
 
       {isSearching && (
@@ -845,6 +1159,12 @@ export default function VideosScreen() {
         loadingVideos ? <TabLoadingState tab="videos" />
         : videosError ? <VideoErrorState onRetry={() => { setVideosLoaded(false); fetchVideos(); }} />
         : <FlatList data={videos} keyExtractor={i => i.snippet.resourceId.videoId} refreshing={refreshing} onRefresh={onRefresh} renderItem={({ item }) => <VideoCard item={item} />} contentContainerStyle={styles.list} ListEmptyComponent={<Text style={[styles.empty, { color: colors.subtext }]}>No videos found</Text>} ListFooterComponent={<LoadMore token={videosNextToken} loading={loadingMoreVideos} onPress={() => fetchVideos(videosNextToken)} />} />
+      )}
+
+      {!isSearching && activeTab === 'songs' && (
+        loadingSongs ? <TabLoadingState tab="songs" />
+        : songsError ? <VideoErrorState onRetry={() => { setSongsLoaded(false); fetchSongs(); }} />
+        : <FlatList data={songs} keyExtractor={i => i.snippet.resourceId.videoId} refreshing={refreshing} onRefresh={onRefresh} renderItem={({ item, index }) => <SongCard item={item} index={index} />} contentContainerStyle={styles.list} ListEmptyComponent={<Text style={[styles.empty, { color: colors.subtext }]}>No songs found</Text>} ListFooterComponent={<LoadMore token={songsNextToken} loading={loadingMoreSongs} onPress={() => fetchSongs(songsNextToken)} />} />
       )}
 
       {!isSearching && activeTab === 'live' && (
@@ -866,9 +1186,10 @@ const styles = StyleSheet.create({
   container: { flex: 1 },
   searchRow: { flexDirection: 'row', alignItems: 'center', margin: 12, marginTop: 50, borderRadius: 12, paddingHorizontal: 12, paddingVertical: 10, elevation: 3 },
   searchInput: { flex: 1, marginLeft: 8, fontSize: 15 },
-  tabsRow: { flexDirection: 'row', paddingHorizontal: 12, paddingBottom: 10, gap: 8 },
-  tab: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 4, paddingVertical: 8, borderRadius: 20, elevation: 2 },
-  tabText: { fontSize: 12, fontWeight: '600' },
+  tabsScroll: { flexShrink: 0 },
+  tabsRow: { flexDirection: 'row', paddingHorizontal: 12, paddingTop: 4, paddingBottom: 10, gap: 8, alignItems: 'center' },
+  tab: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 9, paddingHorizontal: 18, borderRadius: 20, elevation: 2, alignSelf: 'flex-start' },
+  tabText: { fontSize: 13, fontWeight: '600' },
   list: { padding: 12, paddingBottom: 100 },
   card: { borderRadius: 12, marginBottom: 12, overflow: 'hidden', elevation: 3 },
   thumb: { width: '100%', resizeMode: 'cover' },
@@ -877,6 +1198,7 @@ const styles = StyleSheet.create({
   cardDate: { fontSize: 12, marginTop: 4 },
   durationBadge: { position: 'absolute', bottom: 8, right: 8, backgroundColor: 'rgba(0,0,0,0.78)', borderRadius: 4, paddingHorizontal: 6, paddingVertical: 2 },
   durationText: { color: '#fff', fontSize: 11, fontWeight: '700', letterSpacing: 0.3 },
+  songPlayOverlay: { position: 'absolute', top: 8, left: 8, backgroundColor: 'rgba(0,0,0,0.55)', borderRadius: 16, padding: 4 },
   shortCard: { flex: 1, borderRadius: 12, overflow: 'hidden', elevation: 3, marginBottom: 8, backgroundColor: '#000', minHeight: 220 },
   shortThumb: { width: '100%', height: 220 },
   shortPlayIcon: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, justifyContent: 'center', alignItems: 'center' },
@@ -892,6 +1214,8 @@ const styles = StyleSheet.create({
   shortsTitle: { color: '#fff', fontSize: 14, fontWeight: '600', marginBottom: 4 },
   shortsCounter: { color: 'rgba(255,255,255,0.7)', fontSize: 12 },
   shortsClose: { position: 'absolute', top: 50, right: 16, backgroundColor: 'rgba(0,0,0,0.5)', borderRadius: 20, padding: 6, zIndex: 10 },
+  songsSwipeHint: { position: 'absolute', alignSelf: 'center', flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: 'rgba(255,255,255,0.15)', borderRadius: 20, paddingHorizontal: 16, paddingVertical: 8 },
+  songsSwipeHintText: { color: 'rgba(255,255,255,0.9)', fontSize: 12, fontWeight: '600' },
   videoModal: { flex: 1, backgroundColor: '#000', justifyContent: 'center', paddingTop: 10 },
   videoModalLandscape: { justifyContent: 'center', alignItems: 'center' },
   videoModalTitle: { color: '#fff', fontSize: 15, fontWeight: '600', padding: 20, lineHeight: 22 },
@@ -900,7 +1224,7 @@ const styles = StyleSheet.create({
 });
 
 const errorStyles = StyleSheet.create({
-  container: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 32, paddingBottom: 60 },
+  container: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 32, paddingBottom: 200, marginTop: -30 },
   iconWrap: { width: 120, height: 120, marginBottom: 24, alignItems: 'center', justifyContent: 'center' },
   tv: { width: 100, height: 80, backgroundColor: '#4a5568', borderRadius: 14, alignItems: 'center', justifyContent: 'center', position: 'relative' },
   tvScreen: { width: 72, height: 52, backgroundColor: '#e8eaf0', borderRadius: 8, alignItems: 'center', justifyContent: 'center' },
@@ -938,7 +1262,7 @@ const loadingStyles = StyleSheet.create({
 });
 
 const tabLoadingStyles = StyleSheet.create({
-  container: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 20, paddingBottom: 60 },
+  container: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 20, paddingBottom: 200 },
   iconArea: { width: 80, height: 80, alignItems: 'center', justifyContent: 'center' },
   spinRing: { position: 'absolute', width: 80, height: 80, borderRadius: 40, borderWidth: 2.5, borderColor: 'transparent', borderRightColor: 'transparent' },
   barsRow: { flexDirection: 'row', alignItems: 'flex-end', gap: 5, height: 28 },
