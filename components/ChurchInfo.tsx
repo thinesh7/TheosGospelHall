@@ -13,14 +13,14 @@ const BRANCHES = [
   {
     city: 'Coimbatore',
     time: '10:30 AM – 1:00 PM',
-    address: 'Horizon Complex, Opp CTC Bus Depot, Near Sebastian Church, Ukkadam, Coimbatore - 641008',
+    address: '2nd Floor, Horizon Complex, Opp CTC Bus Depot, Near Sebastian Church, Ukkadam, Coimbatore - 641008',
     phone: '9363207478',
     mapLink: 'https://maps.app.goo.gl/u5BdzDqmjmA8xP5d9',
   },
   {
-    city: 'Udumalpet',
+    city: 'Udumalaipettai',
     time: '10:30 AM – 1:00 PM',
-    address: '5/355 Indu Nagar, Gandhi Nagar (Post), Udumalpet - 642154',
+    address: '5/355 Indu Nagar, Gandhi Nagar (Post), Udumalaipettai - 642154',
     phone: '9363182424',
     mapLink: 'https://maps.app.goo.gl/3vhuv2xg2BnUXxQR7',
   },

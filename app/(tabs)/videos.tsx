@@ -1,6 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
-import * as ScreenOrientation from 'expo-screen-orientation';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import * as ScreenOrientation from 'expo-screen-orientation';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
@@ -20,8 +20,8 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
-import YoutubePlayer from 'react-native-youtube-iframe';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import YoutubePlayer from 'react-native-youtube-iframe';
 import { useTheme } from '../../utils/ThemeContext';
 import { getCachedLivePlaylists, syncLivePlaylists } from '../../utils/livePlaylistsSync';
 import { ytFetch } from '../../utils/youtubeProxy';
@@ -416,7 +416,7 @@ function ResumePrompt({ visible, onResume, onStartOver }: ResumePromptProps) {
           </View>
         </View>
         <Text style={resumeStyles.heading}>Continue Watching?</Text>
-        <Text style={resumeStyles.sub}>You left off partway through. Pick up where you stopped or start from the beginning.</Text>
+
         <TouchableOpacity style={resumeStyles.btnResume} onPress={onResume} activeOpacity={0.85}>
           <Ionicons name="play" size={18} color="#fff" />
           <Text style={resumeStyles.btnResumeText}>Resume</Text>
@@ -1641,7 +1641,7 @@ const styles = StyleSheet.create({
 });
 
 const resumeStyles = StyleSheet.create({
-  overlay: { position: 'absolute', bottom: 0, left: 0, right: 0, top: 0, justifyContent: 'flex-end', paddingBottom: 32, paddingHorizontal: 20, zIndex: 20, backgroundColor: 'rgba(0,0,0,0.45)' },
+  overlay: { position: 'absolute', bottom: 0, left: 0, right: 0, top: 0, justifyContent: 'flex-end', paddingBottom: 100, paddingHorizontal: 20, zIndex: 20, backgroundColor: 'rgba(0,0,0,0.45)' },
   card: { backgroundColor: 'rgba(18,18,28,0.97)', borderRadius: 24, paddingVertical: 28, paddingHorizontal: 24, alignItems: 'center', borderWidth: 1, borderColor: 'rgba(255,255,255,0.1)' },
   iconRow: { marginBottom: 16 },
   iconCircle: { width: 60, height: 60, borderRadius: 30, backgroundColor: '#7c83e5', alignItems: 'center', justifyContent: 'center' },
