@@ -1,5 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import * as ScreenOrientation from 'expo-screen-orientation';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
@@ -31,11 +32,55 @@ const SHORTS_PLAYLIST_ID = 'PLZISpWbe8RUjb_YX_C2yEEB7IZnhU9VRA';
 const VIDEOS_PLAYLIST_ID = 'PLZISpWbe8RUgXpqMWjZCAZUTmYQ8b1qAb';
 const SONGS_PLAYLIST_ID = 'PLKm9fFPbrDuw';
 const FALLBACK_LIVE_IDS = ['PLZISpWbe8RUidyhPJNs5xa8-WOnHq-NLj'];
+const PROGRESS_STORAGE_KEY = 'video_progress_v1';
+const COMPLETION_THRESHOLD = 0.98;
 
 const getWindow = () => Dimensions.get('window');
 const { width: SW } = getWindow();
 
 type Tab = 'shorts' | 'videos' | 'songs' | 'live' | 'all';
+
+interface VideoProgress {
+  position: number;
+  duration: number;
+  updatedAt: number;
+}
+
+async function saveVideoProgress(videoId: string, position: number, duration: number): Promise<void> {
+  if (!videoId || duration <= 0) return;
+  try {
+    const raw = await AsyncStorage.getItem(PROGRESS_STORAGE_KEY);
+    const map: Record<string, VideoProgress> = raw ? JSON.parse(raw) : {};
+    map[videoId] = { position, duration, updatedAt: Date.now() };
+    await AsyncStorage.setItem(PROGRESS_STORAGE_KEY, JSON.stringify(map));
+  } catch {}
+}
+
+async function getVideoProgress(videoId: string, minSeconds = 20): Promise<VideoProgress | null> {
+  if (!videoId) return null;
+  try {
+    const raw = await AsyncStorage.getItem(PROGRESS_STORAGE_KEY);
+    if (!raw) return null;
+    const map: Record<string, VideoProgress> = JSON.parse(raw);
+    const entry = map[videoId];
+    if (!entry || entry.duration <= 0) return null;
+    const ratio = entry.position / entry.duration;
+    if (ratio >= COMPLETION_THRESHOLD) return null;
+    if (entry.position < minSeconds) return null;
+    return entry;
+  } catch { return null; }
+}
+
+async function clearVideoProgress(videoId: string): Promise<void> {
+  if (!videoId) return;
+  try {
+    const raw = await AsyncStorage.getItem(PROGRESS_STORAGE_KEY);
+    if (!raw) return;
+    const map: Record<string, VideoProgress> = JSON.parse(raw);
+    delete map[videoId];
+    await AsyncStorage.setItem(PROGRESS_STORAGE_KEY, JSON.stringify(map));
+  } catch {}
+}
 
 function useWindowDimensions() {
   const [dims, setDims] = useState(getWindow);
@@ -337,6 +382,37 @@ function VideoActions({ videoId, title, absolute = false }: { videoId: string; t
   );
 }
 
+interface ResumePromptProps {
+  visible: boolean;
+  onResume: () => void;
+  onStartOver: () => void;
+}
+
+function ResumePrompt({ visible, onResume, onStartOver }: ResumePromptProps) {
+  if (!visible) return null;
+  return (
+    <View style={resumeStyles.overlay}>
+      <View style={resumeStyles.card}>
+        <View style={resumeStyles.iconRow}>
+          <View style={resumeStyles.iconCircle}>
+            <Ionicons name="time" size={28} color="#fff" />
+          </View>
+        </View>
+        <Text style={resumeStyles.heading}>Continue Watching?</Text>
+        <Text style={resumeStyles.sub}>You left off partway through. Pick up where you stopped or start from the beginning.</Text>
+        <TouchableOpacity style={resumeStyles.btnResume} onPress={onResume} activeOpacity={0.85}>
+          <Ionicons name="play" size={18} color="#fff" />
+          <Text style={resumeStyles.btnResumeText}>Resume</Text>
+        </TouchableOpacity>
+        <TouchableOpacity style={resumeStyles.btnStart} onPress={onStartOver} activeOpacity={0.85}>
+          <Ionicons name="refresh" size={16} color="rgba(255,255,255,0.8)" />
+          <Text style={resumeStyles.btnStartText}>Start Over</Text>
+        </TouchableOpacity>
+      </View>
+    </View>
+  );
+}
+
 interface VideoModalProps {
   visible: boolean;
   videoId: string | null;
@@ -350,56 +426,141 @@ function VideoModal({ visible, videoId, title, onClose }: VideoModalProps) {
   const isLandscape = width > height;
   const [playerReady, setPlayerReady] = useState(false);
   const [isInFullscreen, setIsInFullscreen] = useState(false);
+  const [playing, setPlaying] = useState(false);
+  const [showResume, setShowResume] = useState(false);
+  const [progressLoaded, setProgressLoaded] = useState(false);
   const playerRef = useRef<any>(null);
   const mountedRef = useRef(true);
+  const resumePositionRef = useRef<number>(0);
+  const progressIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const durationRef = useRef<number>(0);
+
   useEffect(() => () => { mountedRef.current = false; }, []);
-  useEffect(() => { if (!visible) { setPlayerReady(false); setIsInFullscreen(false); } }, [visible]);
+
+  useEffect(() => {
+    if (!visible) {
+      setPlayerReady(false);
+      setIsInFullscreen(false);
+      setPlaying(false);
+      setShowResume(false);
+      setProgressLoaded(false);
+      resumePositionRef.current = 0;
+      durationRef.current = 0;
+      if (progressIntervalRef.current) clearInterval(progressIntervalRef.current);
+      return;
+    }
+    if (!videoId) return;
+    setProgressLoaded(false);
+    resumePositionRef.current = 0;
+    getVideoProgress(videoId).then(progress => {
+      if (!mountedRef.current) return;
+      resumePositionRef.current = progress ? progress.position : 0;
+      if (progress) durationRef.current = progress.duration;
+      setProgressLoaded(true);
+    });
+  }, [visible, videoId]);
+
+  useEffect(() => {
+    if (!playerReady || !videoId) return;
+    if (progressIntervalRef.current) clearInterval(progressIntervalRef.current);
+    progressIntervalRef.current = setInterval(async () => {
+      if (!mountedRef.current || !playing) return;
+      try {
+        const position = await playerRef.current?.getCurrentTime();
+        const duration = await playerRef.current?.getDuration();
+        if (position !== undefined && duration !== undefined && duration > 0) {
+          durationRef.current = duration;
+          saveVideoProgress(videoId, position, duration);
+        }
+      } catch {}
+    }, 5000);
+    return () => { if (progressIntervalRef.current) clearInterval(progressIntervalRef.current); };
+  }, [playerReady, playing, videoId]);
+
+  const fsTransitionRef = useRef(false);
+
+  const handleReady = useCallback(() => {
+    if (!mountedRef.current) return;
+    setPlayerReady(true);
+    if (resumePositionRef.current > 0) {
+      playerRef.current?.seekTo(resumePositionRef.current, true);
+      setPlaying(false);
+      setShowResume(true);
+    } else {
+      setPlaying(true);
+      setShowResume(false);
+    }
+  }, []);
+
+  const handleResume = useCallback(() => {
+    setShowResume(false);
+    setPlaying(true);
+  }, []);
+
+  const handleStartOver = useCallback(() => {
+    setShowResume(false);
+    if (videoId) clearVideoProgress(videoId);
+    resumePositionRef.current = 0;
+    playerRef.current?.seekTo(0, true);
+    setPlaying(true);
+  }, [videoId]);
 
   const onChangeState = useCallback((state: string) => {
-    if (state === 'paused' && playerReady) {
+    if (state === 'playing') {
+      fsTransitionRef.current = false;
+      setPlaying(true);
+    }
+    if (fsTransitionRef.current) return;
+    if (state === 'paused') setPlaying(false);
+    if (state === 'paused' && playerReady && !showResume) {
       setTimeout(async () => {
         if (!mountedRef.current) return;
         const currentTime = await playerRef.current?.getCurrentTime();
         if (currentTime !== undefined) playerRef.current?.seekTo(currentTime, true);
       }, 300);
     }
-  }, [playerReady]);
+  }, [playerReady, showResume]);
 
   const onFullScreenChange = useCallback((isFs: boolean) => {
     if (!mountedRef.current) return;
-    if (!isFs) {
-      setIsInFullscreen(false);
-    } else {
-      setIsInFullscreen(true);
-    }
+    fsTransitionRef.current = true;
+    setIsInFullscreen(isFs);
   }, []);
 
   return (
     <Modal visible={visible} animationType="slide" statusBarTranslucent onRequestClose={onClose}>
       <View style={[styles.videoModal, isLandscape && styles.videoModalLandscape]}>
         <StatusBar hidden />
-        {!playerReady && (
+        {(!playerReady || !progressLoaded) && (
           <View style={[StyleSheet.absoluteFillObject, { backgroundColor: '#0a0a0a', justifyContent: 'center', alignItems: 'center', zIndex: 10 }]}>
             <VideoLoadingState accentColor={colors.accent} />
           </View>
         )}
-        {(() => {
+        {progressLoaded && (() => {
           const videoH = isLandscape ? height : width * 9 / 16;
           const videoW = isLandscape ? height * 16 / 9 : width;
           return (
-            <YoutubePlayer
-              ref={playerRef}
-              height={videoH}
-              width={videoW}
-              videoId={videoId || ''}
-              play={visible && !!videoId}
-              forceAndroidAutoplay={true}
-              onReady={() => setPlayerReady(true)}
-              onChangeState={onChangeState}
-              onFullScreenChange={onFullScreenChange}
-              webViewProps={{ allowsInlineMediaPlayback: true, mediaPlaybackRequiresUserAction: false, allowsFullscreenVideo: true }}
-              initialPlayerParams={{ rel: 0, modestbranding: 1, controls: 1, playsinline: 1 }}
-            />
+            <View style={{ width: videoW, height: videoH }}>
+              <YoutubePlayer
+                ref={playerRef}
+                height={videoH}
+                width={videoW}
+                videoId={videoId || ''}
+                play={playing}
+                forceAndroidAutoplay={true}
+                onReady={handleReady}
+                onChangeState={onChangeState}
+                onFullScreenChange={onFullScreenChange}
+                webViewProps={{ allowsInlineMediaPlayback: true, mediaPlaybackRequiresUserAction: false, allowsFullscreenVideo: true }}
+                initialPlayerParams={{ rel: 0, modestbranding: 1, controls: 1, playsinline: 1 }}
+              />
+              {showResume && videoId && (
+                <Image
+                  source={{ uri: `https://img.youtube.com/vi/${videoId}/hqdefault.jpg` }}
+                  style={[StyleSheet.absoluteFillObject, { resizeMode: 'cover' }]}
+                />
+              )}
+            </View>
           );
         })()}
         {!isLandscape && (
@@ -407,6 +568,9 @@ function VideoModal({ visible, videoId, title, onClose }: VideoModalProps) {
             <Text style={styles.videoModalTitle} numberOfLines={3}>{title}</Text>
             <VideoActions videoId={videoId || ''} title={title} />
           </>
+        )}
+        {playerReady && (
+          <ResumePrompt visible={showResume} onResume={handleResume} onStartOver={handleStartOver} />
         )}
         <TouchableOpacity style={[styles.modalClose, isLandscape && styles.modalCloseLandscape]} onPress={onClose}>
           <Ionicons name="close" size={26} color="#fff" />
@@ -430,13 +594,18 @@ interface SongItemProps {
   isActive: boolean;
   currentIndex: number;
   playerReady: boolean;
+  progressLoaded: boolean;
   colors: any;
   onReady: () => void;
   onChangeState: (state: string) => void;
   playerRef: React.RefObject<any>;
+  showResume: boolean;
+  onResume: () => void;
+  onStartOver: () => void;
+  fsTransitionRef: React.RefObject<boolean>;
 }
 
-function SongItem({ item, index, isActive, playerReady, colors, onReady, onChangeState, playerRef }: SongItemProps) {
+function SongItem({ item, index, isActive, playerReady, progressLoaded, colors, onReady, onChangeState, playerRef, showResume, onResume, onStartOver, fsTransitionRef }: SongItemProps) {
   const videoId = item?.snippet?.resourceId?.videoId;
   const title = item?.snippet?.title || '';
   const dimsRef = useRef(Dimensions.get('window'));
@@ -449,34 +618,43 @@ function SongItem({ item, index, isActive, playerReady, colors, onReady, onChang
 
   const onFullScreenChange = useCallback((isFs: boolean) => {
     if (!mountedRef.current) return;
+    fsTransitionRef.current = true;
     if (isFs) {
       ScreenOrientation.unlockAsync();
     } else {
       ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.PORTRAIT);
     }
-  }, []);
+  }, [fsTransitionRef]);
 
   return (
     <View style={{ width: containerW, height: containerH, backgroundColor: '#000', justifyContent: 'center' }}>
-      {!playerReady && isActive && (
+      {(!playerReady || !progressLoaded) && isActive && (
         <View style={[StyleSheet.absoluteFillObject, { backgroundColor: '#0a0a0a', justifyContent: 'center', alignItems: 'center', zIndex: 10 }]}>
           <VideoLoadingState accentColor={colors.accent} />
         </View>
       )}
-      {isActive ? (
-        <YoutubePlayer
-          ref={playerRef}
-          height={videoH}
-          width={videoW}
-          videoId={videoId}
-          play={true}
-          forceAndroidAutoplay={true}
-          onReady={onReady}
-          onChangeState={onChangeState}
-          onFullScreenChange={onFullScreenChange}
-          webViewProps={{ allowsInlineMediaPlayback: true, mediaPlaybackRequiresUserAction: false, allowsFullscreenVideo: true }}
-          initialPlayerParams={{ rel: 0, modestbranding: 1, controls: 1, mute: 1, playsinline: 1 }}
-        />
+      {isActive && progressLoaded ? (
+        <View style={{ width: videoW, height: videoH }}>
+          <YoutubePlayer
+            ref={playerRef}
+            height={videoH}
+            width={videoW}
+            videoId={videoId}
+            play={!showResume}
+            forceAndroidAutoplay={true}
+            onReady={onReady}
+            onChangeState={onChangeState}
+            onFullScreenChange={onFullScreenChange}
+            webViewProps={{ allowsInlineMediaPlayback: true, mediaPlaybackRequiresUserAction: false, allowsFullscreenVideo: true }}
+            initialPlayerParams={{ rel: 0, modestbranding: 1, controls: 1, mute: 1, playsinline: 1 }}
+          />
+          {showResume && videoId && (
+            <Image
+              source={{ uri: `https://img.youtube.com/vi/${videoId}/hqdefault.jpg` }}
+              style={[StyleSheet.absoluteFillObject, { resizeMode: 'cover' }]}
+            />
+          )}
+        </View>
       ) : (
         <View style={{ width: videoW, height: videoH, backgroundColor: '#000' }} />
       )}
@@ -485,6 +663,9 @@ function SongItem({ item, index, isActive, playerReady, colors, onReady, onChang
           <Text style={styles.videoModalTitle} numberOfLines={3}>{title}</Text>
           <VideoActions videoId={videoId || ''} title={title} />
         </>
+      )}
+      {isActive && playerReady && (
+        <ResumePrompt visible={showResume} onResume={onResume} onStartOver={onStartOver} />
       )}
     </View>
   );
@@ -498,23 +679,73 @@ function SongsPlayer({ visible, songs, startIndex, onClose, onEndReached }: Song
   const height = dims.height;
   const [currentIndex, setCurrentIndex] = useState(startIndex);
   const [playerReady, setPlayerReady] = useState(false);
+  const [playing, setPlaying] = useState(false);
+  const [showResume, setShowResume] = useState(false);
+  const [progressLoaded, setProgressLoaded] = useState(false);
+  const [scrollEnabled, setScrollEnabled] = useState(true);
   const listRef = useRef<FlatList>(null);
   const currentIndexRef = useRef(startIndex);
   const playerRef = useRef<any>(null);
   const itemSizeRef = useRef(height);
   const itemSize = itemSizeRef.current;
+  const mountedRef = useRef(true);
+  const resumePositionRef = useRef<number>(0);
+  const progressIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const durationRef = useRef<number>(0);
+
+  useEffect(() => () => { mountedRef.current = false; }, []);
 
   useEffect(() => {
     if (visible) {
       setCurrentIndex(startIndex);
       currentIndexRef.current = startIndex;
       setPlayerReady(false);
+      setPlaying(false);
+      setShowResume(false);
+      setProgressLoaded(false);
+      resumePositionRef.current = 0;
     }
   }, [visible, startIndex]);
 
   useEffect(() => {
     setPlayerReady(false);
-  }, [currentIndex]);
+    setPlaying(false);
+    setShowResume(false);
+    setProgressLoaded(false);
+    setScrollEnabled(true);
+    fsTransitionRef.current = false;
+    resumePositionRef.current = 0;
+    if (progressIntervalRef.current) clearInterval(progressIntervalRef.current);
+    const videoId = songs[currentIndex]?.snippet?.resourceId?.videoId;
+    if (!videoId || !visible) {
+      setProgressLoaded(true);
+      return;
+    }
+    getVideoProgress(videoId).then(progress => {
+      if (!mountedRef.current) return;
+      resumePositionRef.current = progress ? progress.position : 0;
+      if (progress) durationRef.current = progress.duration;
+      setProgressLoaded(true);
+    });
+  }, [currentIndex, visible]);
+
+  useEffect(() => {
+    const videoId = songs[currentIndex]?.snippet?.resourceId?.videoId;
+    if (!playerReady || !videoId) return;
+    if (progressIntervalRef.current) clearInterval(progressIntervalRef.current);
+    progressIntervalRef.current = setInterval(async () => {
+      if (!mountedRef.current || !playing) return;
+      try {
+        const position = await playerRef.current?.getCurrentTime();
+        const duration = await playerRef.current?.getDuration();
+        if (position !== undefined && duration !== undefined && duration > 0) {
+          durationRef.current = duration;
+          saveVideoProgress(videoId, position, duration);
+        }
+      } catch {}
+    }, 5000);
+    return () => { if (progressIntervalRef.current) clearInterval(progressIntervalRef.current); };
+  }, [playerReady, playing, currentIndex]);
 
   const onViewable = useRef(({ viewableItems }: any) => {
     if (!viewableItems.length) return;
@@ -532,6 +763,35 @@ function SongsPlayer({ visible, songs, startIndex, onClose, onEndReached }: Song
       onEndReached();
     }
   }, [songs.length, onEndReached]);
+
+  const fsTransitionRef = useRef(false);
+
+  const handleReady = useCallback(() => {
+    if (!mountedRef.current) return;
+    setPlayerReady(true);
+    if (resumePositionRef.current > 0) {
+      playerRef.current?.seekTo(resumePositionRef.current, true);
+      setPlaying(false);
+      setShowResume(true);
+    } else {
+      setPlaying(true);
+      setShowResume(false);
+    }
+  }, []);
+
+  const handleResume = useCallback(() => {
+    setShowResume(false);
+    setPlaying(true);
+  }, []);
+
+  const handleStartOver = useCallback(() => {
+    const videoId = songs[currentIndexRef.current]?.snippet?.resourceId?.videoId;
+    setShowResume(false);
+    if (videoId) clearVideoProgress(videoId);
+    resumePositionRef.current = 0;
+    playerRef.current?.seekTo(0, true);
+    setPlaying(true);
+  }, [songs]);
 
   const viewConfig = useRef({ itemVisiblePercentThreshold: 60 }).current;
 
@@ -553,7 +813,8 @@ function SongsPlayer({ visible, songs, startIndex, onClose, onEndReached }: Song
           getItemLayout={(_, index) => ({ length: itemSize, offset: itemSize * index, index })}
           initialScrollIndex={startIndex}
           onScrollToIndexFailed={() => {}}
-          extraData={{ currentIndex, playerReady }}
+          scrollEnabled={scrollEnabled}
+          extraData={{ currentIndex, playerReady, showResume, progressLoaded, scrollEnabled }}
           renderItem={({ item, index }) => {
             const isActive = index === currentIndex;
             return (
@@ -563,16 +824,26 @@ function SongsPlayer({ visible, songs, startIndex, onClose, onEndReached }: Song
                 isActive={isActive}
                 currentIndex={currentIndex}
                 playerReady={playerReady}
+                progressLoaded={progressLoaded}
                 colors={colors}
                 playerRef={playerRef}
-                onReady={() => {
-                  setPlayerReady(true);
-                  playerRef.current?.seekTo(0, true);
-                }}
+                showResume={showResume}
+                onResume={handleResume}
+                onStartOver={handleStartOver}
+                fsTransitionRef={fsTransitionRef}
+                onReady={handleReady}
                 onChangeState={async (state: string) => {
+                  if (state === 'playing') {
+                    fsTransitionRef.current = false;
+                    setPlaying(true);
+                    setScrollEnabled(true);
+                  }
+                  if (fsTransitionRef.current) return;
+                  if (state === 'paused') { setPlaying(false); setScrollEnabled(false); }
                   if (state === 'ended') {
+                    setScrollEnabled(true);
                     handleVideoEnd();
-                  } else if (state === 'paused' && playerReady) {
+                  } else if (state === 'paused' && playerReady && !showResume) {
                     setTimeout(async () => {
                       const currentTime = await playerRef.current?.getCurrentTime();
                       if (currentTime !== undefined) playerRef.current?.seekTo(currentTime, true);
@@ -586,23 +857,30 @@ function SongsPlayer({ visible, songs, startIndex, onClose, onEndReached }: Song
         <TouchableOpacity style={styles.modalClose} onPress={onClose}>
           <Ionicons name="close" size={26} color="#fff" />
         </TouchableOpacity>
-        <View style={[styles.songsSwipeHint, { bottom: insets.bottom + 16 }]}>
-          <Ionicons name="chevron-up" size={16} color="rgba(255,255,255,0.5)" />
-          <Text style={styles.songsSwipeHintText}>Swipe to navigate</Text>
-          <Ionicons name="chevron-down" size={16} color="rgba(255,255,255,0.5)" />
-        </View>
+        {!showResume && (
+          <View style={[styles.songsSwipeHint, { bottom: insets.bottom + 16 }]}>
+            <Ionicons name="chevron-up" size={16} color="rgba(255,255,255,0.5)" />
+            <Text style={styles.songsSwipeHintText}>Swipe to navigate</Text>
+            <Ionicons name="chevron-down" size={16} color="rgba(255,255,255,0.5)" />
+          </View>
+        )}
       </View>
     </Modal>
   );
 }
 
-function ShortsPlayerItemInner({ item, index, isActive, onEnd, onClose, total, onTransitionChange }: any) {
+function ShortsPlayerItemInner({ item, index, isActive, onEnd, onClose, total, onScrollLockChange }: any) {
   const [shortReady, setShortReady] = useState(false);
+  const [progressLoaded, setProgressLoaded] = useState(false);
   const videoId = item?.snippet?.resourceId?.videoId;
   const title = item?.snippet?.title ?? '';
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
   const playerRef = useRef<any>(null);
+  const mountedRef = useRef(true);
+  const resumePositionRef = useRef<number>(0);
+  const progressIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
   const dimsRef = useRef((() => {
     const s = Dimensions.get('screen');
     const w = Math.min(s.width, s.height);
@@ -613,30 +891,73 @@ function ShortsPlayerItemInner({ item, index, isActive, onEnd, onClose, total, o
   const videoW = dimsRef.current.width;
   const containerW = dimsRef.current.width;
   const containerH = dimsRef.current.height;
-  const mountedRef = useRef(true);
-  useEffect(() => () => { mountedRef.current = false; }, []);
-  useEffect(() => { setShortReady(false); }, [videoId]);
+
+  useEffect(() => () => {
+    mountedRef.current = false;
+    if (progressIntervalRef.current) clearInterval(progressIntervalRef.current);
+  }, []);
+
+  useEffect(() => {
+    setShortReady(false);
+    setProgressLoaded(false);
+    resumePositionRef.current = 0;
+    if (progressIntervalRef.current) clearInterval(progressIntervalRef.current);
+    if (!videoId) {
+      setProgressLoaded(true);
+      return;
+    }
+    getVideoProgress(videoId, 5).then(progress => {
+      if (!mountedRef.current) return;
+      resumePositionRef.current = progress ? progress.position : 0;
+      setProgressLoaded(true);
+    });
+  }, [videoId]);
+
+  useEffect(() => {
+    if (!shortReady || !videoId) return;
+    if (progressIntervalRef.current) clearInterval(progressIntervalRef.current);
+    progressIntervalRef.current = setInterval(async () => {
+      if (!mountedRef.current) return;
+      try {
+        const position = await playerRef.current?.getCurrentTime();
+        const duration = await playerRef.current?.getDuration();
+        if (position !== undefined && duration !== undefined && duration > 0) {
+          saveVideoProgress(videoId, position, duration);
+        }
+      } catch {}
+    }, 5000);
+    return () => { if (progressIntervalRef.current) clearInterval(progressIntervalRef.current); };
+  }, [shortReady, videoId]);
+
+  const fsTransitionRef = useRef(false);
+
+  const handleReady = useCallback(() => {
+    if (!mountedRef.current) return;
+    setShortReady(true);
+    if (resumePositionRef.current > 0) {
+      playerRef.current?.seekTo(resumePositionRef.current, true);
+    }
+  }, []);
 
   const onFullScreenChange = useCallback((isFs: boolean) => {
     if (!mountedRef.current) return;
+    fsTransitionRef.current = true;
     if (isFs) {
       ScreenOrientation.unlockAsync();
     } else {
-      onTransitionChange(true);
       ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.PORTRAIT);
-      setTimeout(() => { if (mountedRef.current) onTransitionChange(false); }, 500);
     }
-  }, [onTransitionChange]);
+  }, []);
 
   return (
     <View style={{ width: containerW, height: containerH, backgroundColor: '#000', justifyContent: 'center' }}>
       <StatusBar hidden />
-      {!shortReady && (
+      {(!shortReady || !progressLoaded) && (
         <View style={[StyleSheet.absoluteFillObject, { backgroundColor: '#0a0a0a', justifyContent: 'center', alignItems: 'center', zIndex: 10 }]}>
           <VideoLoadingState accentColor={colors.accent} />
         </View>
       )}
-      {isActive ? (
+      {isActive && progressLoaded ? (
         <YoutubePlayer
           ref={playerRef}
           height={videoH}
@@ -644,10 +965,20 @@ function ShortsPlayerItemInner({ item, index, isActive, onEnd, onClose, total, o
           videoId={videoId}
           play
           forceAndroidAutoplay={true}
-          onReady={() => setShortReady(true)}
+          onReady={handleReady}
           onFullScreenChange={onFullScreenChange}
           onChangeState={async (s: string) => {
-            if (s === 'ended') { setTimeout(() => onEnd(index), 300); }
+            if (s === 'playing') {
+              fsTransitionRef.current = false;
+              onScrollLockChange(false);
+            }
+            if (fsTransitionRef.current) return;
+            if (s === 'paused') onScrollLockChange(true);
+            if (s === 'ended') {
+              onScrollLockChange(false);
+              if (videoId) clearVideoProgress(videoId);
+              setTimeout(() => onEnd(index), 300);
+            }
             if (s === 'paused' && shortReady) {
               setTimeout(async () => {
                 if (!mountedRef.current) return;
@@ -733,7 +1064,7 @@ export default function VideosScreen() {
   const [activeVideoId, setActiveVideoId] = useState<string | null>(null);
   const [activeVideoTitle, setActiveVideoTitle] = useState('');
   const [shortsPlayerVisible, setShortsPlayerVisible] = useState(false);
-  const [shortsTransitioning, setShortsTransitioning] = useState(false);
+  const [shortsScrollEnabled, setShortsScrollEnabled] = useState(true);
   const [currentShortIndex, setCurrentShortIndex] = useState(0);
   const [playingShortId, setPlayingShortId] = useState<string | null>(null);
 
@@ -957,7 +1288,7 @@ export default function VideosScreen() {
         isActive={isActive}
         onEnd={handleShortEnd}
         onClose={() => { setShortsPlayerVisible(false); setPlayingShortId(null); }}
-        onTransitionChange={setShortsTransitioning}
+        onScrollLockChange={(locked: boolean) => setShortsScrollEnabled(!locked)}
         total={shortsDataRef.current.length}
       />
     );
@@ -1091,11 +1422,8 @@ export default function VideosScreen() {
         onEndReached={() => { if (songsNextToken && !loadingMoreSongs) fetchSongs(songsNextToken); }}
       />
 
-      <Modal visible={shortsPlayerVisible} animationType="slide" statusBarTranslucent supportedOrientations={["portrait"]} onRequestClose={() => { setShortsPlayerVisible(false); setPlayingShortId(null); }}>
+      <Modal visible={shortsPlayerVisible} animationType="slide" statusBarTranslucent supportedOrientations={["portrait"]} onRequestClose={() => { setShortsPlayerVisible(false); setPlayingShortId(null); setShortsScrollEnabled(true); }}>
         <View style={{ flex: 1, backgroundColor: '#000' }}>
-          {shortsTransitioning && (
-            <View style={[StyleSheet.absoluteFillObject, { backgroundColor: '#000', zIndex: 999 }]} />
-          )}
           <FlatList
             ref={shortsListRef}
             data={shorts}
@@ -1111,6 +1439,7 @@ export default function VideosScreen() {
             getItemLayout={(_, index) => ({ length: shortItemSizeRef.current, offset: shortItemSizeRef.current * index, index })}
             initialScrollIndex={currentShortIndex}
             onScrollToIndexFailed={() => {}}
+            scrollEnabled={shortsScrollEnabled}
           />
         </View>
       </Modal>
@@ -1221,6 +1550,19 @@ const styles = StyleSheet.create({
   videoModalTitle: { color: '#fff', fontSize: 15, fontWeight: '600', padding: 20, lineHeight: 22 },
   modalClose: { position: 'absolute', top: 50, right: 16, backgroundColor: 'rgba(0,0,0,0.5)', borderRadius: 20, padding: 8, zIndex: 10 },
   modalCloseLandscape: { top: 16, right: 16 },
+});
+
+const resumeStyles = StyleSheet.create({
+  overlay: { position: 'absolute', bottom: 0, left: 0, right: 0, top: 0, justifyContent: 'flex-end', paddingBottom: 32, paddingHorizontal: 20, zIndex: 20, backgroundColor: 'rgba(0,0,0,0.45)' },
+  card: { backgroundColor: 'rgba(18,18,28,0.97)', borderRadius: 24, paddingVertical: 28, paddingHorizontal: 24, alignItems: 'center', borderWidth: 1, borderColor: 'rgba(255,255,255,0.1)' },
+  iconRow: { marginBottom: 16 },
+  iconCircle: { width: 60, height: 60, borderRadius: 30, backgroundColor: '#7c83e5', alignItems: 'center', justifyContent: 'center' },
+  heading: { color: '#fff', fontSize: 20, fontWeight: '800', marginBottom: 10, textAlign: 'center', letterSpacing: 0.2 },
+  sub: { color: 'rgba(255,255,255,0.6)', fontSize: 13, textAlign: 'center', lineHeight: 20, marginBottom: 24, paddingHorizontal: 8 },
+  btnResume: { flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: '#7c83e5', borderRadius: 16, paddingVertical: 16, paddingHorizontal: 32, width: '100%', justifyContent: 'center', marginBottom: 12 },
+  btnResumeText: { color: '#fff', fontSize: 16, fontWeight: '800' },
+  btnStart: { flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: 'rgba(255,255,255,0.1)', borderRadius: 16, paddingVertical: 14, paddingHorizontal: 32, width: '100%', justifyContent: 'center', borderWidth: 1, borderColor: 'rgba(255,255,255,0.12)' },
+  btnStartText: { color: 'rgba(255,255,255,0.8)', fontSize: 15, fontWeight: '600' },
 });
 
 const errorStyles = StyleSheet.create({
