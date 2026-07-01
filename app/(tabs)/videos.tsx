@@ -230,6 +230,23 @@ function VideoErrorState({ onRetry }: VideoErrorProps) {
   );
 }
 
+function PlayerErrorState({ onRetry }: { onRetry: () => void }) {
+  return (
+    <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 32, gap: 16 }}>
+      <View style={{ width: 64, height: 64, borderRadius: 32, backgroundColor: 'rgba(224,92,92,0.15)', alignItems: 'center', justifyContent: 'center' }}>
+        <Ionicons name="wifi-outline" size={32} color="#e05c5c" />
+      </View>
+      <Text style={{ color: '#fff', fontSize: 18, fontWeight: '800', textAlign: 'center' }}>Oh no! No internet connection.</Text>
+      <Text style={{ color: 'rgba(255,255,255,0.55)', fontSize: 13, textAlign: 'center', lineHeight: 20 }}>Please check your connection and try again.</Text>
+      <TouchableOpacity onPress={onRetry} activeOpacity={0.85} style={{ flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: '#7c83e5', paddingHorizontal: 28, paddingVertical: 13, borderRadius: 28, marginTop: 4 }}>
+        <Ionicons name="refresh" size={16} color="#fff" />
+        <Text style={{ color: '#fff', fontSize: 14, fontWeight: '700' }}>Try Again</Text>
+      </TouchableOpacity>
+    </View>
+  );
+}
+
+
 const LOADING_MESSAGES = [
   '🎬 Preparing your video...',
   '📡 Connecting to the stream...',
@@ -429,11 +446,13 @@ function VideoModal({ visible, videoId, title, onClose }: VideoModalProps) {
   const [playing, setPlaying] = useState(false);
   const [showResume, setShowResume] = useState(false);
   const [progressLoaded, setProgressLoaded] = useState(false);
+  const [loadError, setLoadError] = useState(false);
   const playerRef = useRef<any>(null);
   const mountedRef = useRef(true);
   const resumePositionRef = useRef<number>(0);
   const progressIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const durationRef = useRef<number>(0);
+  const loadTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => () => { mountedRef.current = false; }, []);
 
@@ -444,19 +463,27 @@ function VideoModal({ visible, videoId, title, onClose }: VideoModalProps) {
       setPlaying(false);
       setShowResume(false);
       setProgressLoaded(false);
+      setLoadError(false);
       resumePositionRef.current = 0;
       durationRef.current = 0;
       if (progressIntervalRef.current) clearInterval(progressIntervalRef.current);
+      if (loadTimeoutRef.current) clearTimeout(loadTimeoutRef.current);
       return;
     }
     if (!videoId) return;
     setProgressLoaded(false);
+    setLoadError(false);
     resumePositionRef.current = 0;
     getVideoProgress(videoId).then(progress => {
       if (!mountedRef.current) return;
       resumePositionRef.current = progress ? progress.position : 0;
       if (progress) durationRef.current = progress.duration;
       setProgressLoaded(true);
+      if (loadTimeoutRef.current) clearTimeout(loadTimeoutRef.current);
+      loadTimeoutRef.current = setTimeout(() => {
+        if (!mountedRef.current) return;
+        setLoadError(prev => { if (!prev) return true; return prev; });
+      }, 15000);
     });
   }, [visible, videoId]);
 
@@ -481,6 +508,8 @@ function VideoModal({ visible, videoId, title, onClose }: VideoModalProps) {
 
   const handleReady = useCallback(() => {
     if (!mountedRef.current) return;
+    if (loadTimeoutRef.current) clearTimeout(loadTimeoutRef.current);
+    setLoadError(false);
     setPlayerReady(true);
     if (resumePositionRef.current > 0) {
       playerRef.current?.seekTo(resumePositionRef.current, true);
@@ -533,7 +562,10 @@ function VideoModal({ visible, videoId, title, onClose }: VideoModalProps) {
         <StatusBar hidden />
         {(!playerReady || !progressLoaded) && (
           <View style={[StyleSheet.absoluteFillObject, { backgroundColor: '#0a0a0a', justifyContent: 'center', alignItems: 'center', zIndex: 10 }]}>
-            <VideoLoadingState accentColor={colors.accent} />
+            {loadError
+              ? <PlayerErrorState onRetry={() => { setLoadError(false); setProgressLoaded(false); setPlayerReady(false); if (loadTimeoutRef.current) clearTimeout(loadTimeoutRef.current); if (videoId) { setProgressLoaded(false); getVideoProgress(videoId).then(p => { if (!mountedRef.current) return; resumePositionRef.current = p ? p.position : 0; setProgressLoaded(true); loadTimeoutRef.current = setTimeout(() => { if (mountedRef.current) setLoadError(true); }, 15000); }); } }} />
+              : <VideoLoadingState accentColor={colors.accent} />
+            }
           </View>
         )}
         {progressLoaded && (() => {
@@ -551,6 +583,7 @@ function VideoModal({ visible, videoId, title, onClose }: VideoModalProps) {
                 onReady={handleReady}
                 onChangeState={onChangeState}
                 onFullScreenChange={onFullScreenChange}
+                onError={() => { if (mountedRef.current) { if (loadTimeoutRef.current) clearTimeout(loadTimeoutRef.current); setLoadError(true); } }}
                 webViewProps={{ allowsInlineMediaPlayback: true, mediaPlaybackRequiresUserAction: false, allowsFullscreenVideo: true }}
                 initialPlayerParams={{ rel: 0, modestbranding: 1, controls: 1, playsinline: 1 }}
               />
@@ -603,9 +636,12 @@ interface SongItemProps {
   onResume: () => void;
   onStartOver: () => void;
   fsTransitionRef: React.RefObject<boolean>;
+  loadError: boolean;
+  onRetry: () => void;
+  onPlayerError: () => void;
 }
 
-function SongItem({ item, index, isActive, playerReady, progressLoaded, colors, onReady, onChangeState, playerRef, showResume, onResume, onStartOver, fsTransitionRef }: SongItemProps) {
+function SongItem({ item, index, isActive, playerReady, progressLoaded, colors, onReady, onChangeState, playerRef, showResume, onResume, onStartOver, fsTransitionRef, loadError, onRetry, onPlayerError }: SongItemProps) {
   const videoId = item?.snippet?.resourceId?.videoId;
   const title = item?.snippet?.title || '';
   const dimsRef = useRef(Dimensions.get('window'));
@@ -630,7 +666,7 @@ function SongItem({ item, index, isActive, playerReady, progressLoaded, colors, 
     <View style={{ width: containerW, height: containerH, backgroundColor: '#000', justifyContent: 'center' }}>
       {(!playerReady || !progressLoaded) && isActive && (
         <View style={[StyleSheet.absoluteFillObject, { backgroundColor: '#0a0a0a', justifyContent: 'center', alignItems: 'center', zIndex: 10 }]}>
-          <VideoLoadingState accentColor={colors.accent} />
+          {loadError ? <PlayerErrorState onRetry={onRetry} /> : <VideoLoadingState accentColor={colors.accent} />}
         </View>
       )}
       {isActive && progressLoaded ? (
@@ -683,6 +719,7 @@ function SongsPlayer({ visible, songs, startIndex, onClose, onEndReached }: Song
   const [showResume, setShowResume] = useState(false);
   const [progressLoaded, setProgressLoaded] = useState(false);
   const [scrollEnabled, setScrollEnabled] = useState(true);
+  const [loadError, setLoadError] = useState(false);
   const listRef = useRef<FlatList>(null);
   const currentIndexRef = useRef(startIndex);
   const playerRef = useRef<any>(null);
@@ -692,6 +729,7 @@ function SongsPlayer({ visible, songs, startIndex, onClose, onEndReached }: Song
   const resumePositionRef = useRef<number>(0);
   const progressIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const durationRef = useRef<number>(0);
+  const loadTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => () => { mountedRef.current = false; }, []);
 
@@ -713,9 +751,11 @@ function SongsPlayer({ visible, songs, startIndex, onClose, onEndReached }: Song
     setShowResume(false);
     setProgressLoaded(false);
     setScrollEnabled(true);
+    setLoadError(false);
     fsTransitionRef.current = false;
     resumePositionRef.current = 0;
     if (progressIntervalRef.current) clearInterval(progressIntervalRef.current);
+    if (loadTimeoutRef.current) clearTimeout(loadTimeoutRef.current);
     const videoId = songs[currentIndex]?.snippet?.resourceId?.videoId;
     if (!videoId || !visible) {
       setProgressLoaded(true);
@@ -726,6 +766,10 @@ function SongsPlayer({ visible, songs, startIndex, onClose, onEndReached }: Song
       resumePositionRef.current = progress ? progress.position : 0;
       if (progress) durationRef.current = progress.duration;
       setProgressLoaded(true);
+      if (loadTimeoutRef.current) clearTimeout(loadTimeoutRef.current);
+      loadTimeoutRef.current = setTimeout(() => {
+        if (mountedRef.current) setLoadError(prev => { if (!prev) return true; return prev; });
+      }, 15000);
     });
   }, [currentIndex, visible]);
 
@@ -768,6 +812,8 @@ function SongsPlayer({ visible, songs, startIndex, onClose, onEndReached }: Song
 
   const handleReady = useCallback(() => {
     if (!mountedRef.current) return;
+    if (loadTimeoutRef.current) clearTimeout(loadTimeoutRef.current);
+    setLoadError(false);
     setPlayerReady(true);
     if (resumePositionRef.current > 0) {
       playerRef.current?.seekTo(resumePositionRef.current, true);
@@ -831,6 +877,22 @@ function SongsPlayer({ visible, songs, startIndex, onClose, onEndReached }: Song
                 onResume={handleResume}
                 onStartOver={handleStartOver}
                 fsTransitionRef={fsTransitionRef}
+                loadError={loadError}
+                onRetry={() => {
+                  if (loadTimeoutRef.current) clearTimeout(loadTimeoutRef.current);
+                  setLoadError(false);
+                  setPlayerReady(false);
+                  setProgressLoaded(false);
+                  const vid = songs[currentIndexRef.current]?.snippet?.resourceId?.videoId;
+                  if (!vid) return;
+                  getVideoProgress(vid).then(p => {
+                    if (!mountedRef.current) return;
+                    resumePositionRef.current = p ? p.position : 0;
+                    setProgressLoaded(true);
+                    loadTimeoutRef.current = setTimeout(() => { if (mountedRef.current) setLoadError(true); }, 15000);
+                  });
+                }}
+                onPlayerError={() => { if (mountedRef.current) { if (loadTimeoutRef.current) clearTimeout(loadTimeoutRef.current); setLoadError(true); } }}
                 onReady={handleReady}
                 onChangeState={async (state: string) => {
                   if (state === 'playing') {
@@ -872,6 +934,7 @@ function SongsPlayer({ visible, songs, startIndex, onClose, onEndReached }: Song
 function ShortsPlayerItemInner({ item, index, isActive, onEnd, onClose, total, onScrollLockChange }: any) {
   const [shortReady, setShortReady] = useState(false);
   const [progressLoaded, setProgressLoaded] = useState(false);
+  const [loadError, setLoadError] = useState(false);
   const videoId = item?.snippet?.resourceId?.videoId;
   const title = item?.snippet?.title ?? '';
   const { colors } = useTheme();
@@ -880,6 +943,7 @@ function ShortsPlayerItemInner({ item, index, isActive, onEnd, onClose, total, o
   const mountedRef = useRef(true);
   const resumePositionRef = useRef<number>(0);
   const progressIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const loadTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const dimsRef = useRef((() => {
     const s = Dimensions.get('screen');
@@ -895,13 +959,16 @@ function ShortsPlayerItemInner({ item, index, isActive, onEnd, onClose, total, o
   useEffect(() => () => {
     mountedRef.current = false;
     if (progressIntervalRef.current) clearInterval(progressIntervalRef.current);
+    if (loadTimeoutRef.current) clearTimeout(loadTimeoutRef.current);
   }, []);
 
   useEffect(() => {
     setShortReady(false);
     setProgressLoaded(false);
+    setLoadError(false);
     resumePositionRef.current = 0;
     if (progressIntervalRef.current) clearInterval(progressIntervalRef.current);
+    if (loadTimeoutRef.current) clearTimeout(loadTimeoutRef.current);
     if (!videoId) {
       setProgressLoaded(true);
       return;
@@ -910,6 +977,9 @@ function ShortsPlayerItemInner({ item, index, isActive, onEnd, onClose, total, o
       if (!mountedRef.current) return;
       resumePositionRef.current = progress ? progress.position : 0;
       setProgressLoaded(true);
+      loadTimeoutRef.current = setTimeout(() => {
+        if (mountedRef.current) setLoadError(prev => { if (!prev) return true; return prev; });
+      }, 15000);
     });
   }, [videoId]);
 
@@ -933,6 +1003,8 @@ function ShortsPlayerItemInner({ item, index, isActive, onEnd, onClose, total, o
 
   const handleReady = useCallback(() => {
     if (!mountedRef.current) return;
+    if (loadTimeoutRef.current) clearTimeout(loadTimeoutRef.current);
+    setLoadError(false);
     setShortReady(true);
     if (resumePositionRef.current > 0) {
       playerRef.current?.seekTo(resumePositionRef.current, true);
@@ -954,7 +1026,22 @@ function ShortsPlayerItemInner({ item, index, isActive, onEnd, onClose, total, o
       <StatusBar hidden />
       {(!shortReady || !progressLoaded) && (
         <View style={[StyleSheet.absoluteFillObject, { backgroundColor: '#0a0a0a', justifyContent: 'center', alignItems: 'center', zIndex: 10 }]}>
-          <VideoLoadingState accentColor={colors.accent} />
+          {loadError
+            ? <PlayerErrorState onRetry={() => {
+                if (loadTimeoutRef.current) clearTimeout(loadTimeoutRef.current);
+                setLoadError(false);
+                setShortReady(false);
+                setProgressLoaded(false);
+                if (!videoId) return;
+                getVideoProgress(videoId, 5).then(p => {
+                  if (!mountedRef.current) return;
+                  resumePositionRef.current = p ? p.position : 0;
+                  setProgressLoaded(true);
+                  loadTimeoutRef.current = setTimeout(() => { if (mountedRef.current) setLoadError(true); }, 15000);
+                });
+              }} />
+            : <VideoLoadingState accentColor={colors.accent} />
+          }
         </View>
       )}
       {isActive && progressLoaded ? (
@@ -967,6 +1054,7 @@ function ShortsPlayerItemInner({ item, index, isActive, onEnd, onClose, total, o
           forceAndroidAutoplay={true}
           onReady={handleReady}
           onFullScreenChange={onFullScreenChange}
+          onError={() => { if (mountedRef.current) { if (loadTimeoutRef.current) clearTimeout(loadTimeoutRef.current); setLoadError(true); } }}
           onChangeState={async (s: string) => {
             if (s === 'playing') {
               fsTransitionRef.current = false;
