@@ -1,5 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { activateKeepAwakeAsync, deactivateKeepAwake } from 'expo-keep-awake';
 import * as ScreenOrientation from 'expo-screen-orientation';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
@@ -416,7 +417,6 @@ function ResumePrompt({ visible, onResume, onStartOver }: ResumePromptProps) {
           </View>
         </View>
         <Text style={resumeStyles.heading}>Continue Watching?</Text>
-
         <TouchableOpacity style={resumeStyles.btnResume} onPress={onResume} activeOpacity={0.85}>
           <Ionicons name="play" size={18} color="#fff" />
           <Text style={resumeStyles.btnResumeText}>Resume</Text>
@@ -554,6 +554,11 @@ function VideoModal({ visible, videoId, title, onClose }: VideoModalProps) {
     if (!mountedRef.current) return;
     fsTransitionRef.current = true;
     setIsInFullscreen(isFs);
+    if (isFs) {
+      activateKeepAwakeAsync('fullscreen');
+    } else {
+      deactivateKeepAwake('fullscreen');
+    }
   }, []);
 
   return (
@@ -636,12 +641,13 @@ interface SongItemProps {
   onResume: () => void;
   onStartOver: () => void;
   fsTransitionRef: React.RefObject<boolean>;
+  isFullscreenRef: React.RefObject<boolean>;
   loadError: boolean;
   onRetry: () => void;
   onPlayerError: () => void;
 }
 
-function SongItem({ item, index, isActive, playerReady, progressLoaded, colors, onReady, onChangeState, playerRef, showResume, onResume, onStartOver, fsTransitionRef, loadError, onRetry, onPlayerError }: SongItemProps) {
+function SongItem({ item, index, isActive, playerReady, progressLoaded, colors, onReady, onChangeState, playerRef, showResume, onResume, onStartOver, fsTransitionRef, isFullscreenRef, loadError, onRetry, onPlayerError }: SongItemProps) {
   const videoId = item?.snippet?.resourceId?.videoId;
   const title = item?.snippet?.title || '';
   const dimsRef = useRef(Dimensions.get('window'));
@@ -655,12 +661,15 @@ function SongItem({ item, index, isActive, playerReady, progressLoaded, colors, 
   const onFullScreenChange = useCallback((isFs: boolean) => {
     if (!mountedRef.current) return;
     fsTransitionRef.current = true;
+    isFullscreenRef.current = isFs;
     if (isFs) {
       ScreenOrientation.unlockAsync();
+      activateKeepAwakeAsync('fullscreen');
     } else {
       ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.PORTRAIT);
+      deactivateKeepAwake('fullscreen');
     }
-  }, [fsTransitionRef]);
+  }, [fsTransitionRef, isFullscreenRef]);
 
   return (
     <View style={{ width: containerW, height: containerH, backgroundColor: '#000', justifyContent: 'center' }}>
@@ -753,6 +762,7 @@ function SongsPlayer({ visible, songs, startIndex, onClose, onEndReached }: Song
     setScrollEnabled(true);
     setLoadError(false);
     fsTransitionRef.current = false;
+    isFullscreenRef.current = false;
     resumePositionRef.current = 0;
     if (progressIntervalRef.current) clearInterval(progressIntervalRef.current);
     if (loadTimeoutRef.current) clearTimeout(loadTimeoutRef.current);
@@ -809,6 +819,7 @@ function SongsPlayer({ visible, songs, startIndex, onClose, onEndReached }: Song
   }, [songs.length, onEndReached]);
 
   const fsTransitionRef = useRef(false);
+  const isFullscreenRef = useRef(false);
 
   const handleReady = useCallback(() => {
     if (!mountedRef.current) return;
@@ -877,6 +888,7 @@ function SongsPlayer({ visible, songs, startIndex, onClose, onEndReached }: Song
                 onResume={handleResume}
                 onStartOver={handleStartOver}
                 fsTransitionRef={fsTransitionRef}
+                isFullscreenRef={isFullscreenRef}
                 loadError={loadError}
                 onRetry={() => {
                   if (loadTimeoutRef.current) clearTimeout(loadTimeoutRef.current);
@@ -899,6 +911,9 @@ function SongsPlayer({ visible, songs, startIndex, onClose, onEndReached }: Song
                     fsTransitionRef.current = false;
                     setPlaying(true);
                     setScrollEnabled(true);
+                  }
+                  if (state === 'ended' && isFullscreenRef.current) {
+                    return;
                   }
                   if (fsTransitionRef.current) return;
                   if (state === 'paused') { setPlaying(false); setScrollEnabled(false); }
@@ -1000,6 +1015,7 @@ function ShortsPlayerItemInner({ item, index, isActive, onEnd, onClose, total, o
   }, [shortReady, videoId]);
 
   const fsTransitionRef = useRef(false);
+  const isFullscreenRef = useRef(false);
 
   const handleReady = useCallback(() => {
     if (!mountedRef.current) return;
@@ -1014,10 +1030,13 @@ function ShortsPlayerItemInner({ item, index, isActive, onEnd, onClose, total, o
   const onFullScreenChange = useCallback((isFs: boolean) => {
     if (!mountedRef.current) return;
     fsTransitionRef.current = true;
+    isFullscreenRef.current = isFs;
     if (isFs) {
       ScreenOrientation.unlockAsync();
+      activateKeepAwakeAsync('fullscreen');
     } else {
       ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.PORTRAIT);
+      deactivateKeepAwake('fullscreen');
     }
   }, []);
 
@@ -1059,6 +1078,9 @@ function ShortsPlayerItemInner({ item, index, isActive, onEnd, onClose, total, o
             if (s === 'playing') {
               fsTransitionRef.current = false;
               onScrollLockChange(false);
+            }
+            if (s === 'ended' && isFullscreenRef.current) {
+              return;
             }
             if (fsTransitionRef.current) return;
             if (s === 'paused') onScrollLockChange(true);
@@ -1641,12 +1663,11 @@ const styles = StyleSheet.create({
 });
 
 const resumeStyles = StyleSheet.create({
-  overlay: { position: 'absolute', bottom: 0, left: 0, right: 0, top: 0, justifyContent: 'flex-end', paddingBottom: 100, paddingHorizontal: 20, zIndex: 20, backgroundColor: 'rgba(0,0,0,0.45)' },
+  overlay: { position: 'absolute', bottom: 0, left: 0, right: 0, top: 0, justifyContent: 'flex-end', paddingBottom: 80, paddingHorizontal: 20, zIndex: 20, backgroundColor: 'rgba(0,0,0,0.45)' },
   card: { backgroundColor: 'rgba(18,18,28,0.97)', borderRadius: 24, paddingVertical: 28, paddingHorizontal: 24, alignItems: 'center', borderWidth: 1, borderColor: 'rgba(255,255,255,0.1)' },
   iconRow: { marginBottom: 16 },
   iconCircle: { width: 60, height: 60, borderRadius: 30, backgroundColor: '#7c83e5', alignItems: 'center', justifyContent: 'center' },
-  heading: { color: '#fff', fontSize: 20, fontWeight: '800', marginBottom: 10, textAlign: 'center', letterSpacing: 0.2 },
-  sub: { color: 'rgba(255,255,255,0.6)', fontSize: 13, textAlign: 'center', lineHeight: 20, marginBottom: 24, paddingHorizontal: 8 },
+  heading: { color: '#fff', fontSize: 20, fontWeight: '800', marginBottom: 24, textAlign: 'center', letterSpacing: 0.2 },
   btnResume: { flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: '#7c83e5', borderRadius: 16, paddingVertical: 16, paddingHorizontal: 32, width: '100%', justifyContent: 'center', marginBottom: 12 },
   btnResumeText: { color: '#fff', fontSize: 16, fontWeight: '800' },
   btnStart: { flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: 'rgba(255,255,255,0.1)', borderRadius: 16, paddingVertical: 14, paddingHorizontal: 32, width: '100%', justifyContent: 'center', borderWidth: 1, borderColor: 'rgba(255,255,255,0.12)' },
