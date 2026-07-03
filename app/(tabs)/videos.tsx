@@ -1,7 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
-import AsyncStorage from '@react-native-async-storage/async-storage';
-import { activateKeepAwakeAsync, deactivateKeepAwake } from 'expo-keep-awake';
 import * as ScreenOrientation from 'expo-screen-orientation';
+import { activateKeepAwakeAsync, deactivateKeepAwake } from 'expo-keep-awake';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
@@ -21,8 +21,8 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import YoutubePlayer from 'react-native-youtube-iframe';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme } from '../../utils/ThemeContext';
 import { getCachedLivePlaylists, syncLivePlaylists } from '../../utils/livePlaylistsSync';
 import { ytFetch } from '../../utils/youtubeProxy';
@@ -992,11 +992,21 @@ function ShortsPlayerItemInner({ item, index, isActive, onEnd, onClose, total, o
       if (!mountedRef.current) return;
       resumePositionRef.current = progress ? progress.position : 0;
       setProgressLoaded(true);
-      loadTimeoutRef.current = setTimeout(() => {
-        if (mountedRef.current) setLoadError(prev => { if (!prev) return true; return prev; });
-      }, 15000);
     });
   }, [videoId]);
+
+  useEffect(() => {
+    if (!isActive || !progressLoaded || shortReady || loadError) {
+      if (loadTimeoutRef.current) { clearTimeout(loadTimeoutRef.current); loadTimeoutRef.current = null; }
+      return;
+    }
+    loadTimeoutRef.current = setTimeout(() => {
+      if (mountedRef.current) setLoadError(prev => { if (!prev) return true; return prev; });
+    }, 15000);
+    return () => {
+      if (loadTimeoutRef.current) { clearTimeout(loadTimeoutRef.current); loadTimeoutRef.current = null; }
+    };
+  }, [isActive, progressLoaded, shortReady, loadError]);
 
   useEffect(() => {
     if (!shortReady || !videoId) return;
@@ -1056,7 +1066,6 @@ function ShortsPlayerItemInner({ item, index, isActive, onEnd, onClose, total, o
                   if (!mountedRef.current) return;
                   resumePositionRef.current = p ? p.position : 0;
                   setProgressLoaded(true);
-                  loadTimeoutRef.current = setTimeout(() => { if (mountedRef.current) setLoadError(true); }, 15000);
                 });
               }} />
             : <VideoLoadingState accentColor={colors.accent} />
