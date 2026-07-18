@@ -32,9 +32,13 @@ interface SettingsModalProps {
   secondaryVersion: string;
   setSecondaryVersion: (v: string) => void;
   secondaryVersionRef: MutableRefObject<string>;
+  version: string;
+  setVersion: (v: string) => void;
+  versionRef: MutableRefObject<string>;
   selectedBook: any;
   selectedChapter: number;
   setSecondaryVerses: (v: any[]) => void;
+  setPrimaryVerses: (v: any[]) => void;
   isEnglish: boolean;
 }
 
@@ -42,7 +46,8 @@ function SettingsModal({
   visible, onClose, c, fontSize, setFontSize,
   isBilingual, bilingualEligible, setIsBilingual,
   secondaryVersion, setSecondaryVersion, secondaryVersionRef,
-  selectedBook, selectedChapter, setSecondaryVerses, isEnglish,
+  version, setVersion, versionRef,
+  selectedBook, selectedChapter, setSecondaryVerses, setPrimaryVerses, isEnglish,
 }: SettingsModalProps) {
   return (
     <Modal visible={visible} transparent animationType="slide">
@@ -78,6 +83,30 @@ function SettingsModal({
               </View>
               {isBilingual && (
                 <>
+                  <Text style={[styles.settingLabel, { color: c.subtext }]}>Tamil Version</Text>
+                  <View style={styles.versionPickRow}>
+                    {BIBLE_VERSIONS.filter(v => v.lang === 'Tamil').map(v => (
+                      <TouchableOpacity
+                        key={v.code}
+                        style={[
+                          styles.versionPick,
+                          { backgroundColor: c.raised },
+                          version === v.code && { backgroundColor: c.accent },
+                        ]}
+                        onPress={() => {
+                          setVersion(v.code);
+                          versionRef.current = v.code;
+                          saveBibleSettings({ primaryVersion: v.code });
+                          if (selectedBook && selectedChapter) {
+                            const priData = BIBLE_ASSETS[v.code]?.[selectedBook.id];
+                            if (priData) setPrimaryVerses(priData[String(selectedChapter)] || []);
+                          }
+                        }}
+                      >
+                        <Text style={{ color: version === v.code ? '#fff' : c.subtext, fontSize: 11, fontWeight: '600' }}>{v.short}</Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
                   <Text style={[styles.settingLabel, { color: c.subtext }]}>English Version</Text>
                   <View style={styles.versionPickRow}>
                     {BIBLE_VERSIONS.filter(v => v.lang === 'English').map(v => (
@@ -193,7 +222,8 @@ export default function BibleReaderScreen() {
 
   const [selectedBook, setSelectedBook] = useState<any>(BOOKS.find(b => b.id === Number(params.bookId)));
   const [selectedChapter, setSelectedChapter] = useState(Number(params.chapter));
-  const [version] = useState(params.version || 'TAMOVR');
+  const [version, setVersion] = useState(params.version || 'TAMOVR');
+  const versionRef = useRef(params.version || 'TAMOVR');
   const [isBilingual, setIsBilingual] = useState(params.isBilingual === '1');
   const bilingualEligible = params.isBilingual === '1';
   const [secondaryVersion, setSecondaryVersion] = useState(
@@ -218,7 +248,7 @@ export default function BibleReaderScreen() {
 
   // Initial chapter load — values from memCache are synchronously correct, no async wait needed
   useEffect(() => {
-    loadChapterData(selectedBook, selectedChapter, version, isBilingual, secondaryVersionRef.current);
+    loadChapterData(selectedBook, selectedChapter, versionRef.current, isBilingual, secondaryVersionRef.current);
   }, []);
 
   // Defensive re-fetch: catches any edge case where secondary verses didn't load
@@ -227,6 +257,13 @@ export default function BibleReaderScreen() {
     const secData = BIBLE_ASSETS[secondaryVersion]?.[selectedBook.id];
     if (secData) setSecondaryVerses(secData[String(selectedChapter)] || []);
   }, [secondaryVersion, selectedChapter, selectedBook?.id, isBilingual]);
+
+  // Defensive re-fetch: catches any edge case where primary (Tamil) verses didn't load
+  useEffect(() => {
+    if (!isBilingual || isEnglish || !version || !selectedBook) return;
+    const priData = BIBLE_ASSETS[version]?.[selectedBook.id];
+    if (priData) setPrimaryVerses(priData[String(selectedChapter)] || []);
+  }, [version, selectedChapter, selectedBook?.id, isBilingual]);
 
   useEffect(() => {
     const handler = BackHandler.addEventListener('hardwareBackPress', () => {
@@ -285,7 +322,7 @@ export default function BibleReaderScreen() {
     }
     setSelectedBook(newBook);
     setSelectedChapter(newChapter);
-    loadChapterData(newBook, newChapter, version, isBilingual, secondaryVersionRef.current);
+    loadChapterData(newBook, newChapter, versionRef.current, isBilingual, secondaryVersionRef.current);
   };
 
   const syncVerseBar = (idx: number) => {
@@ -582,9 +619,13 @@ export default function BibleReaderScreen() {
         secondaryVersion={secondaryVersion}
         setSecondaryVersion={setSecondaryVersion}
         secondaryVersionRef={secondaryVersionRef}
+        version={version}
+        setVersion={setVersion}
+        versionRef={versionRef}
         selectedBook={selectedBook}
         selectedChapter={selectedChapter}
         setSecondaryVerses={setSecondaryVerses}
+        setPrimaryVerses={setPrimaryVerses}
         isEnglish={isEnglish}
       />
 
@@ -602,7 +643,7 @@ export default function BibleReaderScreen() {
           setShowBookModal(false);
           setSelectedBook(book);
           setSelectedChapter(1);
-          loadChapterData(book, 1, version, isBilingual, secondaryVersionRef.current);
+          loadChapterData(book, 1, versionRef.current, isBilingual, secondaryVersionRef.current);
         }}
       />
     </View>

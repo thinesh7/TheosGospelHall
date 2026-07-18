@@ -17,8 +17,8 @@
       "softwareKeyboardLayoutMode": "pan",
       "googleServicesFile": "./google-services.json",
       "adaptiveIcon": {
-        "foregroundImage": "./assets/images/logo.png",
-        "backgroundColor": "#ffffff"
+        "foregroundImage": "./assets/images/adaptive-icon.png",
+        "backgroundColor": "#003D4F"
       },
       "predictiveBackGestureEnabled": false,
       "permissions": [
@@ -47,7 +47,7 @@
       [
         "expo-notifications",
         {
-          "icon": "./assets/images/logo.png",
+          "icon": "./assets/images/adaptive-icon.png",
           "color": "#0f3460",
           "sounds": []
         }

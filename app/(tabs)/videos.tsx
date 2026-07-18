@@ -1132,13 +1132,22 @@ function ShortsPlayerItemInner({ item, index, isActive, onEnd, onClose, total, o
   );
 }
 
-export default function VideosScreen() {
+interface VideosScreenProps {
+  autoPlayLive?: { videoId: string; title: string } | null;
+  onAutoPlayLiveConsumed?: () => void;
+}
+
+export default function VideosScreen({ autoPlayLive, onAutoPlayLiveConsumed }: VideosScreenProps = {}) {
   const { colors } = useTheme();
 
   const [activeTab, setActiveTab] = useState<Tab>('shorts');
   const [search, setSearch] = useState('');
   const [searching, setSearching] = useState(false);
   const [searchResults, setSearchResults] = useState<any[]>([]);
+
+  const tabsScrollRef = useRef<ScrollView>(null);
+  const tabLayoutsRef = useRef<Record<string, { x: number; width: number }>>({});
+  const tabsViewportWidthRef = useRef(0);
 
   const [shorts, setShorts] = useState<any[]>([]);
   const [shortsLoaded, setShortsLoaded] = useState(false);
@@ -1239,6 +1248,14 @@ export default function VideosScreen() {
     }
   }, [activeTab]);
 
+  useEffect(() => {
+    const layout = tabLayoutsRef.current[activeTab];
+    const viewportWidth = tabsViewportWidthRef.current;
+    if (!layout || !viewportWidth) return;
+    const centeredX = layout.x + layout.width / 2 - viewportWidth / 2;
+    tabsScrollRef.current?.scrollTo({ x: Math.max(0, centeredX), animated: true });
+  }, [activeTab]);
+
   const openVideo = (videoId: string, title: string) => {
     setActiveVideoId(videoId);
     setActiveVideoTitle(title);
@@ -1246,6 +1263,13 @@ export default function VideosScreen() {
   };
 
   const closeVideo = () => { setVideoModalVisible(false); setActiveVideoId(null); };
+
+  useEffect(() => {
+    if (!autoPlayLive) return;
+    setActiveTab('live');
+    openVideo(autoPlayLive.videoId, autoPlayLive.title);
+    onAutoPlayLiveConsumed?.();
+  }, [autoPlayLive]);
 
   const fetchShorts = async (pageToken = '', forceLoad = false) => {
     try {
@@ -1577,12 +1601,20 @@ export default function VideosScreen() {
       </View>
 
       {!isSearching && (
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.tabsScroll} contentContainerStyle={styles.tabsRow}>
+        <ScrollView
+          ref={tabsScrollRef}
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          style={styles.tabsScroll}
+          contentContainerStyle={styles.tabsRow}
+          onLayout={e => { tabsViewportWidthRef.current = e.nativeEvent.layout.width; }}
+        >
           {TABS.map(t => (
             <TouchableOpacity
               key={t.key}
               style={[styles.tab, { backgroundColor: activeTab === t.key ? colors.accent : colors.surface }]}
               onPress={() => setActiveTab(t.key)}
+              onLayout={e => { tabLayoutsRef.current[t.key] = { x: e.nativeEvent.layout.x, width: e.nativeEvent.layout.width }; }}
             >
               <Ionicons name={t.icon as any} size={15} color={activeTab === t.key ? '#fff' : colors.subtext} />
               <Text style={[styles.tabText, { color: activeTab === t.key ? '#fff' : colors.subtext }]}>{t.label}</Text>

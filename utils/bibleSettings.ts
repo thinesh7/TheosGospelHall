@@ -5,12 +5,14 @@ const KEY = 'tgh_bible_settings';
 export interface BibleSettings {
   fontSize: number;
   secondaryVersion: string;
+  primaryVersion: string;
   version: string;
 }
 
 const DEFAULTS: BibleSettings = {
   fontSize: 17,
   secondaryVersion: 'ERV',
+  primaryVersion: 'TAMOVR',
   version: 'TAMOVR',
 };
 

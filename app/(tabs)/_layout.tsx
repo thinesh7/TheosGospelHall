@@ -4,6 +4,8 @@ import { useEffect, useRef, useState } from 'react';
 import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import PagerView from 'react-native-pager-view';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import LiveNowPopup from '../../components/LiveNowPopup';
+import { checkCurrentlyLive, LiveNowInfo } from '../../utils/liveStatus';
 import { useTheme } from '../../utils/ThemeContext';
 import BibleScreen from './bible';
 import ContactScreen from './contact';
@@ -28,6 +30,20 @@ export default function TabLayout() {
   const activeTabRef = useRef(0);
   const pagerRef = useRef<PagerView>(null);
   const insets = useSafeAreaInsets();
+
+  const [liveNowInfo, setLiveNowInfo] = useState<LiveNowInfo | null>(null);
+  const [autoPlayLive, setAutoPlayLive] = useState<{ videoId: string; title: string } | null>(null);
+
+  useEffect(() => {
+    checkCurrentlyLive().then(info => { if (info) setLiveNowInfo(info); });
+  }, []);
+
+  const handleWatchLiveNow = () => {
+    if (!liveNowInfo) return;
+    setAutoPlayLive({ videoId: liveNowInfo.videoId, title: liveNowInfo.title });
+    setLiveNowInfo(null);
+    goToTab(1);
+  };
 
   useEffect(() => {
     setVisitedTabs(prev => {
@@ -65,7 +81,11 @@ export default function TabLayout() {
         }}
       >
         <View key="0" style={{ flex: 1, backgroundColor: colors.bg }}>{visitedTabs.has(0) ? <HomeScreen /> : null}</View>
-        <View key="1" style={{ flex: 1, backgroundColor: colors.bg }}>{visitedTabs.has(1) ? <VideosScreen /> : null}</View>
+        <View key="1" style={{ flex: 1, backgroundColor: colors.bg }}>
+          {visitedTabs.has(1) ? (
+            <VideosScreen autoPlayLive={autoPlayLive} onAutoPlayLiveConsumed={() => setAutoPlayLive(null)} />
+          ) : null}
+        </View>
         <View key="2" style={{ flex: 1, backgroundColor: colors.bg }}>{visitedTabs.has(2) ? <BibleScreen /> : null}</View>
         <View key="3" style={{ flex: 1, backgroundColor: colors.bg }}>{visitedTabs.has(3) ? <SongsHubScreen /> : null}</View>
         <View key="4" style={{ flex: 1, backgroundColor: colors.bg }}>{visitedTabs.has(4) ? <ContactScreen /> : null}</View>
@@ -97,6 +117,13 @@ export default function TabLayout() {
           </TouchableOpacity>
         ))}
       </View>
+
+      <LiveNowPopup
+        visible={!!liveNowInfo}
+        label={liveNowInfo?.label}
+        onWatch={handleWatchLiveNow}
+        onSkip={() => setLiveNowInfo(null)}
+      />
     </View>
   );
 }

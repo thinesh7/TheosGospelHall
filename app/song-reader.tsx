@@ -173,7 +173,7 @@ export default function SongReaderScreen() {
     const body = lyrics ? (language === 'tamil' ? lyrics.tamil : lyrics.english) : '';
     try {
       await Share.share({
-        message: body ? `${song.title}\n\n${body}` : song.title,
+        message: body || song.title,
       });
     } catch (e) {}
   };

@@ -118,7 +118,7 @@ export default function BibleScreen() {
         </View>
         <ScrollView contentContainerStyle={{ padding: 16 }}>
           <TouchableOpacity style={[styles.bilingualCard, { backgroundColor: c.accent }]} onPress={() => {
-            setIsBilingual(true); setVersion('TAMOVR');
+            setIsBilingual(true); setVersion(getMemBibleSettings().primaryVersion);
             setView('books'); setTestament('OT');
           }}>
             <View style={{ flex: 1 }}>
