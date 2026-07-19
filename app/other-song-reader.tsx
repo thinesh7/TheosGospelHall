@@ -152,11 +152,16 @@ export default function OtherSongReaderScreen() {
 
   const shareSong = async (song: OtherSongIndexEntry) => {
     const lyrics = lyricsMap[song.songId];
-    const body = lyrics ? (language === 'tamil' ? lyrics.tamil : lyrics.english) : '';
+    if (!lyrics) return;
+    const rawText = language === 'tamil' ? lyrics.tamil : lyrics.english;
+    const deduped = stripDuplicateFirstParagraph(rawText);
+    const body = language === 'english' ? capitalizeParagraphs(deduped) : deduped;
+    const rawTitle = language === 'english' && song.titleEnglish ? song.titleEnglish : song.title;
+    const strippedTitle = rawTitle.replace(/^\d+\.\s*/, '').trim();
+    const title = strippedTitle.charAt(0).toUpperCase() + strippedTitle.slice(1);
+    const message = `TGH Special Songs\n\nSong Number: ${song.songNumber}\n\nTitle: ${title}\n\n${body}`;
     try {
-      await Share.share({
-        message: body || song.title,
-      });
+      await Share.share({ message });
     } catch (e) {}
   };
 

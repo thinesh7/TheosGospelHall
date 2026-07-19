@@ -434,10 +434,11 @@ interface VideoModalProps {
   visible: boolean;
   videoId: string | null;
   title: string;
+  isLive?: boolean;
   onClose: () => void;
 }
 
-function VideoModal({ visible, videoId, title, onClose }: VideoModalProps) {
+function VideoModal({ visible, videoId, title, isLive, onClose }: VideoModalProps) {
   const { width, height } = useWindowDimensions();
   const { colors } = useTheme();
   const isLandscape = width > height;
@@ -474,18 +475,26 @@ function VideoModal({ visible, videoId, title, onClose }: VideoModalProps) {
     setProgressLoaded(false);
     setLoadError(false);
     resumePositionRef.current = 0;
-    getVideoProgress(videoId).then(progress => {
-      if (!mountedRef.current) return;
-      resumePositionRef.current = progress ? progress.position : 0;
-      if (progress) durationRef.current = progress.duration;
-      setProgressLoaded(true);
+    const armLoadTimeout = () => {
       if (loadTimeoutRef.current) clearTimeout(loadTimeoutRef.current);
       loadTimeoutRef.current = setTimeout(() => {
         if (!mountedRef.current) return;
         setLoadError(prev => { if (!prev) return true; return prev; });
       }, 15000);
+    };
+    if (isLive) {
+      setProgressLoaded(true);
+      armLoadTimeout();
+      return;
+    }
+    getVideoProgress(videoId).then(progress => {
+      if (!mountedRef.current) return;
+      resumePositionRef.current = progress ? progress.position : 0;
+      if (progress) durationRef.current = progress.duration;
+      setProgressLoaded(true);
+      armLoadTimeout();
     });
-  }, [visible, videoId]);
+  }, [visible, videoId, isLive]);
 
   useEffect(() => {
     if (!playerReady || !videoId) return;
@@ -568,7 +577,23 @@ function VideoModal({ visible, videoId, title, onClose }: VideoModalProps) {
         {(!playerReady || !progressLoaded) && (
           <View style={[StyleSheet.absoluteFillObject, { backgroundColor: '#0a0a0a', justifyContent: 'center', alignItems: 'center', zIndex: 10 }]}>
             {loadError
-              ? <PlayerErrorState onRetry={() => { setLoadError(false); setProgressLoaded(false); setPlayerReady(false); if (loadTimeoutRef.current) clearTimeout(loadTimeoutRef.current); if (videoId) { setProgressLoaded(false); getVideoProgress(videoId).then(p => { if (!mountedRef.current) return; resumePositionRef.current = p ? p.position : 0; setProgressLoaded(true); loadTimeoutRef.current = setTimeout(() => { if (mountedRef.current) setLoadError(true); }, 15000); }); } }} />
+              ? <PlayerErrorState onRetry={() => {
+                  setLoadError(false); setProgressLoaded(false); setPlayerReady(false);
+                  if (loadTimeoutRef.current) clearTimeout(loadTimeoutRef.current);
+                  if (!videoId) return;
+                  setProgressLoaded(false);
+                  if (isLive) {
+                    setProgressLoaded(true);
+                    loadTimeoutRef.current = setTimeout(() => { if (mountedRef.current) setLoadError(true); }, 15000);
+                    return;
+                  }
+                  getVideoProgress(videoId).then(p => {
+                    if (!mountedRef.current) return;
+                    resumePositionRef.current = p ? p.position : 0;
+                    setProgressLoaded(true);
+                    loadTimeoutRef.current = setTimeout(() => { if (mountedRef.current) setLoadError(true); }, 15000);
+                  });
+                }} />
               : <VideoLoadingState accentColor={colors.accent} />
             }
           </View>
@@ -1191,6 +1216,7 @@ export default function VideosScreen({ autoPlayLive, onAutoPlayLiveConsumed }: V
   const [videoModalVisible, setVideoModalVisible] = useState(false);
   const [activeVideoId, setActiveVideoId] = useState<string | null>(null);
   const [activeVideoTitle, setActiveVideoTitle] = useState('');
+  const [activeVideoIsLive, setActiveVideoIsLive] = useState(false);
   const [shortsPlayerVisible, setShortsPlayerVisible] = useState(false);
   const [shortsScrollEnabled, setShortsScrollEnabled] = useState(true);
   const [currentShortIndex, setCurrentShortIndex] = useState(0);
@@ -1256,18 +1282,19 @@ export default function VideosScreen({ autoPlayLive, onAutoPlayLiveConsumed }: V
     tabsScrollRef.current?.scrollTo({ x: Math.max(0, centeredX), animated: true });
   }, [activeTab]);
 
-  const openVideo = (videoId: string, title: string) => {
+  const openVideo = (videoId: string, title: string, isLive: boolean = false) => {
     setActiveVideoId(videoId);
     setActiveVideoTitle(title);
+    setActiveVideoIsLive(isLive);
     setVideoModalVisible(true);
   };
 
-  const closeVideo = () => { setVideoModalVisible(false); setActiveVideoId(null); };
+  const closeVideo = () => { setVideoModalVisible(false); setActiveVideoId(null); setActiveVideoIsLive(false); };
 
   useEffect(() => {
     if (!autoPlayLive) return;
     setActiveTab('live');
-    openVideo(autoPlayLive.videoId, autoPlayLive.title);
+    openVideo(autoPlayLive.videoId, autoPlayLive.title, true);
     onAutoPlayLiveConsumed?.();
   }, [autoPlayLive]);
 
@@ -1516,8 +1543,16 @@ export default function VideosScreen({ autoPlayLive, onAutoPlayLiveConsumed }: V
     const date = item?.snippet?.publishedAt || '';
     const duration = item?.snippet?.duration || '';
     if (!videoId || !thumb) return null;
+    const handlePress = async () => {
+      let liveNow = false;
+      try {
+        const data = await ytFetch('videos', { id: videoId, part: 'snippet' });
+        liveNow = data?.items?.[0]?.snippet?.liveBroadcastContent === 'live';
+      } catch {}
+      openVideo(videoId, title, liveNow);
+    };
     return (
-      <TouchableOpacity style={[styles.card, { backgroundColor: colors.surface }]} onPress={() => openVideo(videoId, title)}>
+      <TouchableOpacity style={[styles.card, { backgroundColor: colors.surface }]} onPress={handlePress}>
         <View>
           <Image source={{ uri: thumb }} style={[styles.thumb, { height: cardW * 0.52 }]} />
           <View style={styles.liveBadge}><View style={styles.liveDot} /><Text style={styles.liveBadgeText}>LIVE</Text></View>
@@ -1555,7 +1590,7 @@ export default function VideosScreen({ autoPlayLive, onAutoPlayLiveConsumed }: V
 
   return (
     <View style={[styles.container, { backgroundColor: colors.bg }]}>
-      <VideoModal visible={videoModalVisible} videoId={activeVideoId} title={activeVideoTitle} onClose={closeVideo} />
+      <VideoModal visible={videoModalVisible} videoId={activeVideoId} title={activeVideoTitle} isLive={activeVideoIsLive} onClose={closeVideo} />
 
       <SongsPlayer
         visible={songsPlayerVisible}
