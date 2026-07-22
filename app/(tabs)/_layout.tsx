@@ -120,7 +120,6 @@ export default function TabLayout() {
 
       <LiveNowPopup
         visible={!!liveNowInfo}
-        label={liveNowInfo?.label}
         onWatch={handleWatchLiveNow}
         onSkip={() => setLiveNowInfo(null)}
       />

@@ -4,12 +4,11 @@ import { useTheme } from '../utils/ThemeContext';
 
 interface LiveNowPopupProps {
   visible: boolean;
-  label?: string;
   onWatch: () => void;
   onSkip: () => void;
 }
 
-export default function LiveNowPopup({ visible, label, onWatch, onSkip }: LiveNowPopupProps) {
+export default function LiveNowPopup({ visible, onWatch, onSkip }: LiveNowPopupProps) {
   const { colors } = useTheme();
 
   return (
@@ -29,10 +28,7 @@ export default function LiveNowPopup({ visible, label, onWatch, onSkip }: LiveNo
             <Text style={styles.liveBadgeText}>LIVE</Text>
           </View>
 
-          <Text style={[styles.title, { color: colors.text }]}>We're Live Now!</Text>
-          <Text style={[styles.subtitle, { color: colors.subtext }]}>
-            {label ? `${label} is streaming live right now.` : 'A live stream is happening right now.'}
-          </Text>
+          <Text style={[styles.title, { color: colors.text, marginBottom: 20 }]}>We're Live Now!</Text>
 
           <TouchableOpacity style={[styles.watchBtn, { backgroundColor: colors.accent }]} onPress={onWatch} activeOpacity={0.85}>
             <Ionicons name="play" size={18} color="#fff" />
@@ -56,7 +52,6 @@ const styles = StyleSheet.create({
   liveDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: '#fff' },
   liveBadgeText: { color: '#fff', fontSize: 10, fontWeight: 'bold' },
   title: { fontSize: 20, fontWeight: '800', marginBottom: 8, textAlign: 'center' },
-  subtitle: { fontSize: 14, textAlign: 'center', marginBottom: 20, lineHeight: 20 },
   watchBtn: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 28, paddingVertical: 13, borderRadius: 28, marginBottom: 10, width: '100%', justifyContent: 'center' },
   watchBtnText: { color: '#fff', fontSize: 15, fontWeight: '700' },
   skipBtn: { paddingVertical: 8 },
