@@ -19,7 +19,7 @@ const BOOKS = [
   {id:66,chapters:22}
 ];
 
-const VERSIONS = ['TAMOVR', 'TAMBL98', 'ERV', 'KJV'];
+const VERSIONS = ['TAMOVR', 'TAMBL98', 'ERV', 'KJV', 'NIV'];
 const dir = path.join(__dirname, '../assets/bible');
 if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
 

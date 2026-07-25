@@ -454,8 +454,16 @@ function VideoModal({ visible, videoId, title, isLive, onClose }: VideoModalProp
   const progressIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const durationRef = useRef<number>(0);
   const loadTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const fsOverlayOpacity = useRef(new Animated.Value(0)).current;
 
   useEffect(() => () => { mountedRef.current = false; }, []);
+
+  useEffect(() => {
+    const t = setTimeout(() => {
+      Animated.timing(fsOverlayOpacity, { toValue: 0, duration: 220, useNativeDriver: true }).start();
+    }, 80);
+    return () => clearTimeout(t);
+  }, [width, height]);
 
   useEffect(() => {
     if (!visible) {
@@ -469,6 +477,8 @@ function VideoModal({ visible, videoId, title, isLive, onClose }: VideoModalProp
       durationRef.current = 0;
       if (progressIntervalRef.current) clearInterval(progressIntervalRef.current);
       if (loadTimeoutRef.current) clearTimeout(loadTimeoutRef.current);
+      fsOverlayOpacity.setValue(0);
+      ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.PORTRAIT_UP);
       return;
     }
     if (!videoId) return;
@@ -563,9 +573,12 @@ function VideoModal({ visible, videoId, title, isLive, onClose }: VideoModalProp
     if (!mountedRef.current) return;
     fsTransitionRef.current = true;
     setIsInFullscreen(isFs);
+    Animated.timing(fsOverlayOpacity, { toValue: 1, duration: 100, useNativeDriver: true }).start();
     if (isFs) {
+      ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.LANDSCAPE);
       activateKeepAwakeAsync('fullscreen');
     } else {
+      ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.PORTRAIT_UP);
       deactivateKeepAwake('fullscreen');
     }
   }, []);
@@ -638,6 +651,7 @@ function VideoModal({ visible, videoId, title, isLive, onClose }: VideoModalProp
         <TouchableOpacity style={[styles.modalClose, isLandscape && styles.modalCloseLandscape]} onPress={onClose}>
           <Ionicons name="close" size={26} color="#fff" />
         </TouchableOpacity>
+        <Animated.View pointerEvents="none" style={[StyleSheet.absoluteFillObject, { backgroundColor: '#000', opacity: fsOverlayOpacity, zIndex: 50 }]} />
       </View>
     </Modal>
   );
@@ -670,9 +684,10 @@ interface SongItemProps {
   loadError: boolean;
   onRetry: () => void;
   onPlayerError: () => void;
+  onFullscreenToggle: () => void;
 }
 
-function SongItem({ item, index, isActive, playerReady, progressLoaded, colors, onReady, onChangeState, playerRef, showResume, onResume, onStartOver, fsTransitionRef, isFullscreenRef, loadError, onRetry, onPlayerError }: SongItemProps) {
+function SongItem({ item, index, isActive, playerReady, progressLoaded, colors, onReady, onChangeState, playerRef, showResume, onResume, onStartOver, fsTransitionRef, isFullscreenRef, loadError, onRetry, onPlayerError, onFullscreenToggle }: SongItemProps) {
   const videoId = item?.snippet?.resourceId?.videoId;
   const title = item?.snippet?.title || '';
   const dimsRef = useRef(Dimensions.get('window'));
@@ -687,14 +702,15 @@ function SongItem({ item, index, isActive, playerReady, progressLoaded, colors, 
     if (!mountedRef.current) return;
     fsTransitionRef.current = true;
     isFullscreenRef.current = isFs;
+    onFullscreenToggle();
     if (isFs) {
-      ScreenOrientation.unlockAsync();
+      ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.LANDSCAPE);
       activateKeepAwakeAsync('fullscreen');
     } else {
       ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.PORTRAIT);
       deactivateKeepAwake('fullscreen');
     }
-  }, [fsTransitionRef, isFullscreenRef]);
+  }, [fsTransitionRef, isFullscreenRef, onFullscreenToggle]);
 
   return (
     <View style={{ width: containerW, height: containerH, backgroundColor: '#000', justifyContent: 'center' }}>
@@ -764,8 +780,20 @@ function SongsPlayer({ visible, songs, startIndex, onClose, onEndReached }: Song
   const progressIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const durationRef = useRef<number>(0);
   const loadTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const fsOverlayOpacity = useRef(new Animated.Value(0)).current;
 
   useEffect(() => () => { mountedRef.current = false; }, []);
+
+  useEffect(() => {
+    const t = setTimeout(() => {
+      Animated.timing(fsOverlayOpacity, { toValue: 0, duration: 220, useNativeDriver: true }).start();
+    }, 80);
+    return () => clearTimeout(t);
+  }, [width, height]);
+
+  const handleFullscreenToggle = useCallback(() => {
+    Animated.timing(fsOverlayOpacity, { toValue: 1, duration: 100, useNativeDriver: true }).start();
+  }, []);
 
   useEffect(() => {
     if (visible) {
@@ -776,6 +804,7 @@ function SongsPlayer({ visible, songs, startIndex, onClose, onEndReached }: Song
       setShowResume(false);
       setProgressLoaded(false);
       resumePositionRef.current = 0;
+      fsOverlayOpacity.setValue(0);
     }
   }, [visible, startIndex]);
 
@@ -878,7 +907,7 @@ function SongsPlayer({ visible, songs, startIndex, onClose, onEndReached }: Song
   const viewConfig = useRef({ itemVisiblePercentThreshold: 60 }).current;
 
   return (
-    <Modal visible={visible} animationType="slide" statusBarTranslucent supportedOrientations={["portrait"]} onRequestClose={onClose}>
+    <Modal visible={visible} animationType="slide" statusBarTranslucent supportedOrientations={["portrait", "landscape"]} onRequestClose={onClose}>
       <View style={{ flex: 1, backgroundColor: '#000' }}>
         <StatusBar hidden />
         <FlatList
@@ -914,6 +943,7 @@ function SongsPlayer({ visible, songs, startIndex, onClose, onEndReached }: Song
                 onStartOver={handleStartOver}
                 fsTransitionRef={fsTransitionRef}
                 isFullscreenRef={isFullscreenRef}
+                onFullscreenToggle={handleFullscreenToggle}
                 loadError={loadError}
                 onRetry={() => {
                   if (loadTimeoutRef.current) clearTimeout(loadTimeoutRef.current);
@@ -966,6 +996,7 @@ function SongsPlayer({ visible, songs, startIndex, onClose, onEndReached }: Song
             <Ionicons name="chevron-down" size={16} color="rgba(255,255,255,0.5)" />
           </View>
         )}
+        <Animated.View pointerEvents="none" style={[StyleSheet.absoluteFillObject, { backgroundColor: '#000', opacity: fsOverlayOpacity, zIndex: 50 }]} />
       </View>
     </Modal>
   );

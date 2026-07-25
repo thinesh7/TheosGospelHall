@@ -11,7 +11,7 @@ export interface BibleSettings {
 
 const DEFAULTS: BibleSettings = {
   fontSize: 17,
-  secondaryVersion: 'ERV',
+  secondaryVersion: 'NIV',
   primaryVersion: 'TAMOVR',
   version: 'TAMOVR',
 };

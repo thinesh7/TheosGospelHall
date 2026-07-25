@@ -107,7 +107,7 @@ export default function BibleScreen() {
         <View style={[styles.header, { backgroundColor: c.headerBg, paddingRight: 16 + insets.right }]}>
           <View style={{ flex: 1 }}>
             <Text style={[styles.headerTitle, { color: c.text }]}>📖 Bible</Text>
-            <Text style={[styles.headerSubtitle, { color: c.subtext }]}>4 versions available</Text>
+            <Text style={[styles.headerSubtitle, { color: c.subtext }]}>5 versions available</Text>
           </View>
           <TouchableOpacity onPress={cycleTheme} style={styles.themeBtn}>
             <ThemeToggleIcon theme={theme} size={22} color={c.text} />

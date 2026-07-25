@@ -362,9 +362,11 @@ export default function BibleReaderScreen() {
 
   const clearSelection = () => setSelectedVerses(new Set());
 
-  const copyVerse = async (verseNum: number, text: string) => {
+  const UNAVAILABLE_NOTE = 'Verse not available in this translation.';
+
+  const copyVerse = async (verseNum: number, text: string, unavailable?: boolean) => {
     const bookName = isEnglish ? selectedBook?.name : selectedBook?.tamil;
-    const copyText = `${bookName} ${selectedChapter}:${verseNum} - ${cleanText(text)}`;
+    const copyText = `${bookName} ${selectedChapter}:${verseNum} - ${unavailable ? UNAVAILABLE_NOTE : cleanText(text)}`;
     await Clipboard.setStringAsync(copyText);
     ToastAndroid.show('Verse copied!', ToastAndroid.SHORT);
   };
@@ -379,13 +381,14 @@ export default function BibleReaderScreen() {
         const primaryVerse = primaryVerses.find(v => v.verse === vNum);
         const secVerse = secondaryVerses.find(v => v.verse === vNum);
         const ref = `${bookName} ${selectedChapter}:${vNum}`;
-        const tamilText = cleanText(primaryVerse?.text || '');
-        const engText = cleanText(secVerse?.text || '');
+        const tamilText = primaryVerse?.unavailable ? UNAVAILABLE_NOTE : cleanText(primaryVerse?.text || '');
+        const engText = secVerse?.unavailable ? UNAVAILABLE_NOTE : cleanText(secVerse?.text || '');
         return `${ref}\n${tamilText}${engText ? `\n${engText}` : ''}`;
       } else {
         const bookName = isEnglish ? selectedBook?.name : selectedBook?.tamil;
         const verse = primaryVerses.find(v => v.verse === vNum);
-        return `${bookName} ${selectedChapter}:${vNum}\n${cleanText(verse?.text || '')}`;
+        const text = verse?.unavailable ? UNAVAILABLE_NOTE : cleanText(verse?.text || '');
+        return `${bookName} ${selectedChapter}:${vNum}\n${text}`;
       }
     });
 
@@ -404,6 +407,13 @@ export default function BibleReaderScreen() {
       },
     })
   ).current;
+
+  const renderVerseText = (verse: any, style: any) => {
+    if (verse?.unavailable) {
+      return <Text style={[style, { fontStyle: 'italic', color: c.subtext }]}>{UNAVAILABLE_NOTE}</Text>;
+    }
+    return <Text style={style}>{cleanText(verse?.text)}</Text>;
+  };
 
   const showBilingual = isBilingual && !isEnglish && secondaryVerses.length > 0;
   const maxVerses = Math.max(primaryVerses.length, showBilingual ? secondaryVerses.length : 0);
@@ -514,13 +524,13 @@ export default function BibleReaderScreen() {
                   {primaryVerses[i] && (
                     <View style={[styles.tamilSection, { backgroundColor: c.surface, borderBottomWidth: 1, borderBottomColor: c.divider }]}>
                       <Text style={[styles.versionTag, { color: c.accent }]}>{primaryVersionInfo?.short}</Text>
-                      <Text style={{ fontSize, color: c.text, lineHeight: fontSize * 1.7 }}>{cleanText(primaryVerses[i]?.text)}</Text>
+                      {renderVerseText(primaryVerses[i], { fontSize, color: c.text, lineHeight: fontSize * 1.7 })}
                     </View>
                   )}
                   {secondaryVerses[i] && (
                     <View style={[styles.englishSection, { backgroundColor: c.bg }]}>
                       <Text style={[styles.versionTag, { color: c.subtext }]}>{secVersionInfo?.short}</Text>
-                      <Text style={{ fontSize, color: c.text, lineHeight: fontSize * 1.7 }}>{cleanText(secondaryVerses[i]?.text)}</Text>
+                      {renderVerseText(secondaryVerses[i], { fontSize, color: c.text, lineHeight: fontSize * 1.7 })}
                     </View>
                   )}
                 </View>
@@ -572,13 +582,13 @@ export default function BibleReaderScreen() {
                       <Ionicons name="checkmark" size={13} color="#fff" />
                     </View>
                     <View style={{ padding: 12 }}>
-                      <Text style={{ fontSize, color: c.text, lineHeight: fontSize * 1.7 }}>{cleanText(item.text)}</Text>
+                      {renderVerseText(item, { fontSize, color: c.text, lineHeight: fontSize * 1.7 })}
                     </View>
                   </View>
                 ) : (
                   <View style={[styles.verseRow, { borderBottomColor: c.divider }]}>
                     <Text style={[styles.verseNumber, { fontSize: fontSize - 3, color: c.accent }]}>{item.verse}</Text>
-                    <Text style={[styles.verseText, { fontSize, color: c.text, lineHeight: fontSize * 1.7 }]}>{cleanText(item.text)}</Text>
+                    {renderVerseText(item, [styles.verseText, { fontSize, color: c.text, lineHeight: fontSize * 1.7 }])}
                   </View>
                 )}
               </TouchableOpacity>

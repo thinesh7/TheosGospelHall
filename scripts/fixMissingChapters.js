@@ -13,7 +13,7 @@ const https = require('https');
 const fs = require('fs');
 const path = require('path');
 
-const VERSIONS = ['TAMOVR', 'TAMBL98', 'ERV', 'KJV'];
+const VERSIONS = ['TAMOVR', 'TAMBL98', 'ERV', 'KJV', 'NIV'];
 const dir = path.join(__dirname, '..', 'assets', 'bible');
 const FULL_MODE = process.argv.includes('--full');
 
@@ -42,6 +42,46 @@ const BOOKS = [
   { id: 64, chapters: 1   }, { id: 65, chapters: 1   }, { id: 66, chapters: 22  },
 ];
 
+// NIV verse text uses <br/> for two unrelated things with no structural marker
+// to tell them apart: (1) an editorial section heading / structural label
+// ("The Beginning", "BOOK I", "Psalm 90") glued onto the first verse of a
+// section, and (2) poetic line breaks within a single verse. This classifier
+// distinguishes them: a heading/label is a short, title-cased phrase with no
+// trailing punctuation, followed by a segment that starts a new capitalized
+// clause. Verified against the full NIV dataset (31,086 verses) before being
+// trusted — see scripts/downloadNIV.js for the same logic and more detail.
+function isHeadingSegment(segmentText, restOfTextJoined) {
+  const trimmed = segmentText.trim();
+  const words = trimmed.split(/\s+/).filter(Boolean);
+  if (words.length === 0) return false;
+  if (/[.,;:!?—-]\s*$/.test(trimmed)) return false;
+
+  const restFirstChar = restOfTextJoined.trim().replace(/^["'“‘\s]+/, '').charAt(0);
+  const restStartsLower = !!restFirstChar && restFirstChar === restFirstChar.toLowerCase() && restFirstChar !== restFirstChar.toUpperCase();
+  if (restStartsLower) return false;
+
+  if (words.length > 10) return false;
+
+  const alphaWords = words.filter(w => /[A-Za-z]/.test(w));
+  if (alphaWords.length === 0) return false;
+  const capCount = alphaWords.filter(w => {
+    const ch = w.replace(/^[^A-Za-z]+/, '').charAt(0);
+    return ch && ch === ch.toUpperCase() && ch !== ch.toLowerCase();
+  }).length;
+
+  return (capCount / alphaWords.length) >= 0.6;
+}
+
+function cleanVerseText(rawText) {
+  if (!rawText.includes('<br')) return rawText.replace(/\s+/g, ' ').trim();
+  const segments = rawText.split(/<br\s*\/?>/i);
+  let i = 0;
+  while (i < segments.length - 1 && isHeadingSegment(segments[i], segments.slice(i + 1).join(' '))) {
+    i++;
+  }
+  return segments.slice(i).join(' ').replace(/\s+/g, ' ').trim();
+}
+
 function fetchChapter(version, bookId, chapter) {
   return new Promise((resolve, reject) => {
     const url = `https://bolls.life/get-chapter/${version}/${bookId}/${chapter}/`;
@@ -56,7 +96,7 @@ function fetchChapter(version, bookId, chapter) {
             .filter(v => v.verse && v.text)
             .map(v => ({
               verse: typeof v.verse === 'string' ? parseInt(v.verse) : v.verse,
-              text: v.text.replace(/\s+/g, ' ').trim(),
+              text: cleanVerseText(v.text),
             }));
           resolve(verses);
         } catch (e) {

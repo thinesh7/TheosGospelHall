@@ -1,5 +1,11 @@
 {
   "enabledPlugins": {
     "expo@claude-plugins-official": true
+  },
+  "permissions": {
+    "allow": [
+      "Bash(curl -s \"https://bolls.life/static/imba/dist/assets/main.G4WM4MSV.js\" -o /tmp/bolls_main.js -A \"Mozilla/5.0\")",
+      "Read(//tmp/**)"
+    ]
   }
 }
