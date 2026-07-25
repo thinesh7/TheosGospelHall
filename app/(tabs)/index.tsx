@@ -59,8 +59,8 @@ export default function HomeScreen() {
         <View style={styles.pastorAvatar}>
           <Image source={photoSource} style={[styles.pastorImage, { borderColor: colors.accent }]} />
         </View>
-        {!!pastorName && <Text style={[styles.pastorName, { color: colors.text }]}>{pastorName}</Text>}
-        {!!pastorDesignation && <Text style={[styles.pastorTitle, { color: colors.subtext }]}>{pastorDesignation}</Text>}
+        {!!pastorName && <Text style={[styles.pastorName, { color: colors.text }]} maxFontSizeMultiplier={1.5}>{pastorName}</Text>}
+        {!!pastorDesignation && <Text style={[styles.pastorTitle, { color: colors.subtext }]} maxFontSizeMultiplier={1.5}>{pastorDesignation}</Text>}
 
         {hasAboutPastor && (
           <>
@@ -86,8 +86,8 @@ const styles = StyleSheet.create({
   pastorCard: { margin: 16, borderRadius: 16, padding: 20, alignItems: 'center', elevation: 4 },
   pastorAvatar: { marginBottom: 10 },
   pastorImage: { width: 120, height: 120, borderRadius: 60, borderWidth: 3 },
-  pastorName: { fontSize: 20, fontWeight: 'bold' },
-  pastorTitle: { fontSize: 14, marginTop: 4 },
+  pastorName: { fontSize: 20, fontWeight: 'bold', lineHeight: 26, textAlign: 'center' },
+  pastorTitle: { fontSize: 14, marginTop: 4, lineHeight: 20, textAlign: 'center' },
   divider: { height: 1, width: '100%', marginVertical: 14 },
   pastorAboutText: { textAlign: 'center' },
 });
