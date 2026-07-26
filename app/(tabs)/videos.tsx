@@ -228,7 +228,11 @@ interface VideoErrorProps { onRetry: () => void; }
 function VideoErrorState({ onRetry }: VideoErrorProps) {
   const { colors } = useTheme();
   return (
-    <View style={[errorStyles.container, { backgroundColor: colors.bg }]}>
+    <ScrollView
+      style={{ flex: 1, backgroundColor: colors.bg }}
+      contentContainerStyle={errorStyles.container}
+      showsVerticalScrollIndicator={false}
+    >
       <BrokenTvIcon />
       <Text style={[errorStyles.title, { color: colors.text }]}>Oh! No...</Text>
       <Text style={[errorStyles.subtitle, { color: colors.subtext }]}>Looks like something went wrong.</Text>
@@ -248,14 +252,18 @@ function VideoErrorState({ onRetry }: VideoErrorProps) {
         <Text style={errorStyles.retryText}>Try Again</Text>
       </TouchableOpacity>
       <Text style={[errorStyles.footer, { color: colors.subtext }]}>Still not working? Please try again later.</Text>
-    </View>
+    </ScrollView>
   );
 }
 
 function QuotaExhaustedScreen({ onRetry }: { onRetry: () => void }) {
   const { colors } = useTheme();
   return (
-    <View style={[errorStyles.container, { backgroundColor: colors.bg }]}>
+    <ScrollView
+      style={{ flex: 1, backgroundColor: colors.bg }}
+      contentContainerStyle={errorStyles.container}
+      showsVerticalScrollIndicator={false}
+    >
       <BrokenTvIcon />
       <Text style={[errorStyles.title, { color: colors.text }]}>Oh! No...</Text>
       <Text style={[errorStyles.subtitle, { color: colors.subtext }]}>{"Sorry, we're experiencing a technical issue. Please try again later."}</Text>
@@ -263,7 +271,7 @@ function QuotaExhaustedScreen({ onRetry }: { onRetry: () => void }) {
         <Ionicons name="refresh" size={16} color="#fff" />
         <Text style={errorStyles.retryText}>Try Again</Text>
       </TouchableOpacity>
-    </View>
+    </ScrollView>
   );
 }
 
@@ -2048,7 +2056,7 @@ const lockStyles = StyleSheet.create({
 });
 
 const errorStyles = StyleSheet.create({
-  container: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 32, paddingBottom: 200, marginTop: -30 },
+  container: { flexGrow: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 32, paddingVertical: 24 },
   iconWrap: { width: 120, height: 120, marginBottom: 24, alignItems: 'center', justifyContent: 'center' },
   tv: { width: 100, height: 80, backgroundColor: '#4a5568', borderRadius: 14, alignItems: 'center', justifyContent: 'center', position: 'relative' },
   tvScreen: { width: 72, height: 52, backgroundColor: '#e8eaf0', borderRadius: 8, alignItems: 'center', justifyContent: 'center' },
@@ -2086,7 +2094,7 @@ const loadingStyles = StyleSheet.create({
 });
 
 const tabLoadingStyles = StyleSheet.create({
-  container: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 20, paddingBottom: 200 },
+  container: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 20 },
   iconArea: { width: 80, height: 80, alignItems: 'center', justifyContent: 'center' },
   spinRing: { position: 'absolute', width: 80, height: 80, borderRadius: 40, borderWidth: 2.5, borderColor: 'transparent', borderRightColor: 'transparent' },
   barsRow: { flexDirection: 'row', alignItems: 'flex-end', gap: 5, height: 28 },
