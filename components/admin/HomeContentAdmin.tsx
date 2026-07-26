@@ -4,12 +4,12 @@ import {
   Alert,
   ScrollView,
   StyleSheet,
-  Text,
-  TextInput,
   TouchableOpacity,
   View,
 } from 'react-native';
 import { getAuth } from 'firebase/auth';
+import { Text } from '../AppText';
+import { TextInput } from '../AppTextInput';
 import { EMPTY_HOME_CONTENT, HomeContent, subscribeHomeContent, updateHomeContent } from '../../utils/homeContentSync';
 import { AdminScreenHandle } from './SpecialMeetingsAdmin';
 

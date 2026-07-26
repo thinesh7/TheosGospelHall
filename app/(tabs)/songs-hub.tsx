@@ -1,5 +1,6 @@
 import { useState } from 'react';
-import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { StyleSheet, TouchableOpacity, View } from 'react-native';
+import { Text } from '../../components/AppText';
 import { useTheme } from '../../utils/ThemeContext';
 import OtherSongsScreen from './other-songs';
 import SongsScreen from './songs';
@@ -33,6 +34,8 @@ export default function SongsHubScreen() {
                 { color: isActive ? '#fff' : c.accent },
               ]}
               numberOfLines={2}
+              adjustsFontSizeToFit
+              minimumFontScale={0.6}
             >
               {opt.label}
             </Text>

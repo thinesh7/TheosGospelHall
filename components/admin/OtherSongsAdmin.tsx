@@ -5,11 +5,11 @@ import {
   FlatList,
   StyleSheet,
   Switch,
-  Text,
-  TextInput,
   TouchableOpacity,
   View,
 } from 'react-native';
+import { Text } from '../AppText';
+import { TextInput } from '../AppTextInput';
 import {
   OtherSongIndexEntry,
   addOtherSong,

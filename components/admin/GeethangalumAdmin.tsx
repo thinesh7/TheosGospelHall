@@ -4,11 +4,11 @@ import {
   Alert,
   FlatList,
   StyleSheet,
-  Text,
-  TextInput,
   TouchableOpacity,
   View,
 } from 'react-native';
+import { Text } from '../AppText';
+import { TextInput } from '../AppTextInput';
 import { SongIndexEntry, getSongById, getSongsIndex, syncSongs, updateGeethangalumSong } from '../../utils/songsSync';
 import { AdminScreenHandle } from './SpecialMeetingsAdmin';
 

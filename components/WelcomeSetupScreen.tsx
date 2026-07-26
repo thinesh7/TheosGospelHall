@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
-import { Animated, Image, StyleSheet, Text, View } from 'react-native';
+import { Animated, Image, StyleSheet, View } from 'react-native';
+import { Text } from './AppText';
 import { loadBibleSettings } from '../utils/bibleSettings';
 import { fetchHomeContentOnce } from '../utils/homeContentSync';
 

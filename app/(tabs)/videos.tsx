@@ -6,6 +6,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Animated,
+  BackHandler,
   Dimensions,
   Easing,
   FlatList,
@@ -16,16 +17,16 @@ import {
   Share,
   StatusBar,
   StyleSheet,
-  Text,
-  TextInput,
   TouchableOpacity,
   View,
 } from 'react-native';
 import YoutubePlayer from 'react-native-youtube-iframe';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { Text } from '../../components/AppText';
+import { TextInput } from '../../components/AppTextInput';
 import { useTheme } from '../../utils/ThemeContext';
 import { getCachedLivePlaylists, syncLivePlaylists } from '../../utils/livePlaylistsSync';
-import { ytFetch } from '../../utils/youtubeProxy';
+import { QuotaExhaustedError, ytFetch } from '../../utils/youtubeProxy';
 
 const CHANNEL_ID = 'UCFg0eNTRs2UIcihQAVpyrJA';
 const UPLOADS_PLAYLIST_ID = 'UUFg0eNTRs2UIcihQAVpyrJA';
@@ -39,7 +40,7 @@ const COMPLETION_THRESHOLD = 0.98;
 const getWindow = () => Dimensions.get('window');
 const { width: SW } = getWindow();
 
-type Tab = 'shorts' | 'videos' | 'songs' | 'live' | 'all';
+type Tab = 'shorts' | 'videos' | 'songs' | 'live' | 'categories' | 'all';
 
 interface VideoProgress {
   position: number;
@@ -101,6 +102,18 @@ const formatDate = (dateStr: string) => {
   } catch { return dateStr || ''; }
 };
 
+const formatDateTime = (dateStr: string) => {
+  try {
+    const d = new Date(dateStr);
+    if (isNaN(d.getTime())) return formatDate(dateStr);
+    let hours = d.getHours();
+    const minutes = d.getMinutes();
+    const ampm = hours >= 12 ? 'PM' : 'AM';
+    hours = hours % 12 || 12;
+    return `${formatDate(dateStr)}, ${hours}:${String(minutes).padStart(2, '0')} ${ampm}`;
+  } catch { return formatDate(dateStr); }
+};
+
 const decodeHtml = (s: string) =>
   (s || '').replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&nbsp;/g, ' ');
 
@@ -145,18 +158,24 @@ async function enrichDates(items: any[]): Promise<any[]> {
   if (!ids.length) return items;
   const chunks: string[][] = [];
   for (let i = 0; i < ids.length; i += 50) chunks.push(ids.slice(i, i + 50));
-  const map: Record<string, { date: string; duration: string }> = {};
+  const map: Record<string, { date: string; duration: string; isUpcoming: boolean; isLiveNow: boolean }> = {};
   for (const chunk of chunks) {
     try {
       const data = await ytFetch('videos', { id: chunk.join(','), part: 'snippet,liveStreamingDetails,contentDetails' });
       (data.items || []).forEach((v: any) => {
         if (!v?.id) return;
+        const liveDetails = v?.liveStreamingDetails;
+        const isUpcoming = !!liveDetails?.scheduledStartTime && !liveDetails?.actualStartTime;
         map[v.id] = {
-          date: v?.liveStreamingDetails?.actualStartTime || v?.snippet?.publishedAt,
+          date: isUpcoming ? liveDetails.scheduledStartTime : (liveDetails?.actualStartTime || v?.snippet?.publishedAt),
           duration: parseDuration(v?.contentDetails?.duration || ''),
+          isUpcoming,
+          isLiveNow: v?.snippet?.liveBroadcastContent === 'live',
         };
       });
-    } catch {}
+    } catch (e) {
+      if (e instanceof QuotaExhaustedError) throw e;
+    }
   }
   return items.map(item => {
     const videoId = item?.snippet?.resourceId?.videoId;
@@ -167,6 +186,8 @@ async function enrichDates(items: any[]): Promise<any[]> {
         ...item.snippet,
         publishedAt: info?.date || item.snippet?.publishedAt,
         duration: info?.duration || '',
+        isUpcoming: info?.isUpcoming || false,
+        isLiveNow: info?.isLiveNow || false,
       },
     };
   });
@@ -227,6 +248,21 @@ function VideoErrorState({ onRetry }: VideoErrorProps) {
         <Text style={errorStyles.retryText}>Try Again</Text>
       </TouchableOpacity>
       <Text style={[errorStyles.footer, { color: colors.subtext }]}>Still not working? Please try again later.</Text>
+    </View>
+  );
+}
+
+function QuotaExhaustedScreen({ onRetry }: { onRetry: () => void }) {
+  const { colors } = useTheme();
+  return (
+    <View style={[errorStyles.container, { backgroundColor: colors.bg }]}>
+      <BrokenTvIcon />
+      <Text style={[errorStyles.title, { color: colors.text }]}>Oh! No...</Text>
+      <Text style={[errorStyles.subtitle, { color: colors.subtext }]}>{"Sorry, we're experiencing a technical issue. Please try again later."}</Text>
+      <TouchableOpacity style={errorStyles.retryBtn} onPress={onRetry} activeOpacity={0.85}>
+        <Ionicons name="refresh" size={16} color="#fff" />
+        <Text style={errorStyles.retryText}>Try Again</Text>
+      </TouchableOpacity>
     </View>
   );
 }
@@ -307,6 +343,7 @@ const TAB_LOADING_MESSAGES: Record<string, string[]> = {
   videos: ['🎬 Loading Videos...', '📡 Fetching sermons...', '✨ Almost there...'],
   songs: ['🎵 Loading Songs...', '📡 Fetching music...', '✨ Almost there...'],
   live: ['📡 Loading Live Streams...', '🔴 Fetching broadcasts...', '✨ Almost there...'],
+  categories: ['🗂️ Loading Playlists...', '📡 Getting things ready...', '✨ Almost there...'],
   all: ['🎬 Loading All Videos...', '📡 Fetching content...', '✨ Almost there...'],
   search: ['🔍 Searching sermons...', '📡 Finding results...', '✨ Almost there...'],
 };
@@ -430,6 +467,35 @@ function ResumePrompt({ visible, onResume, onStartOver }: ResumePromptProps) {
   );
 }
 
+function LockOverlay({ onUnlock }: { onUnlock: () => void }) {
+  const lastTapRef = useRef(0);
+
+  const handleUnlockPress = () => {
+    const now = Date.now();
+    if (now - lastTapRef.current < 350) {
+      lastTapRef.current = 0;
+      onUnlock();
+    } else {
+      lastTapRef.current = now;
+    }
+  };
+
+  return (
+    <TouchableOpacity style={lockStyles.overlay} activeOpacity={1} onPress={() => {}}>
+      <View style={lockStyles.badge}>
+        <View style={lockStyles.badgeIconCircle}>
+          <Ionicons name="lock-closed" size={22} color="#fff" />
+        </View>
+        <Text style={lockStyles.badgeText}>Locked</Text>
+      </View>
+      <TouchableOpacity style={lockStyles.unlockBtn} onPress={handleUnlockPress} activeOpacity={0.8}>
+        <Ionicons name="lock-open" size={22} color="#fff" />
+        <Text style={lockStyles.unlockText}>Double tap to unlock</Text>
+      </TouchableOpacity>
+    </TouchableOpacity>
+  );
+}
+
 interface VideoModalProps {
   visible: boolean;
   videoId: string | null;
@@ -448,6 +514,7 @@ function VideoModal({ visible, videoId, title, isLive, onClose }: VideoModalProp
   const [showResume, setShowResume] = useState(false);
   const [progressLoaded, setProgressLoaded] = useState(false);
   const [loadError, setLoadError] = useState(false);
+  const [locked, setLocked] = useState(false);
   const playerRef = useRef<any>(null);
   const mountedRef = useRef(true);
   const resumePositionRef = useRef<number>(0);
@@ -471,6 +538,7 @@ function VideoModal({ visible, videoId, title, isLive, onClose }: VideoModalProp
       setIsInFullscreen(false);
       setPlaying(false);
       setShowResume(false);
+      setLocked(false);
       setProgressLoaded(false);
       setLoadError(false);
       resumePositionRef.current = 0;
@@ -584,7 +652,7 @@ function VideoModal({ visible, videoId, title, isLive, onClose }: VideoModalProp
   }, []);
 
   return (
-    <Modal visible={visible} animationType="slide" statusBarTranslucent onRequestClose={onClose}>
+    <Modal visible={visible} animationType="slide" statusBarTranslucent onRequestClose={() => { if (!locked) onClose(); }}>
       <View style={[styles.videoModal, isLandscape && styles.videoModalLandscape]}>
         <StatusBar hidden />
         {(!playerReady || !progressLoaded) && (
@@ -648,10 +716,16 @@ function VideoModal({ visible, videoId, title, isLive, onClose }: VideoModalProp
         {playerReady && (
           <ResumePrompt visible={showResume} onResume={handleResume} onStartOver={handleStartOver} />
         )}
-        <TouchableOpacity style={[styles.modalClose, isLandscape && styles.modalCloseLandscape]} onPress={onClose}>
-          <Ionicons name="close" size={26} color="#fff" />
-        </TouchableOpacity>
+        <View style={[styles.topRightRow, isLandscape && styles.topRightRowLandscape]}>
+          <TouchableOpacity style={styles.lockToggleBtn} onPress={() => setLocked(true)}>
+            <Ionicons name="lock-open-outline" size={24} color="#fff" />
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.roundIconBtn} onPress={onClose}>
+            <Ionicons name="close" size={26} color="#fff" />
+          </TouchableOpacity>
+        </View>
         <Animated.View pointerEvents="none" style={[StyleSheet.absoluteFillObject, { backgroundColor: '#000', opacity: fsOverlayOpacity, zIndex: 50 }]} />
+        {locked && <LockOverlay onUnlock={() => setLocked(false)} />}
       </View>
     </Modal>
   );
@@ -770,6 +844,7 @@ function SongsPlayer({ visible, songs, startIndex, onClose, onEndReached }: Song
   const [progressLoaded, setProgressLoaded] = useState(false);
   const [scrollEnabled, setScrollEnabled] = useState(true);
   const [loadError, setLoadError] = useState(false);
+  const [locked, setLocked] = useState(false);
   const listRef = useRef<FlatList>(null);
   const currentIndexRef = useRef(startIndex);
   const playerRef = useRef<any>(null);
@@ -803,6 +878,7 @@ function SongsPlayer({ visible, songs, startIndex, onClose, onEndReached }: Song
       setPlaying(false);
       setShowResume(false);
       setProgressLoaded(false);
+      setLocked(false);
       resumePositionRef.current = 0;
       fsOverlayOpacity.setValue(0);
     }
@@ -907,7 +983,7 @@ function SongsPlayer({ visible, songs, startIndex, onClose, onEndReached }: Song
   const viewConfig = useRef({ itemVisiblePercentThreshold: 60 }).current;
 
   return (
-    <Modal visible={visible} animationType="slide" statusBarTranslucent supportedOrientations={["portrait", "landscape"]} onRequestClose={onClose}>
+    <Modal visible={visible} animationType="slide" statusBarTranslucent supportedOrientations={["portrait", "landscape"]} onRequestClose={() => { if (!locked) onClose(); }}>
       <View style={{ flex: 1, backgroundColor: '#000' }}>
         <StatusBar hidden />
         <FlatList
@@ -924,8 +1000,8 @@ function SongsPlayer({ visible, songs, startIndex, onClose, onEndReached }: Song
           getItemLayout={(_, index) => ({ length: itemSize, offset: itemSize * index, index })}
           initialScrollIndex={startIndex}
           onScrollToIndexFailed={() => {}}
-          scrollEnabled={scrollEnabled}
-          extraData={{ currentIndex, playerReady, showResume, progressLoaded, scrollEnabled }}
+          scrollEnabled={scrollEnabled && !locked}
+          extraData={{ currentIndex, playerReady, showResume, progressLoaded, scrollEnabled, locked }}
           renderItem={({ item, index }) => {
             const isActive = index === currentIndex;
             return (
@@ -986,9 +1062,14 @@ function SongsPlayer({ visible, songs, startIndex, onClose, onEndReached }: Song
             );
           }}
         />
-        <TouchableOpacity style={styles.modalClose} onPress={onClose}>
-          <Ionicons name="close" size={26} color="#fff" />
-        </TouchableOpacity>
+        <View style={styles.topRightRow}>
+          <TouchableOpacity style={styles.lockToggleBtn} onPress={() => setLocked(true)}>
+            <Ionicons name="lock-open-outline" size={24} color="#fff" />
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.roundIconBtn} onPress={onClose}>
+            <Ionicons name="close" size={26} color="#fff" />
+          </TouchableOpacity>
+        </View>
         {!showResume && (
           <View style={[styles.songsSwipeHint, { bottom: insets.bottom + 16 }]}>
             <Ionicons name="chevron-up" size={16} color="rgba(255,255,255,0.5)" />
@@ -997,6 +1078,7 @@ function SongsPlayer({ visible, songs, startIndex, onClose, onEndReached }: Song
           </View>
         )}
         <Animated.View pointerEvents="none" style={[StyleSheet.absoluteFillObject, { backgroundColor: '#000', opacity: fsOverlayOpacity, zIndex: 50 }]} />
+        {locked && <LockOverlay onUnlock={() => setLocked(false)} />}
       </View>
     </Modal>
   );
@@ -1191,9 +1273,10 @@ function ShortsPlayerItemInner({ item, index, isActive, onEnd, onClose, total, o
 interface VideosScreenProps {
   autoPlayLive?: { videoId: string; title: string } | null;
   onAutoPlayLiveConsumed?: () => void;
+  isActive?: boolean;
 }
 
-export default function VideosScreen({ autoPlayLive, onAutoPlayLiveConsumed }: VideosScreenProps = {}) {
+export default function VideosScreen({ autoPlayLive, onAutoPlayLiveConsumed, isActive }: VideosScreenProps = {}) {
   const { colors } = useTheme();
 
   const [activeTab, setActiveTab] = useState<Tab>('shorts');
@@ -1243,7 +1326,23 @@ export default function VideosScreen({ autoPlayLive, onAutoPlayLiveConsumed }: V
   const [loadingAll, setLoadingAll] = useState(false);
   const [loadingMoreAll, setLoadingMoreAll] = useState(false);
 
-  const [refreshing, setRefreshing] = useState(false);
+  const [categories, setCategories] = useState<any[]>([]);
+  const [categoriesLoaded, setCategoriesLoaded] = useState(false);
+  const [categoriesError, setCategoriesError] = useState(false);
+  const [categoriesNextToken, setCategoriesNextToken] = useState('');
+  const [loadingCategories, setLoadingCategories] = useState(false);
+  const [loadingMoreCategories, setLoadingMoreCategories] = useState(false);
+
+  const [selectedCategory, setSelectedCategory] = useState<{ id: string; title: string; itemCount: number } | null>(null);
+  const [categoryVideos, setCategoryVideos] = useState<any[]>([]);
+  const [categoryVideosLoaded, setCategoryVideosLoaded] = useState(false);
+  const [categoryVideosError, setCategoryVideosError] = useState(false);
+  const [categoryVideosNextToken, setCategoryVideosNextToken] = useState('');
+  const [loadingCategoryVideos, setLoadingCategoryVideos] = useState(false);
+  const [loadingMoreCategoryVideos, setLoadingMoreCategoryVideos] = useState(false);
+  const categoryVideosCacheRef = useRef<Record<string, { videos: any[]; nextToken: string }>>({});
+
+  const [quotaExhausted, setQuotaExhausted] = useState(false);
   const [videoModalVisible, setVideoModalVisible] = useState(false);
   const [activeVideoId, setActiveVideoId] = useState<string | null>(null);
   const [activeVideoTitle, setActiveVideoTitle] = useState('');
@@ -1299,6 +1398,10 @@ export default function VideosScreen({ autoPlayLive, onAutoPlayLiveConsumed }: V
       if (allError) { setAllError(false); fetchAll('', true); }
       else if (!allLoaded) fetchAll();
     }
+    if (activeTab === 'categories') {
+      if (categoriesError) { setCategoriesError(false); fetchCategories('', true); }
+      else if (!categoriesLoaded) fetchCategories();
+    }
     if (activeTab === 'shorts' && shortsError) {
       setShortsError(false);
       fetchShorts('', true);
@@ -1329,9 +1432,21 @@ export default function VideosScreen({ autoPlayLive, onAutoPlayLiveConsumed }: V
     onAutoPlayLiveConsumed?.();
   }, [autoPlayLive]);
 
+  useEffect(() => {
+    const onBackPress = () => {
+      if (isActive !== false && selectedCategory) {
+        closeCategory();
+        return true;
+      }
+      return false;
+    };
+    const sub = BackHandler.addEventListener('hardwareBackPress', onBackPress);
+    return () => sub.remove();
+  }, [isActive, selectedCategory]);
+
   const fetchShorts = async (pageToken = '', forceLoad = false) => {
     try {
-      if (!pageToken || forceLoad) { setLoadingShorts(true); setShortsError(false); setShortsLoaded(false); } else setLoadingMoreShorts(true);
+      if (!pageToken || forceLoad) { setLoadingShorts(true); setShortsError(false); setShortsLoaded(false); setQuotaExhausted(false); } else setLoadingMoreShorts(true);
       const data = await ytFetch('playlistItems', { playlistId: SHORTS_PLAYLIST_ID, part: 'snippet', maxResults: '50', ...(pageToken ? { pageToken } : {}) });
       const enriched = await enrichDates(mapItems(data.items || []));
       if (pageToken) {
@@ -1339,14 +1454,15 @@ export default function VideosScreen({ autoPlayLive, onAutoPlayLiveConsumed }: V
       } else { setShorts(dedupeById(enriched)); }
       setShortsNextToken(data.nextPageToken || '');
       setShortsLoaded(true);
-    } catch {
-      if (!pageToken) setShortsError(true);
+    } catch (e) {
+      if (e instanceof QuotaExhaustedError) setQuotaExhausted(true);
+      else if (!pageToken) setShortsError(true);
     } finally { setLoadingShorts(false); setLoadingMoreShorts(false); }
   };
 
   const fetchVideos = async (pageToken = '', forceLoad = false) => {
     try {
-      if (!pageToken || forceLoad) { setLoadingVideos(true); setVideosError(false); setVideosLoaded(false); } else setLoadingMoreVideos(true);
+      if (!pageToken || forceLoad) { setLoadingVideos(true); setVideosError(false); setVideosLoaded(false); setQuotaExhausted(false); } else setLoadingMoreVideos(true);
       const data = await ytFetch('playlistItems', { playlistId: VIDEOS_PLAYLIST_ID, part: 'snippet', maxResults: '50', ...(pageToken ? { pageToken } : {}) });
       const enriched = (await enrichDates(mapItems(data.items || []))).sort(byDateDesc);
       if (pageToken) {
@@ -1354,14 +1470,15 @@ export default function VideosScreen({ autoPlayLive, onAutoPlayLiveConsumed }: V
       } else { setVideos(dedupeById(enriched)); }
       setVideosNextToken(data.nextPageToken || '');
       setVideosLoaded(true);
-    } catch {
-      if (!pageToken) setVideosError(true);
+    } catch (e) {
+      if (e instanceof QuotaExhaustedError) setQuotaExhausted(true);
+      else if (!pageToken) setVideosError(true);
     } finally { setLoadingVideos(false); setLoadingMoreVideos(false); }
   };
 
   const fetchSongs = async (pageToken = '', forceLoad = false) => {
     try {
-      if (!pageToken || forceLoad) { setLoadingSongs(true); setSongsError(false); setSongsLoaded(false); } else setLoadingMoreSongs(true);
+      if (!pageToken || forceLoad) { setLoadingSongs(true); setSongsError(false); setSongsLoaded(false); setQuotaExhausted(false); } else setLoadingMoreSongs(true);
       const data = await ytFetch('playlistItems', { playlistId: SONGS_PLAYLIST_ID, part: 'snippet', maxResults: '50', ...(pageToken ? { pageToken } : {}) });
       const enriched = await enrichDates(mapItems(data.items || []));
       if (pageToken) {
@@ -1369,8 +1486,9 @@ export default function VideosScreen({ autoPlayLive, onAutoPlayLiveConsumed }: V
       } else { setSongs(dedupeById(enriched)); }
       setSongsNextToken(data.nextPageToken || '');
       setSongsLoaded(true);
-    } catch {
-      if (!pageToken) setSongsError(true);
+    } catch (e) {
+      if (e instanceof QuotaExhaustedError) setQuotaExhausted(true);
+      else if (!pageToken) setSongsError(true);
     } finally { setLoadingSongs(false); setLoadingMoreSongs(false); }
   };
 
@@ -1383,12 +1501,17 @@ export default function VideosScreen({ autoPlayLive, onAutoPlayLiveConsumed }: V
     const fresh = await syncLivePlaylists();
     let freshIds = fresh.filter(p => p.isActive).map(p => p.playlistId);
     if (!freshIds.length) freshIds = FALLBACK_LIVE_IDS;
+    const idsChanged = ids.length !== freshIds.length || !ids.every(id => freshIds.includes(id));
     setLiveIds(freshIds);
+    if (idsChanged) {
+      setLiveNextTokens({});
+      fetchLive(false, freshIds);
+    }
   };
 
   const fetchLive = async (loadMore: boolean, idsOverride?: string[]) => {
     try {
-      if (!loadMore) { setLoadingLive(true); setLiveError(false); } else setLoadingMoreLive(true);
+      if (!loadMore) { setLoadingLive(true); setLiveError(false); setQuotaExhausted(false); } else setLoadingMoreLive(true);
       const ids = idsOverride || liveIds;
       const toFetch = loadMore ? ids.filter(id => liveNextTokens[id]) : ids;
       if (!toFetch.length) return;
@@ -1405,14 +1528,15 @@ export default function VideosScreen({ autoPlayLive, onAutoPlayLiveConsumed }: V
         setLiveVideos(prev => { const s = new Set(prev.map((v: any) => v.snippet.resourceId.videoId)); return [...prev, ...newItems.filter((v: any) => !s.has(v.snippet.resourceId.videoId))].sort(byDateDesc); });
       } else { setLiveVideos(dedupeById(newItems).sort(byDateDesc)); }
       setLiveLoaded(true);
-    } catch {
-      if (!loadMore) setLiveError(true);
+    } catch (e) {
+      if (e instanceof QuotaExhaustedError) setQuotaExhausted(true);
+      else if (!loadMore) setLiveError(true);
     } finally { setLoadingLive(false); setLoadingMoreLive(false); }
   };
 
   const fetchAll = async (pageToken = '', forceLoad = false) => {
     try {
-      if (!pageToken || forceLoad) { setLoadingAll(true); setAllError(false); setAllLoaded(false); } else setLoadingMoreAll(true);
+      if (!pageToken || forceLoad) { setLoadingAll(true); setAllError(false); setAllLoaded(false); setQuotaExhausted(false); } else setLoadingMoreAll(true);
       const data = await ytFetch('playlistItems', { playlistId: UPLOADS_PLAYLIST_ID, part: 'snippet', maxResults: '50', ...(pageToken ? { pageToken } : {}) });
       const enriched = (await enrichDates(mapItems(data.items || []))).sort(byDateDesc);
       if (pageToken) {
@@ -1420,14 +1544,88 @@ export default function VideosScreen({ autoPlayLive, onAutoPlayLiveConsumed }: V
       } else { setAllVideos(dedupeById(enriched)); }
       setAllNextToken(data.nextPageToken || '');
       setAllLoaded(true);
-    } catch {
-      if (!pageToken) setAllError(true);
+    } catch (e) {
+      if (e instanceof QuotaExhaustedError) setQuotaExhausted(true);
+      else if (!pageToken) setAllError(true);
     } finally { setLoadingAll(false); setLoadingMoreAll(false); }
+  };
+
+  const fetchCategories = async (pageToken = '', forceLoad = false) => {
+    try {
+      if (!pageToken || forceLoad) { setLoadingCategories(true); setCategoriesError(false); setCategoriesLoaded(false); setQuotaExhausted(false); } else setLoadingMoreCategories(true);
+      const data = await ytFetch('playlists', { channelId: CHANNEL_ID, part: 'snippet,contentDetails', maxResults: '50', ...(pageToken ? { pageToken } : {}) });
+      const mapped = (data.items || [])
+        .filter((p: any) => p?.id && p?.snippet?.title && p?.snippet?.thumbnails)
+        .map((p: any) => ({
+          id: p.id,
+          title: decodeHtml(p.snippet.title),
+          thumbnail: p.snippet.thumbnails?.medium?.url || p.snippet.thumbnails?.default?.url,
+          itemCount: p.contentDetails?.itemCount || 0,
+        }));
+      if (pageToken) {
+        setCategories(prev => { const s = new Set(prev.map((c: any) => c.id)); return [...prev, ...mapped.filter((c: any) => !s.has(c.id))]; });
+      } else { setCategories(mapped); }
+      setCategoriesNextToken(data.nextPageToken || '');
+      setCategoriesLoaded(true);
+    } catch (e) {
+      if (e instanceof QuotaExhaustedError) setQuotaExhausted(true);
+      else if (!pageToken) setCategoriesError(true);
+    } finally { setLoadingCategories(false); setLoadingMoreCategories(false); }
+  };
+
+  const fetchCategoryVideos = async (playlistId: string, pageToken = '', forceLoad = false) => {
+    try {
+      if (!pageToken || forceLoad) { setLoadingCategoryVideos(true); setCategoryVideosError(false); setCategoryVideosLoaded(false); setQuotaExhausted(false); } else setLoadingMoreCategoryVideos(true);
+      const data = await ytFetch('playlistItems', { playlistId, part: 'snippet', maxResults: '50', ...(pageToken ? { pageToken } : {}) });
+      const enriched = (await enrichDates(mapItems(data.items || []))).sort(byDateDesc);
+      let finalVideos: any[];
+      if (pageToken) {
+        const prev = categoryVideosCacheRef.current[playlistId]?.videos || [];
+        const s = new Set(prev.map((v: any) => v.snippet.resourceId.videoId));
+        finalVideos = [...prev, ...enriched.filter((v: any) => !s.has(v.snippet.resourceId.videoId))].sort(byDateDesc);
+      } else {
+        finalVideos = dedupeById(enriched);
+      }
+      const nextToken = data.nextPageToken || '';
+      setCategoryVideos(finalVideos);
+      setCategoryVideosNextToken(nextToken);
+      setCategoryVideosLoaded(true);
+      categoryVideosCacheRef.current[playlistId] = { videos: finalVideos, nextToken };
+    } catch (e) {
+      if (e instanceof QuotaExhaustedError) setQuotaExhausted(true);
+      else if (!pageToken) setCategoryVideosError(true);
+    } finally { setLoadingCategoryVideos(false); setLoadingMoreCategoryVideos(false); }
+  };
+
+  const openCategory = (category: { id: string; title: string; itemCount: number }) => {
+    setSelectedCategory(category);
+    const cached = categoryVideosCacheRef.current[category.id];
+    if (cached) {
+      setCategoryVideos(cached.videos);
+      setCategoryVideosNextToken(cached.nextToken);
+      setCategoryVideosLoaded(true);
+      setCategoryVideosError(false);
+      return;
+    }
+    setCategoryVideos([]);
+    setCategoryVideosLoaded(false);
+    setCategoryVideosError(false);
+    setCategoryVideosNextToken('');
+    fetchCategoryVideos(category.id, '', true);
+  };
+
+  const closeCategory = () => {
+    setSelectedCategory(null);
+    setCategoryVideos([]);
+    setCategoryVideosLoaded(false);
+    setCategoryVideosError(false);
+    setCategoryVideosNextToken('');
   };
 
   const doSearch = async (query: string) => {
     try {
       setSearching(true);
+      setQuotaExhausted(false);
       const data = await ytFetch('search', { channelId: CHANNEL_ID, part: 'snippet', type: 'video', maxResults: '50', order: 'relevance', q: query });
       const q = query.toLowerCase();
       setSearchResults(
@@ -1443,19 +1641,9 @@ export default function VideosScreen({ autoPlayLive, onAutoPlayLiveConsumed }: V
             },
           }))
       );
-    } catch {} finally { setSearching(false); }
-  };
-
-  const onRefresh = async () => {
-    setRefreshing(true);
-    setShorts([]); setShortsLoaded(false); setShortsNextToken(''); setShortsError(false);
-    setVideos([]); setVideosLoaded(false); setVideosNextToken(''); setVideosError(false);
-    setSongs([]); setSongsLoaded(false); setSongsNextToken(''); setSongsError(false);
-    setLiveVideos([]); setLiveLoaded(false); setLiveNextTokens({}); setLiveError(false);
-    setAllVideos([]); setAllLoaded(false); setAllNextToken(''); setAllError(false);
-    await Promise.all([fetchShorts(), fetchVideos(), fetchSongs(), loadLiveAndFetch(), fetchAll()]);
-    setShortsLoaded(true); setVideosLoaded(true); setSongsLoaded(true); setLiveLoaded(true); setAllLoaded(true);
-    setRefreshing(false);
+    } catch (e) {
+      if (e instanceof QuotaExhaustedError) setQuotaExhausted(true);
+    } finally { setSearching(false); }
   };
 
   const handleShortEnd = useCallback((index: number) => {
@@ -1573,6 +1761,7 @@ export default function VideosScreen({ autoPlayLive, onAutoPlayLiveConsumed }: V
     const title = decodeHtml(item?.snippet?.title || '');
     const date = item?.snippet?.publishedAt || '';
     const duration = item?.snippet?.duration || '';
+    const isUpcoming = !!item?.snippet?.isUpcoming;
     if (!videoId || !thumb) return null;
     const handlePress = async () => {
       let liveNow = false;
@@ -1586,7 +1775,14 @@ export default function VideosScreen({ autoPlayLive, onAutoPlayLiveConsumed }: V
       <TouchableOpacity style={[styles.card, { backgroundColor: colors.surface }]} onPress={handlePress}>
         <View>
           <Image source={{ uri: thumb }} style={[styles.thumb, { height: cardW * 0.52 }]} />
-          <View style={styles.liveBadge}><View style={styles.liveDot} /><Text style={styles.liveBadgeText}>LIVE</Text></View>
+          {isUpcoming ? (
+            <View style={styles.scheduledBadge}>
+              <Ionicons name="time" size={11} color="#fff" />
+              <Text style={styles.scheduledBadgeText}>SCHEDULED</Text>
+            </View>
+          ) : (
+            <View style={styles.liveBadge}><View style={styles.liveDot} /><Text style={styles.liveBadgeText}>LIVE</Text></View>
+          )}
           {!!duration && (
             <View style={styles.durationBadge}>
               <Text style={styles.durationText}>{duration}</Text>
@@ -1595,7 +1791,22 @@ export default function VideosScreen({ autoPlayLive, onAutoPlayLiveConsumed }: V
         </View>
         <View style={styles.cardInfo}>
           <Text style={[styles.cardTitle, { color: colors.text }]} numberOfLines={2}>{title}</Text>
-          <Text style={[styles.cardDate, { color: colors.subtext }]}>{formatDate(date)}</Text>
+          <Text style={[styles.cardDate, { color: colors.subtext }]}>{isUpcoming ? `Scheduled for ${formatDateTime(date)}` : formatDate(date)}</Text>
+        </View>
+      </TouchableOpacity>
+    );
+  };
+
+  const CategoryCard = ({ item }: any) => {
+    const { width: cardW } = useWindowDimensions();
+    if (!item?.id || !item?.thumbnail) return null;
+    return (
+      <TouchableOpacity style={[styles.card, { backgroundColor: colors.surface }]} onPress={() => openCategory({ id: item.id, title: item.title, itemCount: item.itemCount })}>
+        <View>
+          <Image source={{ uri: item.thumbnail }} style={[styles.thumb, { height: cardW * 0.52 }]} />
+        </View>
+        <View style={styles.cardInfo}>
+          <Text style={[styles.cardTitle, { color: colors.text }]} numberOfLines={2}>{item.title} ({item.itemCount})</Text>
         </View>
       </TouchableOpacity>
     );
@@ -1608,11 +1819,24 @@ export default function VideosScreen({ autoPlayLive, onAutoPlayLiveConsumed }: V
       </TouchableOpacity>
     ) : null;
 
+  const retryAfterQuotaExhausted = () => {
+    setQuotaExhausted(false);
+    if (isSearching) { doSearch(search); return; }
+    if (activeTab === 'shorts') { setShortsLoaded(false); fetchShorts(); }
+    else if (activeTab === 'videos') { setVideosLoaded(false); fetchVideos(); }
+    else if (activeTab === 'songs') { setSongsLoaded(false); fetchSongs(); }
+    else if (activeTab === 'live') { setLiveLoaded(false); loadLiveAndFetch(); }
+    else if (activeTab === 'categories' && selectedCategory) { setCategoryVideosLoaded(false); fetchCategoryVideos(selectedCategory.id, '', true); }
+    else if (activeTab === 'categories') { setCategoriesLoaded(false); fetchCategories(); }
+    else if (activeTab === 'all') { setAllLoaded(false); fetchAll(); }
+  };
+
   const TABS: { key: Tab; label: string; icon: string }[] = [
     { key: 'shorts', label: 'Shorts', icon: 'flash' },
     { key: 'videos', label: 'Videos', icon: 'videocam' },
     { key: 'songs', label: 'Songs', icon: 'musical-notes' },
     { key: 'live', label: 'Live', icon: 'radio' },
+    { key: 'categories', label: 'Playlists', icon: 'apps' },
     { key: 'all', label: 'All', icon: 'grid' },
   ];
 
@@ -1689,6 +1913,10 @@ export default function VideosScreen({ autoPlayLive, onAutoPlayLiveConsumed }: V
         </ScrollView>
       )}
 
+      {quotaExhausted ? (
+        <QuotaExhaustedScreen onRetry={retryAfterQuotaExhausted} />
+      ) : (
+      <>
       {isSearching && (
         searching
           ? <TabLoadingState tab="search" />
@@ -1698,31 +1926,52 @@ export default function VideosScreen({ autoPlayLive, onAutoPlayLiveConsumed }: V
       {!isSearching && activeTab === 'shorts' && (
         loadingShorts ? <TabLoadingState tab="shorts" />
         : shortsError ? <VideoErrorState onRetry={() => { setShortsLoaded(false); fetchShorts(); }} />
-        : <FlatList data={shorts} keyExtractor={i => i.snippet.resourceId.videoId} refreshing={refreshing} onRefresh={onRefresh} renderItem={({ item, index }) => <ShortCard item={item} index={index} />} numColumns={2} contentContainerStyle={styles.list} columnWrapperStyle={{ gap: 8 }} ListEmptyComponent={<Text style={[styles.empty, { color: colors.subtext }]}>No shorts found</Text>} ListFooterComponent={<LoadMore token={shortsNextToken} loading={loadingMoreShorts} onPress={() => fetchShorts(shortsNextToken)} />} />
+        : <FlatList data={shorts} keyExtractor={i => i.snippet.resourceId.videoId} refreshing={loadingShorts} onRefresh={() => fetchShorts('', true)} renderItem={({ item, index }) => <ShortCard item={item} index={index} />} numColumns={2} contentContainerStyle={styles.list} columnWrapperStyle={{ gap: 8 }} ListEmptyComponent={<Text style={[styles.empty, { color: colors.subtext }]}>No shorts found</Text>} ListFooterComponent={<LoadMore token={shortsNextToken} loading={loadingMoreShorts} onPress={() => fetchShorts(shortsNextToken)} />} />
       )}
 
       {!isSearching && activeTab === 'videos' && (
         loadingVideos ? <TabLoadingState tab="videos" />
         : videosError ? <VideoErrorState onRetry={() => { setVideosLoaded(false); fetchVideos(); }} />
-        : <FlatList data={videos} keyExtractor={i => i.snippet.resourceId.videoId} refreshing={refreshing} onRefresh={onRefresh} renderItem={({ item }) => <VideoCard item={item} />} contentContainerStyle={styles.list} ListEmptyComponent={<Text style={[styles.empty, { color: colors.subtext }]}>No videos found</Text>} ListFooterComponent={<LoadMore token={videosNextToken} loading={loadingMoreVideos} onPress={() => fetchVideos(videosNextToken)} />} />
+        : <FlatList data={videos} keyExtractor={i => i.snippet.resourceId.videoId} refreshing={loadingVideos} onRefresh={() => fetchVideos('', true)} renderItem={({ item }) => <VideoCard item={item} />} contentContainerStyle={styles.list} ListEmptyComponent={<Text style={[styles.empty, { color: colors.subtext }]}>No videos found</Text>} ListFooterComponent={<LoadMore token={videosNextToken} loading={loadingMoreVideos} onPress={() => fetchVideos(videosNextToken)} />} />
       )}
 
       {!isSearching && activeTab === 'songs' && (
         loadingSongs ? <TabLoadingState tab="songs" />
         : songsError ? <VideoErrorState onRetry={() => { setSongsLoaded(false); fetchSongs(); }} />
-        : <FlatList data={songs} keyExtractor={i => i.snippet.resourceId.videoId} refreshing={refreshing} onRefresh={onRefresh} renderItem={({ item, index }) => <SongCard item={item} index={index} />} contentContainerStyle={styles.list} ListEmptyComponent={<Text style={[styles.empty, { color: colors.subtext }]}>No songs found</Text>} ListFooterComponent={<LoadMore token={songsNextToken} loading={loadingMoreSongs} onPress={() => fetchSongs(songsNextToken)} />} />
+        : <FlatList data={songs} keyExtractor={i => i.snippet.resourceId.videoId} refreshing={loadingSongs} onRefresh={() => fetchSongs('', true)} renderItem={({ item, index }) => <SongCard item={item} index={index} />} contentContainerStyle={styles.list} ListEmptyComponent={<Text style={[styles.empty, { color: colors.subtext }]}>No songs found</Text>} ListFooterComponent={<LoadMore token={songsNextToken} loading={loadingMoreSongs} onPress={() => fetchSongs(songsNextToken)} />} />
       )}
 
       {!isSearching && activeTab === 'live' && (
         loadingLive ? <TabLoadingState tab="live" />
         : liveError ? <VideoErrorState onRetry={() => { setLiveLoaded(false); loadLiveAndFetch(); }} />
-        : <FlatList data={liveVideos} keyExtractor={i => i.snippet.resourceId.videoId} refreshing={refreshing} onRefresh={onRefresh} renderItem={({ item }) => <LiveCard item={item} />} contentContainerStyle={styles.list} ListEmptyComponent={<Text style={[styles.empty, { color: colors.subtext }]}>No live streams found</Text>} ListFooterComponent={hasMoreLive ? <TouchableOpacity style={[styles.loadMore, { backgroundColor: colors.accent }]} onPress={() => fetchLive(true)}>{loadingMoreLive ? <ActivityIndicator color="#fff" /> : <Text style={styles.loadMoreText}>Load More</Text>}</TouchableOpacity> : null} />
+        : <FlatList data={liveVideos} keyExtractor={i => i.snippet.resourceId.videoId} refreshing={loadingLive} onRefresh={() => loadLiveAndFetch()} renderItem={({ item }) => <LiveCard item={item} />} contentContainerStyle={styles.list} ListEmptyComponent={<Text style={[styles.empty, { color: colors.subtext }]}>No live streams found</Text>} ListFooterComponent={hasMoreLive ? <TouchableOpacity style={[styles.loadMore, { backgroundColor: colors.accent }]} onPress={() => fetchLive(true)}>{loadingMoreLive ? <ActivityIndicator color="#fff" /> : <Text style={styles.loadMoreText}>Load More</Text>}</TouchableOpacity> : null} />
+      )}
+
+      {!isSearching && activeTab === 'categories' && !selectedCategory && (
+        loadingCategories ? <TabLoadingState tab="categories" />
+        : categoriesError ? <VideoErrorState onRetry={() => { setCategoriesLoaded(false); fetchCategories(); }} />
+        : <FlatList data={categories} keyExtractor={i => i.id} refreshing={loadingCategories} onRefresh={() => fetchCategories('', true)} renderItem={({ item }) => <CategoryCard item={item} />} contentContainerStyle={styles.list} ListEmptyComponent={<Text style={[styles.empty, { color: colors.subtext }]}>No playlists found</Text>} ListFooterComponent={<LoadMore token={categoriesNextToken} loading={loadingMoreCategories} onPress={() => fetchCategories(categoriesNextToken)} />} />
+      )}
+
+      {!isSearching && activeTab === 'categories' && selectedCategory && (
+        <TouchableOpacity style={styles.categoryBackRow} onPress={closeCategory} activeOpacity={0.7}>
+          <Ionicons name="chevron-back" size={20} color={colors.text} />
+          <Text style={[styles.categoryBackText, { color: colors.text }]} numberOfLines={1}>{selectedCategory.title} ({selectedCategory.itemCount})</Text>
+        </TouchableOpacity>
+      )}
+
+      {!isSearching && activeTab === 'categories' && selectedCategory && (
+        loadingCategoryVideos ? <TabLoadingState tab="videos" />
+        : categoryVideosError ? <VideoErrorState onRetry={() => { setCategoryVideosLoaded(false); fetchCategoryVideos(selectedCategory.id, '', true); }} />
+        : <FlatList style={{ flex: 1 }} data={categoryVideos} keyExtractor={i => i.snippet.resourceId.videoId} refreshing={loadingCategoryVideos} onRefresh={() => fetchCategoryVideos(selectedCategory.id, '', true)} renderItem={({ item }) => <VideoCard item={item} />} contentContainerStyle={styles.list} ListEmptyComponent={<Text style={[styles.empty, { color: colors.subtext }]}>No videos found</Text>} ListFooterComponent={<LoadMore token={categoryVideosNextToken} loading={loadingMoreCategoryVideos} onPress={() => fetchCategoryVideos(selectedCategory.id, categoryVideosNextToken)} />} />
       )}
 
       {!isSearching && activeTab === 'all' && (
         loadingAll ? <TabLoadingState tab="all" />
         : allError ? <VideoErrorState onRetry={() => { setAllLoaded(false); fetchAll(); }} />
-        : <FlatList data={allVideos} keyExtractor={i => i.snippet.resourceId.videoId} refreshing={refreshing} onRefresh={onRefresh} renderItem={({ item }) => <VideoCard item={item} />} contentContainerStyle={styles.list} ListEmptyComponent={<Text style={[styles.empty, { color: colors.subtext }]}>No videos found</Text>} ListFooterComponent={<LoadMore token={allNextToken} loading={loadingMoreAll} onPress={() => fetchAll(allNextToken)} />} />
+        : <FlatList data={allVideos} keyExtractor={i => i.snippet.resourceId.videoId} refreshing={loadingAll} onRefresh={() => fetchAll('', true)} renderItem={({ item }) => <VideoCard item={item} />} contentContainerStyle={styles.list} ListEmptyComponent={<Text style={[styles.empty, { color: colors.subtext }]}>No videos found</Text>} ListFooterComponent={<LoadMore token={allNextToken} loading={loadingMoreAll} onPress={() => fetchAll(allNextToken)} />} />
+      )}
+      </>
       )}
     </View>
   );
@@ -1732,7 +1981,7 @@ const styles = StyleSheet.create({
   container: { flex: 1 },
   searchRow: { flexDirection: 'row', alignItems: 'center', margin: 12, marginTop: 50, borderRadius: 12, paddingHorizontal: 12, paddingVertical: 10, elevation: 3 },
   searchInput: { flex: 1, marginLeft: 8, fontSize: 15 },
-  tabsScroll: { flexShrink: 0 },
+  tabsScroll: { flexShrink: 0, flexGrow: 0, maxHeight: 60 },
   tabsRow: { flexDirection: 'row', paddingHorizontal: 12, paddingTop: 4, paddingBottom: 10, gap: 8, alignItems: 'center' },
   tab: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 9, paddingHorizontal: 18, borderRadius: 20, elevation: 2, alignSelf: 'flex-start' },
   tabText: { fontSize: 13, fontWeight: '600' },
@@ -1753,6 +2002,10 @@ const styles = StyleSheet.create({
   liveBadge: { position: 'absolute', top: 8, left: 8, backgroundColor: '#ff0000', borderRadius: 6, paddingHorizontal: 8, paddingVertical: 3, flexDirection: 'row', alignItems: 'center', gap: 4 },
   liveDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: '#fff' },
   liveBadgeText: { color: '#fff', fontSize: 10, fontWeight: 'bold' },
+  scheduledBadge: { position: 'absolute', top: 8, left: 8, backgroundColor: '#4f7fff', borderRadius: 6, paddingHorizontal: 8, paddingVertical: 3, flexDirection: 'row', alignItems: 'center', gap: 4 },
+  scheduledBadgeText: { color: '#fff', fontSize: 10, fontWeight: 'bold' },
+  categoryBackRow: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 12, paddingTop: 4, paddingBottom: 10 },
+  categoryBackText: { fontSize: 15, fontWeight: '700', flexShrink: 1 },
   empty: { textAlign: 'center', marginTop: 40, fontSize: 14 },
   loadMore: { borderRadius: 12, padding: 14, alignItems: 'center', marginBottom: 20 },
   loadMoreText: { color: '#fff', fontWeight: 'bold', fontSize: 14 },
@@ -1767,6 +2020,10 @@ const styles = StyleSheet.create({
   videoModalTitle: { color: '#fff', fontSize: 15, fontWeight: '600', padding: 20, lineHeight: 22 },
   modalClose: { position: 'absolute', top: 50, right: 16, backgroundColor: 'rgba(0,0,0,0.5)', borderRadius: 20, padding: 8, zIndex: 10 },
   modalCloseLandscape: { top: 16, right: 16 },
+  topRightRow: { position: 'absolute', top: 50, right: 16, flexDirection: 'row', gap: 10, zIndex: 10 },
+  topRightRowLandscape: { top: 16 },
+  roundIconBtn: { backgroundColor: 'rgba(0,0,0,0.5)', borderRadius: 20, padding: 8 },
+  lockToggleBtn: { backgroundColor: '#7c83e5', borderRadius: 22, padding: 10, elevation: 5, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.35, shadowRadius: 4 },
 });
 
 const resumeStyles = StyleSheet.create({
@@ -1779,6 +2036,15 @@ const resumeStyles = StyleSheet.create({
   btnResumeText: { color: '#fff', fontSize: 16, fontWeight: '800' },
   btnStart: { flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: 'rgba(255,255,255,0.1)', borderRadius: 16, paddingVertical: 14, paddingHorizontal: 32, width: '100%', justifyContent: 'center', borderWidth: 1, borderColor: 'rgba(255,255,255,0.12)' },
   btnStartText: { color: 'rgba(255,255,255,0.8)', fontSize: 15, fontWeight: '600' },
+});
+
+const lockStyles = StyleSheet.create({
+  overlay: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.4)', zIndex: 200, justifyContent: 'flex-end', alignItems: 'center' },
+  badge: { position: 'absolute', top: 110, alignSelf: 'center', alignItems: 'center', gap: 10 },
+  badgeIconCircle: { width: 60, height: 60, borderRadius: 30, backgroundColor: '#7c83e5', alignItems: 'center', justifyContent: 'center', borderWidth: 2, borderColor: 'rgba(255,255,255,0.3)', elevation: 6, shadowColor: '#000', shadowOffset: { width: 0, height: 3 }, shadowOpacity: 0.35, shadowRadius: 5 },
+  badgeText: { color: '#fff', fontSize: 13, fontWeight: '700', backgroundColor: 'rgba(0,0,0,0.5)', paddingHorizontal: 12, paddingVertical: 4, borderRadius: 12 },
+  unlockBtn: { alignItems: 'center', gap: 6, backgroundColor: 'rgba(255,255,255,0.18)', borderRadius: 30, paddingHorizontal: 26, paddingVertical: 14, marginBottom: 70 },
+  unlockText: { color: '#fff', fontSize: 13, fontWeight: '600' },
 });
 
 const errorStyles = StyleSheet.create({

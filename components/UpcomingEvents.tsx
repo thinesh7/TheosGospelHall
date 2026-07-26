@@ -2,7 +2,8 @@ import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { collection, onSnapshot, orderBy, query } from 'firebase/firestore';
 import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from 'react';
-import { ActivityIndicator, Animated, Linking, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, Animated, Linking, StyleSheet, TouchableOpacity, View } from 'react-native';
+import { Text } from './AppText';
 import { db } from '../firebaseConfig';
 import { useTheme } from '../utils/ThemeContext';
 
@@ -125,8 +126,8 @@ const UpcomingEvents = forwardRef((props: {}, ref) => {
               <Ionicons name="megaphone" size={26} color="#fff" />
             </Animated.View>
             <View style={{ flex: 1 }}>
-              <Text style={styles.bannerTitle}>📣 Announcements</Text>
-              <Text style={styles.bannerSub}>Upcoming Special Meetings</Text>
+              <Text style={styles.bannerTitle} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7}>📣 Announcements</Text>
+              <Text style={styles.bannerSub} numberOfLines={1}>Upcoming Special Meetings</Text>
             </View>
             {meetings.length > 0 && (
               <Animated.View style={[styles.countBadge, { transform: [{ scale: pulseAnim }] }]}>
@@ -296,7 +297,7 @@ const UpcomingEvents = forwardRef((props: {}, ref) => {
       <View style={styles.youthCard}>
         <View style={styles.youthHeader}>
           <Ionicons name="flash" size={20} color="#fff" />
-          <Text style={styles.youthHeaderText}>🔥 Special Youth Programs</Text>
+          <Text style={styles.youthHeaderText} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7}>🔥 Special Youth Programs</Text>
         </View>
         <Text style={styles.youthSubtitle}>Exclusively for Youth — Don't Miss!</Text>
         {YOUTH_EVENTS.map((event) => (
@@ -333,7 +334,7 @@ const UpcomingEvents = forwardRef((props: {}, ref) => {
       <View style={styles.academyCard}>
         <View style={styles.academyHeader}>
           <Ionicons name="school" size={24} color="#fff" />
-          <Text style={styles.academyHeaderText}>TGH Bible Academy</Text>
+          <Text style={styles.academyHeaderText} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7}>TGH Bible Academy</Text>
         </View>
         <Text style={styles.academySubtitle}>📖 Deepen your understanding of God's Word</Text>
         <View style={styles.academyDivider} />
@@ -419,7 +420,7 @@ const styles = StyleSheet.create({
   eventMeta: { fontSize: 14, flex: 1, lineHeight: 19 },
   youthCard: { backgroundColor: '#e63946', margin: 16, marginBottom: 0, borderRadius: 16, padding: 20, elevation: 6, borderWidth: 2, borderColor: '#ff6b35' },
   youthHeader: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 4 },
-  youthHeaderText: { fontSize: 18, fontWeight: 'bold', color: '#fff' },
+  youthHeaderText: { fontSize: 18, fontWeight: 'bold', color: '#fff', flexShrink: 1 },
   youthSubtitle: { fontSize: 12, color: '#ffe0d6', marginBottom: 16, fontStyle: 'italic' },
   youthEventRow: { flexDirection: 'row', marginBottom: 18, alignItems: 'flex-start' },
   youthIconBox: { width: 44, height: 44, borderRadius: 22, backgroundColor: '#fff', alignItems: 'center', justifyContent: 'center', marginRight: 12 },
@@ -429,7 +430,7 @@ const styles = StyleSheet.create({
   youthRegisterBtnText: { color: '#e63946', fontWeight: 'bold', fontSize: 15 },
   academyCard: { backgroundColor: '#2d6a4f', margin: 16, marginBottom: 0, borderRadius: 16, padding: 20, elevation: 6, borderWidth: 2, borderColor: '#52b788' },
   academyHeader: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 6 },
-  academyHeaderText: { fontSize: 20, fontWeight: 'bold', color: '#fff' },
+  academyHeaderText: { fontSize: 20, fontWeight: 'bold', color: '#fff', flexShrink: 1 },
   academySubtitle: { fontSize: 13, color: '#d8f3dc', fontStyle: 'italic', marginBottom: 12 },
   academyDivider: { height: 1, backgroundColor: 'rgba(255,255,255,0.2)', marginVertical: 12 },
   academyRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 8 },

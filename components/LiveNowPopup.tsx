@@ -1,5 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
-import { Modal, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { Modal, StyleSheet, TouchableOpacity, View } from 'react-native';
+import { Text } from './AppText';
 import { useTheme } from '../utils/ThemeContext';
 
 interface LiveNowPopupProps {

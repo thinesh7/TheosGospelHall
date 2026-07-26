@@ -6,17 +6,19 @@ import {
   ActivityIndicator,
   Animated,
   FlatList,
+  Keyboard,
   RefreshControl,
   StatusBar,
   StyleSheet,
-  Text,
-  TextInput,
   TouchableOpacity,
   View,
 } from 'react-native';
 import { SongIndexEntry, getSongsIndex, syncSongs } from '../../utils/songsSync';
 import { useTheme } from '../../utils/ThemeContext';
+import { Text } from '../../components/AppText';
+import { TextInput } from '../../components/AppTextInput';
 import ThemeToggleIcon from '../../components/ThemeToggleIcon';
+import { Toast, useToast } from '../../components/Toast';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 const FAVORITES_KEY = 'tgh_song_favorites';
@@ -151,6 +153,7 @@ export default function SongsScreen({ headerTitle }: { headerTitle?: React.React
   const [showSetup, setShowSetup] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
+  const { message: toastMessage, opacity: toastOpacity, showToast } = useToast();
 
   useEffect(() => {
     loadInitial();
@@ -227,19 +230,38 @@ export default function SongsScreen({ headerTitle }: { headerTitle?: React.React
   };
 
   const openSong = (songNumber: number) => {
+    Keyboard.dismiss();
+    setSearch('');
     router.push({ pathname: '/song-reader', params: { songNumber: String(songNumber) } });
   };
 
-  const SongCard = useCallback(({ item }: { item: SongIndexEntry }) => (
-    <TouchableOpacity style={[styles.card, { backgroundColor: c.surface }]} onPress={() => openSong(item.songNumber)}>
-      <Text style={[styles.cardText, { color: c.text }]} numberOfLines={3}>
-        {item.title}
-      </Text>
-      {favorites.includes(item.songId) && (
-        <Ionicons name="heart" size={16} color="#e74c3c" style={styles.favIcon} />
-      )}
-    </TouchableOpacity>
-  ), [favorites, c]);
+  const toggleFavorite = useCallback((song: SongIndexEntry) => {
+    setFavorites(prev => {
+      const isFav = prev.includes(song.songId);
+      const updated = isFav ? prev.filter(id => id !== song.songId) : [...prev, song.songId];
+      AsyncStorage.setItem(FAVORITES_KEY, JSON.stringify(updated)).catch(() => {});
+      showToast(isFav ? 'Removed from Favorites.' : 'Added to Favorites.');
+      return updated;
+    });
+  }, [showToast]);
+
+  const SongCard = useCallback(({ item }: { item: SongIndexEntry }) => {
+    const isFav = favorites.includes(item.songId);
+    return (
+      <TouchableOpacity style={[styles.card, { backgroundColor: c.surface }]} onPress={() => openSong(item.songNumber)}>
+        <Text style={[styles.cardText, { color: c.text }]} numberOfLines={3}>
+          {item.title}
+        </Text>
+        <TouchableOpacity
+          onPress={() => toggleFavorite(item)}
+          hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+          style={styles.favIconBtn}
+        >
+          <Ionicons name={isFav ? 'heart' : 'heart-outline'} size={20} color={isFav ? '#e74c3c' : c.subtext} />
+        </TouchableOpacity>
+      </TouchableOpacity>
+    );
+  }, [favorites, c, toggleFavorite]);
 
   return (
     <View style={[styles.container, { backgroundColor: c.bg }]}>
@@ -314,6 +336,7 @@ export default function SongsScreen({ headerTitle }: { headerTitle?: React.React
           maxToRenderPerBatch={20}
           windowSize={10}
           removeClippedSubviews
+          keyboardShouldPersistTaps="handled"
           refreshControl={
             <RefreshControl refreshing={refreshing} onRefresh={onPullToRefresh} colors={[c.accent]} tintColor={c.accent} />
           }
@@ -324,6 +347,7 @@ export default function SongsScreen({ headerTitle }: { headerTitle?: React.React
           }
         />
       )}
+      <Toast message={toastMessage} opacity={toastOpacity} />
     </View>
   );
 }
@@ -378,6 +402,6 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
   },
   cardText: { fontSize: 16, flex: 1, lineHeight: 24 },
-  favIcon: { marginLeft: 8, marginTop: 4 },
+  favIconBtn: { marginLeft: 8, padding: 2 },
   empty: { textAlign: 'center', marginTop: 40, fontSize: 14 },
 });

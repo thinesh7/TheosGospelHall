@@ -8,11 +8,11 @@ import {
   ScrollView,
   StatusBar,
   StyleSheet,
-  Text,
   TouchableOpacity,
   View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { Text } from '../../components/AppText';
 import ThemeToggleIcon from '../../components/ThemeToggleIcon';
 import { BIBLE_VERSIONS, BOOKS } from '../../utils/bibleData';
 import { getMemBibleSettings, saveBibleSettings } from '../../utils/bibleSettings';

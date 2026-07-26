@@ -9,12 +9,12 @@ import {
   PanResponder,
   ScrollView,
   StyleSheet,
-  Text,
   ToastAndroid,
   TouchableOpacity,
   View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { Text } from '../components/AppText';
 import ThemeToggleIcon from '../components/ThemeToggleIcon';
 import { BIBLE_ASSETS, BIBLE_VERSIONS, BOOKS, cleanText } from '../utils/bibleData';
 import { getMemBibleSettings, saveBibleSettings } from '../utils/bibleSettings';

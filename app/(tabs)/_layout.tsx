@@ -1,9 +1,10 @@
 import { Ionicons } from '@expo/vector-icons';
 import * as ScreenOrientation from 'expo-screen-orientation';
 import { useEffect, useRef, useState } from 'react';
-import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { StyleSheet, TouchableOpacity, View } from 'react-native';
 import PagerView from 'react-native-pager-view';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { Text } from '../../components/AppText';
 import LiveNowPopup from '../../components/LiveNowPopup';
 import { checkCurrentlyLive, LiveNowInfo } from '../../utils/liveStatus';
 import { useTheme } from '../../utils/ThemeContext';
@@ -83,7 +84,7 @@ export default function TabLayout() {
         <View key="0" style={{ flex: 1, backgroundColor: colors.bg }}>{visitedTabs.has(0) ? <HomeScreen /> : null}</View>
         <View key="1" style={{ flex: 1, backgroundColor: colors.bg }}>
           {visitedTabs.has(1) ? (
-            <VideosScreen autoPlayLive={autoPlayLive} onAutoPlayLiveConsumed={() => setAutoPlayLive(null)} />
+            <VideosScreen autoPlayLive={autoPlayLive} onAutoPlayLiveConsumed={() => setAutoPlayLive(null)} isActive={activeTab === 1} />
           ) : null}
         </View>
         <View key="2" style={{ flex: 1, backgroundColor: colors.bg }}>{visitedTabs.has(2) ? <BibleScreen /> : null}</View>
@@ -111,7 +112,11 @@ export default function TabLayout() {
               size={24}
               color={activeTab === index ? colors.accent : colors.subtext}
             />
-            <Text style={[styles.tabLabel, { color: activeTab === index ? colors.accent : colors.subtext }, activeTab === index && styles.tabLabelActive]}>
+            <Text
+              style={[styles.tabLabel, { color: activeTab === index ? colors.accent : colors.subtext }, activeTab === index && styles.tabLabelActive]}
+              numberOfLines={1}
+              maxFontSizeMultiplier={1.2}
+            >
               {tab.name}
             </Text>
           </TouchableOpacity>

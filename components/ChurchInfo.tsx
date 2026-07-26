@@ -1,5 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
-import { Linking, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import * as Clipboard from 'expo-clipboard';
+import { Linking, StyleSheet, TouchableOpacity, View } from 'react-native';
+import { Text } from './AppText';
 import { useTheme } from '../utils/ThemeContext';
 
 const BRANCHES = [
@@ -36,22 +38,57 @@ const BRANCHES = [
 export default function ChurchInfo() {
   const { colors } = useTheme();
 
+  const copyAddress = async (branch: (typeof BRANCHES)[number]) => {
+    await Clipboard.setStringAsync(`Theos Gospel Hall\n\n${branch.address}\n\nGoogle Maps Location: ${branch.mapLink}`);
+  };
+
+  const copyAllAddresses = async () => {
+    const text = `Theos Gospel Hall\n\n${BRANCHES.map(b => `${b.city}:\n${b.address}`).join('\n\n')}`;
+    await Clipboard.setStringAsync(text);
+  };
+
   return (
     <View>
       <View style={[styles.card, { backgroundColor: colors.surface }]}>
-        <Text style={[styles.cardTitle, { color: colors.text }]}>
-          <Ionicons name="location-outline" size={18} color={colors.accent} /> Our Branches
-        </Text>
+        <View style={styles.cardTitleRow}>
+          <Text style={[styles.cardTitle, { color: colors.text, marginBottom: 0 }]}>
+            <Ionicons name="location-outline" size={18} color={colors.accent} /> Our Branches
+          </Text>
+          <TouchableOpacity onPress={copyAllAddresses} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }} style={styles.headingCopyBtn}>
+            <Ionicons name="copy-outline" size={18} color={colors.accent} />
+          </TouchableOpacity>
+        </View>
         {BRANCHES.map((branch, index) => (
           <View key={index} style={styles.branch}>
             <View style={styles.branchHeader}>
               <Ionicons name="location" size={16} color={colors.accent} />
-              <Text style={[styles.branchCity, { color: colors.text }]}>{branch.city}</Text>
+              <Text
+                style={[styles.branchCity, { color: colors.text }]}
+                numberOfLines={1}
+                adjustsFontSizeToFit
+                minimumFontScale={0.6}
+              >
+                {branch.city}
+              </Text>
               <View style={[styles.timeBadge, { backgroundColor: colors.raised }]}>
                 <Text style={[styles.timeBadgeText, { color: colors.accent }]}>{branch.time}</Text>
               </View>
             </View>
-            <Text style={[styles.branchAddress, { color: colors.subtext }]}>{branch.address}</Text>
+            <View style={styles.addressRow}>
+              <Text
+                style={[styles.branchAddress, { color: colors.subtext }]}
+                onLongPress={() => copyAddress(branch)}
+              >
+                {branch.address}
+              </Text>
+              <TouchableOpacity
+                onPress={() => copyAddress(branch)}
+                style={styles.copyIconBtn}
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              >
+                <Ionicons name="copy-outline" size={16} color={colors.accent} />
+              </TouchableOpacity>
+            </View>
             <View style={styles.branchActions}>
               <TouchableOpacity
                 style={styles.branchPhone}
@@ -97,12 +134,16 @@ export default function ChurchInfo() {
 const styles = StyleSheet.create({
   card: { margin: 16, marginBottom: 0, borderRadius: 16, padding: 20, elevation: 4 },
   cardTitle: { fontSize: 16, fontWeight: 'bold', marginBottom: 14 },
+  cardTitleRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 14 },
+  headingCopyBtn: { marginLeft: 10 },
   branch: { marginBottom: 8 },
   branchHeader: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 4 },
   branchCity: { fontSize: 15, fontWeight: 'bold', flex: 1 },
   timeBadge: { paddingHorizontal: 8, paddingVertical: 3, borderRadius: 8 },
   timeBadgeText: { fontSize: 11, fontWeight: '600' },
-  branchAddress: { fontSize: 13, marginLeft: 22, lineHeight: 18 },
+  addressRow: { flexDirection: 'row', alignItems: 'flex-start', marginLeft: 22, gap: 8 },
+  branchAddress: { fontSize: 13, lineHeight: 18, flex: 1 },
+  copyIconBtn: { paddingTop: 1 },
   branchActions: { flexDirection: 'row', alignItems: 'center', marginLeft: 22, marginTop: 6, gap: 10 },
   branchPhone: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   branchPhoneText: { fontSize: 13, color: '#22c55e' },

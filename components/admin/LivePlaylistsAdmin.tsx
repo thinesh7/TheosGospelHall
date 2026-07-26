@@ -5,13 +5,13 @@ import {
   FlatList,
   StyleSheet,
   Switch,
-  Text,
-  TextInput,
   TouchableOpacity,
   View,
 } from 'react-native';
 import { getAuth } from 'firebase/auth';
 import { doc, serverTimestamp, updateDoc } from 'firebase/firestore';
+import { Text } from '../AppText';
+import { TextInput } from '../AppTextInput';
 import { db } from '../../firebaseConfig';
 import {
   LivePlaylist,

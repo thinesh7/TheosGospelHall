@@ -9,14 +9,14 @@ import {
   Modal,
   Share,
   StyleSheet,
-  Text,
-  TextInput,
   TouchableOpacity,
   View,
 } from 'react-native';
 import { SongIndexEntry, getSongById, getSongsIndex } from '../utils/songsSync';
 import { getReaderSettings, ReaderLanguage, saveReaderSettings } from '../utils/songReaderSettings';
 import { useTheme } from '../utils/ThemeContext';
+import { Text } from '../components/AppText';
+import { TextInput } from '../components/AppTextInput';
 import ThemeToggleIcon from '../components/ThemeToggleIcon';
 
 const FAVORITES_KEY = 'tgh_song_favorites';

@@ -7,11 +7,11 @@ import {
   ScrollView,
   StyleSheet,
   Switch,
-  Text,
-  TextInput,
   TouchableOpacity,
   View,
 } from 'react-native';
+import { Text } from '../AppText';
+import { TextInput } from '../AppTextInput';
 import { db } from '../../firebaseConfig';
 
 type NumberOfDays = '' | '1' | 'multiple';

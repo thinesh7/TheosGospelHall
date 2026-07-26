@@ -11,13 +11,13 @@ import {
   Linking,
   ScrollView,
   StyleSheet,
-  Text,
-  TextInput,
   TouchableOpacity,
   View
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import AdminPanel from '../../components/AdminPanel';
+import { Text } from '../../components/AppText';
+import { TextInput } from '../../components/AppTextInput';
 import Paragraphs from '../../components/Paragraphs';
 import { auth } from '../../firebaseConfig';
 import { useTheme } from '../../utils/ThemeContext';

@@ -6,15 +6,17 @@ import {
   Platform,
   StatusBar,
   StyleSheet,
-  Text,
   TouchableOpacity,
   View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { Text } from './AppText';
 import AdminDashboard, { AdminModule } from './admin/AdminDashboard';
+import ApiKeysAdmin from './admin/ApiKeysAdmin';
 import GeethangalumAdmin from './admin/GeethangalumAdmin';
 import HomeContentAdmin from './admin/HomeContentAdmin';
 import LivePlaylistsAdmin from './admin/LivePlaylistsAdmin';
+import NotificationsAdmin from './admin/NotificationsAdmin';
 import OtherSongsAdmin from './admin/OtherSongsAdmin';
 import SongsAdminMenu, { SongsModule } from './admin/SongsAdminMenu';
 import SpecialMeetingsAdmin, { AdminScreenHandle } from './admin/SpecialMeetingsAdmin';
@@ -26,7 +28,9 @@ type ViewKey =
   | 'songsGeethangalum'
   | 'songsOther'
   | 'livePlaylists'
-  | 'homeContent';
+  | 'homeContent'
+  | 'notifications'
+  | 'apiKeys';
 
 interface ViewMeta {
   title: string;
@@ -41,6 +45,8 @@ const VIEW_META: Record<ViewKey, ViewMeta> = {
   songsOther: { title: '🎶 Special Songs', subtitle: 'Add, edit, show/hide songs' },
   livePlaylists: { title: '🎬 Live Playlists', subtitle: 'Manage YouTube playlists' },
   homeContent: { title: '🏠 Home Screen Content', subtitle: 'Pastor & Ministry info' },
+  notifications: { title: '🔔 Notifications', subtitle: 'Send announcements to all users' },
+  apiKeys: { title: '🔑 API Keys', subtitle: 'Manage backup YouTube API keys' },
 };
 
 interface Props {
@@ -93,6 +99,8 @@ export default function AdminPanel({ visible, onClose, onEventsUpdated }: Props)
     else if (module === 'songsMenu') pushView('songsMenu');
     else if (module === 'livePlaylists') pushView('livePlaylists');
     else if (module === 'homeContent') pushView('homeContent');
+    else if (module === 'notifications') pushView('notifications');
+    else if (module === 'apiKeys') pushView('apiKeys');
   };
 
   const handleSongsMenuSelect = (module: SongsModule) => {
@@ -158,6 +166,14 @@ export default function AdminPanel({ visible, onClose, onEventsUpdated }: Props)
 
             {currentView === 'homeContent' && (
               <HomeContentAdmin ref={activeScreenRef} />
+            )}
+
+            {currentView === 'notifications' && (
+              <NotificationsAdmin ref={activeScreenRef} />
+            )}
+
+            {currentView === 'apiKeys' && (
+              <ApiKeysAdmin ref={activeScreenRef} />
             )}
           </View>
         </View>

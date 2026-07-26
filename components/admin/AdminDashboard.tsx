@@ -1,6 +1,7 @@
-import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { StyleSheet, TouchableOpacity, View } from 'react-native';
+import { Text } from '../AppText';
 
-export type AdminModule = 'specialMeetings' | 'songsMenu' | 'livePlaylists' | 'homeContent';
+export type AdminModule = 'specialMeetings' | 'songsMenu' | 'livePlaylists' | 'homeContent' | 'notifications' | 'apiKeys';
 
 interface ModuleCard {
   id: AdminModule;
@@ -33,6 +34,18 @@ const MODULES: ModuleCard[] = [
     icon: '🎬',
     title: 'Live Playlists',
     subtitle: 'Manage YouTube playlists shown in the Live tab',
+  },
+  {
+    id: 'notifications',
+    icon: '🔔',
+    title: 'Notifications',
+    subtitle: 'Send push notifications to all app users',
+  },
+  {
+    id: 'apiKeys',
+    icon: '🔑',
+    title: 'API Keys',
+    subtitle: 'Manage backup YouTube API keys and check their status',
   },
 ];
 

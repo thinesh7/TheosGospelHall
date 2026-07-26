@@ -7,9 +7,9 @@ import {
   Image,
   ScrollView,
   StyleSheet,
-  Text,
   View,
 } from 'react-native';
+import { Text } from '../../components/AppText';
 import { useTheme } from '../../utils/ThemeContext';
 import { getCachedHomeContent, getMemoryCachedHomeContent, HomeContent, subscribeHomeContent } from '../../utils/homeContentSync';
 
