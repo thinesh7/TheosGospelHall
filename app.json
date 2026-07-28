@@ -2,7 +2,7 @@
   "expo": {
     "name": "Theos Gospel Hall",
     "slug": "theosgospelhall",
-    "version": "1.1.0",
+    "version": "1.2.0",
     "orientation": "default",
     "icon": "./assets/images/logo.png",
     "scheme": "theosgospelhall",
@@ -60,7 +60,8 @@
             "enableShrinkResourcesInReleaseBuilds": true
           }
         }
-      ]
+      ],
+      "@react-native-community/datetimepicker"
     ],
     "experiments": {
       "typedRoutes": true

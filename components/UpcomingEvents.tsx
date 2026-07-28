@@ -4,7 +4,9 @@ import { collection, onSnapshot, orderBy, query } from 'firebase/firestore';
 import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from 'react';
 import { ActivityIndicator, Animated, Linking, StyleSheet, TouchableOpacity, View } from 'react-native';
 import { Text } from './AppText';
+import RegistrationFormModal from './RegistrationFormModal';
 import { db } from '../firebaseConfig';
+import { PROGRAMS, ProgramId } from '../utils/registrations';
 import { useTheme } from '../utils/ThemeContext';
 
 const CACHE_KEY = 'tgh_special_meetings';
@@ -33,7 +35,7 @@ const EVENTS = [
 ];
 
 const YOUTH_EVENTS = [
-  { id: 'y1', title: 'Discipleship Program', date: 'Every Day', time: '6:00 AM & 10:00 PM (15 min)', location: 'Google Meet', icon: 'school-outline' },
+  { id: 'y1', title: 'Discipleship Program', date: 'Every Day', time: '6:00 AM & 10:00 PM (15 min)', location: 'Zoom', icon: 'school-outline' },
   { id: 'y2', title: 'Youth Meeting', date: 'Every Friday', time: '9:00 PM - 10:00 PM', location: 'Zoom & YouTube', icon: 'people-outline' },
 ];
 
@@ -45,6 +47,7 @@ const UpcomingEvents = forwardRef((props: {}, ref) => {
   const { colors } = useTheme();
   const [meetings, setMeetings] = useState<SpecialMeeting[]>([]);
   const [loading, setLoading] = useState(true);
+  const [regProgram, setRegProgram] = useState<ProgramId | null>(null);
   const shakeAnim = useRef(new Animated.Value(0)).current;
   const pulseAnim = useRef(new Animated.Value(1)).current;
   const glowAnim = useRef(new Animated.Value(0.08)).current;
@@ -300,6 +303,9 @@ const UpcomingEvents = forwardRef((props: {}, ref) => {
           <Text style={styles.youthHeaderText} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7}>🔥 Special Youth Programs</Text>
         </View>
         <Text style={styles.youthSubtitle}>Exclusively for Youth — Don't Miss!</Text>
+        <View style={styles.youthModeBadge}>
+          <Text style={styles.youthModeBadgeText}>{PROGRAMS.youth.mode}</Text>
+        </View>
         {YOUTH_EVENTS.map((event) => (
           <View key={event.id} style={styles.youthEventRow}>
             <View style={styles.youthIconBox}>
@@ -324,10 +330,10 @@ const UpcomingEvents = forwardRef((props: {}, ref) => {
         ))}
         <TouchableOpacity
           style={styles.youthRegisterBtn}
-          onPress={() => Linking.openURL('https://wa.me/919363207478?text=Hi Brother, I am interested in registering for the Youth Program.')}
+          onPress={() => setRegProgram('youth')}
         >
-          <Ionicons name="logo-whatsapp" size={18} color="#e63946" />
-          <Text style={styles.youthRegisterBtnText}>Click Here to Register</Text>
+          <Ionicons name="create-outline" size={18} color="#e63946" />
+          <Text style={styles.youthRegisterBtnText}>Register Now</Text>
         </TouchableOpacity>
       </View>
 
@@ -337,6 +343,9 @@ const UpcomingEvents = forwardRef((props: {}, ref) => {
           <Text style={styles.academyHeaderText} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7}>TGH Bible Academy</Text>
         </View>
         <Text style={styles.academySubtitle}>📖 Deepen your understanding of God's Word</Text>
+        <View style={styles.academyModeBadge}>
+          <Text style={styles.academyModeBadgeText}>{PROGRAMS.academy.mode}</Text>
+        </View>
         <View style={styles.academyDivider} />
         <View style={styles.academyRow}>
           <Ionicons name="calendar-outline" size={16} color="#fff" />
@@ -348,7 +357,7 @@ const UpcomingEvents = forwardRef((props: {}, ref) => {
         </View>
         <View style={styles.academyRow}>
           <Ionicons name="location-outline" size={16} color="#fff" />
-          <Text style={styles.academyText}> Tirupur (Offline Classes)</Text>
+          <Text style={styles.academyText}> Tirupur</Text>
         </View>
         <View style={styles.academyRow}>
           <Ionicons name="information-circle-outline" size={16} color="#fff" />
@@ -358,12 +367,18 @@ const UpcomingEvents = forwardRef((props: {}, ref) => {
         <Text style={styles.academyNote}>📌 For registration & next batch details, contact directly</Text>
         <TouchableOpacity
           style={styles.whatsappBtn}
-          onPress={() => Linking.openURL('https://wa.me/919363207478?text=Hi Brother, I am interested in TGH Bible Academy registration.')}
+          onPress={() => setRegProgram('academy')}
         >
-          <Ionicons name="logo-whatsapp" size={18} color="#fff" />
-          <Text style={styles.btnText}>Register via WhatsApp</Text>
+          <Ionicons name="create-outline" size={18} color="#fff" />
+          <Text style={styles.btnText}>Register Now</Text>
         </TouchableOpacity>
       </View>
+
+      <RegistrationFormModal
+        visible={regProgram !== null}
+        programId={regProgram ?? 'youth'}
+        onClose={() => setRegProgram(null)}
+      />
     </View>
   );
 });
@@ -421,7 +436,9 @@ const styles = StyleSheet.create({
   youthCard: { backgroundColor: '#e63946', margin: 16, marginBottom: 0, borderRadius: 16, padding: 20, elevation: 6, borderWidth: 2, borderColor: '#ff6b35' },
   youthHeader: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 4 },
   youthHeaderText: { fontSize: 18, fontWeight: 'bold', color: '#fff', flexShrink: 1 },
-  youthSubtitle: { fontSize: 12, color: '#ffe0d6', marginBottom: 16, fontStyle: 'italic' },
+  youthSubtitle: { fontSize: 12, color: '#ffe0d6', marginBottom: 12, fontStyle: 'italic' },
+  youthModeBadge: { alignSelf: 'flex-start', backgroundColor: 'rgba(255,255,255,0.9)', borderRadius: 10, paddingHorizontal: 10, paddingVertical: 4, marginBottom: 16 },
+  youthModeBadgeText: { fontSize: 11, fontWeight: '800', color: '#e63946', letterSpacing: 0.3 },
   youthEventRow: { flexDirection: 'row', marginBottom: 18, alignItems: 'flex-start' },
   youthIconBox: { width: 44, height: 44, borderRadius: 22, backgroundColor: '#fff', alignItems: 'center', justifyContent: 'center', marginRight: 12 },
   youthEventTitle: { fontSize: 16, fontWeight: 'bold', color: '#fff', marginBottom: 6 },
@@ -432,6 +449,8 @@ const styles = StyleSheet.create({
   academyHeader: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 6 },
   academyHeaderText: { fontSize: 20, fontWeight: 'bold', color: '#fff', flexShrink: 1 },
   academySubtitle: { fontSize: 13, color: '#d8f3dc', fontStyle: 'italic', marginBottom: 12 },
+  academyModeBadge: { alignSelf: 'flex-start', backgroundColor: 'rgba(255,255,255,0.9)', borderRadius: 10, paddingHorizontal: 10, paddingVertical: 4, marginBottom: 12 },
+  academyModeBadgeText: { fontSize: 11, fontWeight: '800', color: '#2d6a4f', letterSpacing: 0.3 },
   academyDivider: { height: 1, backgroundColor: 'rgba(255,255,255,0.2)', marginVertical: 12 },
   academyRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 8 },
   academyText: { fontSize: 14, color: '#fff' },

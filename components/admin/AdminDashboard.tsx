@@ -1,7 +1,7 @@
-import { StyleSheet, TouchableOpacity, View } from 'react-native';
+import { ScrollView, StyleSheet, TouchableOpacity, View } from 'react-native';
 import { Text } from '../AppText';
 
-export type AdminModule = 'specialMeetings' | 'songsMenu' | 'livePlaylists' | 'homeContent' | 'notifications' | 'apiKeys';
+export type AdminModule = 'specialMeetings' | 'songsMenu' | 'livePlaylists' | 'homeContent' | 'notifications' | 'apiKeys' | 'registrationsMenu';
 
 interface ModuleCard {
   id: AdminModule;
@@ -30,6 +30,12 @@ const MODULES: ModuleCard[] = [
     subtitle: 'Manage Geethangalum Keerthanaigalum and Other Songs',
   },
   {
+    id: 'registrationsMenu',
+    icon: '📝',
+    title: 'View Registrations',
+    subtitle: 'Manage Youth Program & Academy registrations',
+  },
+  {
     id: 'livePlaylists',
     icon: '🎬',
     title: 'Live Playlists',
@@ -55,7 +61,7 @@ interface Props {
 
 export default function AdminDashboard({ onSelect }: Props) {
   return (
-    <View style={styles.container}>
+    <ScrollView contentContainerStyle={styles.container}>
       {MODULES.map(m => (
         <TouchableOpacity key={m.id} style={styles.card} onPress={() => onSelect(m.id)} activeOpacity={0.8}>
           <Text style={styles.cardIcon}>{m.icon}</Text>
@@ -67,12 +73,12 @@ export default function AdminDashboard({ onSelect }: Props) {
         </TouchableOpacity>
       ))}
       <Text style={styles.footerNote}>More modules will appear here as the admin panel grows.</Text>
-    </View>
+    </ScrollView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { padding: 16 },
+  container: { padding: 16, paddingBottom: 32 },
   card: {
     flexDirection: 'row',
     alignItems: 'center',

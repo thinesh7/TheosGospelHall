@@ -1,0 +1,493 @@
+import { Ionicons } from '@expo/vector-icons';
+import { collection, onSnapshot } from 'firebase/firestore';
+import { forwardRef, ReactNode, useEffect, useImperativeHandle, useMemo, useState } from 'react';
+import { Alert, Linking, Modal, ScrollView, StyleSheet, TouchableOpacity, View } from 'react-native';
+import { Text } from '../AppText';
+import { TextInput } from '../AppTextInput';
+import { Toast, useToast } from '../Toast';
+import { db } from '../../firebaseConfig';
+import {
+  countForStatus,
+  ExportDataSets,
+  ExportFormat,
+  exportRegistrations,
+  ExportStatusOption,
+  STATUS_OPTION_LABELS,
+} from '../../utils/exportRegistrations';
+import {
+  computeAge,
+  formatDateDisplay,
+  formatPhoneDisplay,
+  formatTimestampIST,
+  permanentlyDeleteRegistration,
+  ProgramId,
+  Registration,
+  RegistrationStatus,
+  restoreRegistration,
+  softDeleteRegistration,
+  STATUS_LABELS,
+  updateRegistrationStatus,
+} from '../../utils/registrations';
+import { AdminScreenHandle } from './SpecialMeetingsAdmin';
+
+type FilterMode = 'registered' | 'accepted' | 'deleted';
+
+function bySearch(list: Registration[], q: string): Registration[] {
+  return !q ? list : list.filter(r => r.name.toLowerCase().includes(q) || r.phone.toLowerCase().includes(q));
+}
+
+interface Props {
+  programId: ProgramId;
+}
+
+const RegistrationsAdmin = forwardRef<AdminScreenHandle, Props>(({ programId }, ref) => {
+  const [registrations, setRegistrations] = useState<Registration[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [filterMode, setFilterMode] = useState<FilterMode>('registered');
+  const [search, setSearch] = useState('');
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [exporting, setExporting] = useState<ExportFormat | null>(null);
+  const [showExportMenu, setShowExportMenu] = useState(false);
+  const { message, opacity, showToast } = useToast();
+
+  useImperativeHandle(ref, () => ({
+    goBack: () => {
+      if (selectedId) { setSelectedId(null); return true; }
+      return false;
+    },
+  }));
+
+  useEffect(() => {
+    setLoading(true);
+    const collectionName = programId === 'youth' ? 'youthProgramRegistrations' : 'academyRegistrations';
+    const unsubscribe = onSnapshot(
+      collection(db, collectionName),
+      snapshot => {
+        const list: Registration[] = snapshot.docs.map(d => ({ id: d.id, ...(d.data() as any) }));
+        list.sort((a, b) => (b.createdAt?.toMillis?.() ?? 0) - (a.createdAt?.toMillis?.() ?? 0));
+        setRegistrations(list);
+        setLoading(false);
+      },
+      () => setLoading(false)
+    );
+    return () => unsubscribe();
+  }, [programId]);
+
+  const selected = useMemo(
+    () => registrations.find(r => r.id === selectedId) ?? null,
+    [registrations, selectedId]
+  );
+
+  const registeredList = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    return bySearch(registrations.filter(r => !r.isDeleted && (r.status === 'registered' || r.status === 'followup')), q);
+  }, [registrations, search]);
+  const acceptedList = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    return bySearch(registrations.filter(r => !r.isDeleted && r.status === 'accepted'), q);
+  }, [registrations, search]);
+  const deletedList = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    return bySearch(registrations.filter(r => r.isDeleted), q);
+  }, [registrations, search]);
+
+  const currentList = filterMode === 'registered' ? registeredList : filterMode === 'accepted' ? acceptedList : deletedList;
+
+  // Export always covers the full underlying data for the chosen status
+  // (independent of the currently active tab/search), since the export
+  // dialog lets the admin pick the status scope explicitly.
+  const fullRegisteredList = useMemo(
+    () => registrations.filter(r => !r.isDeleted && (r.status === 'registered' || r.status === 'followup')),
+    [registrations]
+  );
+  const fullAcceptedList = useMemo(
+    () => registrations.filter(r => !r.isDeleted && r.status === 'accepted'),
+    [registrations]
+  );
+  const fullDeletedList = useMemo(() => registrations.filter(r => r.isDeleted), [registrations]);
+
+  const exportDataSets: ExportDataSets = useMemo(
+    () => ({ registered: fullRegisteredList, accepted: fullAcceptedList, deleted: fullDeletedList }),
+    [fullRegisteredList, fullAcceptedList, fullDeletedList]
+  );
+
+  const handleExport = async (status: ExportStatusOption, format: ExportFormat) => {
+    if (countForStatus(status, exportDataSets) === 0) {
+      Alert.alert('No Records', 'No records available to export.');
+      return;
+    }
+    setExporting(format);
+    try {
+      await exportRegistrations(format, programId, status, exportDataSets);
+      showToast('✅ Export ready — choose where to save');
+    } catch (e: any) {
+      console.error('Export failed:', e);
+      Alert.alert('Export Failed', `Could not generate the export file.\n\n${e?.message ?? String(e)}`);
+    }
+    setExporting(null);
+  };
+
+  const chooseFormat = (status: ExportStatusOption) => {
+    setShowExportMenu(false);
+    if (countForStatus(status, exportDataSets) === 0) {
+      Alert.alert('No Records', 'No records available to export.');
+      return;
+    }
+    Alert.alert(
+      'Export Format',
+      `Export ${STATUS_OPTION_LABELS[status]} registrations as:`,
+      [
+        { text: 'Excel (.xlsx)', onPress: () => handleExport(status, 'excel') },
+        { text: 'PDF (.pdf)', onPress: () => handleExport(status, 'pdf') },
+        { text: 'Cancel', style: 'cancel' },
+      ]
+    );
+  };
+
+  const handleStatusChange = async (status: RegistrationStatus) => {
+    if (!selected) return;
+    setBusy(true);
+    try {
+      await updateRegistrationStatus(programId, selected.id, status);
+      showToast(`✅ Status changed to ${STATUS_LABELS[status]}`);
+    } catch {
+      Alert.alert('Error', 'Could not update status. Check internet.');
+    }
+    setBusy(false);
+  };
+
+  const handleDelete = () => {
+    if (!selected) return;
+    Alert.alert('Delete Registration', `Delete registration for "${selected.name}"?`, [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Delete',
+        style: 'destructive',
+        onPress: async () => {
+          setBusy(true);
+          try {
+            await softDeleteRegistration(programId, selected.id);
+            setSelectedId(null);
+            showToast('🗑 Registration deleted');
+          } catch {
+            Alert.alert('Error', 'Could not delete. Check internet.');
+          }
+          setBusy(false);
+        },
+      },
+    ]);
+  };
+
+  const handleRestore = (status: RegistrationStatus) => {
+    if (!selected) return;
+    setBusy(true);
+    restoreRegistration(programId, selected.id, status)
+      .then(() => {
+        setSelectedId(null);
+        showToast(`♻️ Restored as ${STATUS_LABELS[status]}`);
+      })
+      .catch(() => Alert.alert('Error', 'Could not restore. Check internet.'))
+      .finally(() => setBusy(false));
+  };
+
+  const handlePermanentDelete = () => {
+    if (!selected) return;
+    Alert.alert(
+      'Permanently Delete',
+      `Permanently delete the registration for "${selected.name}"? This cannot be undone.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete Forever',
+          style: 'destructive',
+          onPress: async () => {
+            setBusy(true);
+            try {
+              await permanentlyDeleteRegistration(programId, selected.id);
+              setSelectedId(null);
+              showToast('🗑 Permanently deleted');
+            } catch {
+              Alert.alert('Error', 'Could not delete. Check internet.');
+            }
+            setBusy(false);
+          },
+        },
+      ]
+    );
+  };
+
+  if (selected) {
+    return (
+      <View style={{ flex: 1 }}>
+      <ScrollView contentContainerStyle={{ padding: 16 }} keyboardShouldPersistTaps="handled">
+        <View style={styles.formHeader}>
+          <TouchableOpacity onPress={() => setSelectedId(null)}>
+            <Text style={styles.formBackText}>← Back</Text>
+          </TouchableOpacity>
+          <Text style={styles.formTitle}>Registration Details</Text>
+        </View>
+
+        <View style={styles.detailCard}>
+          <DetailRow label="Name" value={selected.name} />
+          <DetailRow label="Date of Birth" value={formatDateDisplay(selected.dob)} />
+          <DetailRow label="Age" value={computeAge(selected.dob) !== null ? `${computeAge(selected.dob)} years` : '—'} />
+          <DetailRow label="Gender" value={selected.gender} />
+          <DetailRow
+            label="Mobile Number"
+            value={formatPhoneDisplay(selected.phone)}
+            rightElement={
+              <TouchableOpacity style={styles.callBtn} onPress={() => Linking.openURL(`tel:${selected.phone}`)}>
+                <Ionicons name="call" size={16} color="#fff" />
+              </TouchableOpacity>
+            }
+          />
+          <DetailRow label="Place" value={selected.place} />
+          <DetailRow label="Church Details" value={selected.churchDetails || '—'} />
+          <DetailRow label="Registered Date" value={formatTimestampIST(selected.createdAt)} />
+          {!!selected.modifiedBy && (
+            <>
+              <DetailRow label="Last Modified By" value={selected.modifiedBy} />
+              <DetailRow label="Last Modified On" value={formatTimestampIST(selected.modifiedAt)} />
+            </>
+          )}
+        </View>
+
+        {!selected.isDeleted ? (
+          <>
+            <Text style={styles.formLabel}>Status</Text>
+            <View style={styles.segmentRow}>
+              {(['registered', 'followup', 'accepted'] as RegistrationStatus[]).map(s => (
+                <TouchableOpacity
+                  key={s}
+                  style={[styles.segmentBtn, selected.status === s && styles.segmentBtnActive]}
+                  disabled={busy}
+                  onPress={() => handleStatusChange(s)}
+                >
+                  <Text style={[styles.segmentBtnText, selected.status === s && styles.segmentBtnTextActive]}>
+                    {STATUS_LABELS[s]}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+
+            <TouchableOpacity style={[styles.deleteBtn, busy && { opacity: 0.6 }]} disabled={busy} onPress={handleDelete}>
+              <Text style={styles.deleteBtnText}>🗑 Delete Registration</Text>
+            </TouchableOpacity>
+          </>
+        ) : (
+          <>
+            <Text style={styles.formLabel}>Restore As</Text>
+            <View style={styles.segmentRow}>
+              {(['registered', 'followup', 'accepted'] as RegistrationStatus[]).map(s => (
+                <TouchableOpacity
+                  key={s}
+                  style={styles.segmentBtn}
+                  disabled={busy}
+                  onPress={() => handleRestore(s)}
+                >
+                  <Text style={styles.segmentBtnText}>{STATUS_LABELS[s]}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+
+            <TouchableOpacity style={[styles.deleteBtn, busy && { opacity: 0.6 }]} disabled={busy} onPress={handlePermanentDelete}>
+              <Text style={styles.deleteBtnText}>🗑 Permanently Delete</Text>
+            </TouchableOpacity>
+          </>
+        )}
+      </ScrollView>
+      <Toast message={message} opacity={opacity} />
+      </View>
+    );
+  }
+
+  return (
+    <View style={{ flex: 1 }}>
+      <View style={styles.toggleWrap}>
+        <View style={styles.exportRow}>
+          <TouchableOpacity
+            style={[styles.exportBtn, !!exporting && { opacity: 0.6 }]}
+            disabled={!!exporting}
+            onPress={() => setShowExportMenu(true)}
+          >
+            <Ionicons name={exporting ? 'hourglass-outline' : 'download-outline'} size={16} color="#0f3460" />
+            <Text style={styles.exportBtnText}>{exporting ? 'Exporting...' : 'Export'}</Text>
+          </TouchableOpacity>
+        </View>
+        <View style={styles.segmentRow}>
+          {(['registered', 'accepted', 'deleted'] as FilterMode[]).map(mode => (
+            <TouchableOpacity
+              key={mode}
+              style={[styles.segmentBtn, filterMode === mode && styles.segmentBtnActive]}
+              onPress={() => { setFilterMode(mode); setSearch(''); }}
+            >
+              <Text style={[styles.segmentBtnText, filterMode === mode && styles.segmentBtnTextActive]}>
+                {mode === 'registered' ? 'Registered' : mode === 'accepted' ? 'Accepted' : 'Deleted'}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+
+        <View style={styles.searchBar}>
+          <Ionicons name="search" size={18} color="#666" />
+          <TextInput
+            style={styles.searchInput}
+            placeholder="Search by name or mobile number..."
+            placeholderTextColor="#999"
+            value={search}
+            onChangeText={setSearch}
+          />
+          {search.length > 0 && (
+            <TouchableOpacity onPress={() => setSearch('')}>
+              <Ionicons name="close-circle" size={18} color="#999" />
+            </TouchableOpacity>
+          )}
+        </View>
+      </View>
+
+      <ScrollView contentContainerStyle={{ padding: 16, paddingTop: 8 }}>
+        {loading ? (
+          <Text style={styles.loadingText}>Loading registrations...</Text>
+        ) : currentList.length === 0 ? (
+          <Text style={styles.emptyText}>No registrations here.</Text>
+        ) : (
+          currentList.map(r => (
+            <TouchableOpacity key={r.id} style={styles.card} onPress={() => setSelectedId(r.id)} activeOpacity={0.8}>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.cardTitle}>{r.name}</Text>
+                <Text style={styles.cardMeta}>
+                  {computeAge(r.dob) !== null ? `${computeAge(r.dob)} yrs` : '—'} • 📍 {r.place}
+                </Text>
+                <Text style={styles.cardMeta}>🗓 Registered {formatTimestampIST(r.createdAt)}</Text>
+                {filterMode === 'registered' && (
+                  <View style={styles.cardStatusRow}>
+                    <View style={[styles.statusDot, { backgroundColor: r.status === 'followup' ? '#f4a261' : '#0f3460' }]} />
+                    <Text style={styles.cardStatusText}>{STATUS_LABELS[r.status]}</Text>
+                  </View>
+                )}
+              </View>
+              <Text style={styles.cardChevron}>›</Text>
+            </TouchableOpacity>
+          ))
+        )}
+      </ScrollView>
+
+      <Modal visible={showExportMenu} transparent animationType="fade" onRequestClose={() => setShowExportMenu(false)}>
+        <TouchableOpacity
+          style={styles.exportMenuBackdrop}
+          activeOpacity={1}
+          onPress={() => setShowExportMenu(false)}
+        >
+          <View style={styles.exportMenuCard} onStartShouldSetResponder={() => true}>
+            <Text style={styles.exportMenuTitle}>Export Registrations</Text>
+            <Text style={styles.exportMenuSubtitle}>Choose which registrations to export</Text>
+            {(['all', 'registered', 'accepted', 'deleted'] as ExportStatusOption[]).map(status => {
+              const count = countForStatus(status, exportDataSets);
+              return (
+                <TouchableOpacity
+                  key={status}
+                  style={[styles.exportMenuOption, count === 0 && { opacity: 0.4 }]}
+                  disabled={count === 0}
+                  onPress={() => chooseFormat(status)}
+                >
+                  <Text style={styles.exportMenuOptionText}>{STATUS_OPTION_LABELS[status]}</Text>
+                  <Text style={styles.exportMenuOptionCount}>{count}</Text>
+                </TouchableOpacity>
+              );
+            })}
+            <TouchableOpacity style={styles.exportMenuCancel} onPress={() => setShowExportMenu(false)}>
+              <Text style={styles.exportMenuCancelText}>Cancel</Text>
+            </TouchableOpacity>
+          </View>
+        </TouchableOpacity>
+      </Modal>
+
+      <Toast message={message} opacity={opacity} />
+    </View>
+  );
+});
+
+function DetailRow({ label, value, rightElement }: { label: string; value: string; rightElement?: ReactNode }) {
+  return (
+    <View style={styles.detailRow}>
+      <Text style={styles.detailLabel}>{label}</Text>
+      <View style={styles.detailValueRow}>
+        <Text style={styles.detailValue}>{value}</Text>
+        {rightElement}
+      </View>
+    </View>
+  );
+}
+
+export default RegistrationsAdmin;
+
+const styles = StyleSheet.create({
+  toggleWrap: { padding: 16, paddingBottom: 8, backgroundColor: '#f5f5f5' },
+  exportRow: { flexDirection: 'row', justifyContent: 'flex-end', marginBottom: 10 },
+  exportBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: '#e8f0fe',
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+  },
+  exportBtnText: { color: '#0f3460', fontWeight: '600', fontSize: 12 },
+  exportMenuBackdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', alignItems: 'center', padding: 24 },
+  exportMenuCard: { backgroundColor: '#fff', borderRadius: 16, padding: 20, width: '100%', maxWidth: 340, elevation: 8 },
+  exportMenuTitle: { fontSize: 17, fontWeight: 'bold', color: '#1a1a2e', marginBottom: 4 },
+  exportMenuSubtitle: { fontSize: 12, color: '#888', marginBottom: 16 },
+  exportMenuOption: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 14,
+    paddingHorizontal: 4,
+    borderBottomWidth: 1,
+    borderBottomColor: '#eee',
+  },
+  exportMenuOptionText: { fontSize: 15, fontWeight: '600', color: '#0f3460' },
+  exportMenuOptionCount: { fontSize: 13, color: '#888', fontWeight: '600' },
+  exportMenuCancel: { alignItems: 'center', paddingVertical: 14, marginTop: 6 },
+  exportMenuCancelText: { fontSize: 14, color: '#888', fontWeight: '600' },
+  segmentRow: { flexDirection: 'row', gap: 10, marginBottom: 10 },
+  segmentBtn: { flex: 1, paddingVertical: 12, borderRadius: 10, backgroundColor: '#fff', borderWidth: 1, borderColor: '#eee', alignItems: 'center' },
+  segmentBtnActive: { backgroundColor: '#0f3460', borderColor: '#0f3460' },
+  segmentBtnText: { fontSize: 13, fontWeight: '600', color: '#555' },
+  segmentBtnTextActive: { color: '#fff' },
+  searchBar: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#fff', borderRadius: 12, paddingHorizontal: 12, paddingVertical: 10, elevation: 3, gap: 8 },
+  searchInput: { flex: 1, fontSize: 14, color: '#333' },
+  loadingText: { textAlign: 'center', color: '#888', marginTop: 20 },
+  emptyText: { textAlign: 'center', color: '#aaa', marginTop: 30, fontSize: 14, fontStyle: 'italic' },
+  card: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#fff',
+    borderRadius: 14,
+    padding: 16,
+    marginBottom: 12,
+    elevation: 3,
+    borderLeftWidth: 5,
+    borderLeftColor: '#0f3460',
+  },
+  cardTitle: { fontSize: 15, fontWeight: 'bold', color: '#1a1a2e', marginBottom: 4 },
+  cardMeta: { fontSize: 12, color: '#666' },
+  cardStatusRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 6 },
+  statusDot: { width: 8, height: 8, borderRadius: 4 },
+  cardStatusText: { fontSize: 12, color: '#666' },
+  cardChevron: { fontSize: 26, color: '#ccc', marginLeft: 8, fontWeight: '300' },
+  formHeader: { flexDirection: 'row', alignItems: 'center', gap: 16, marginBottom: 20 },
+  formBackText: { color: '#0f3460', fontWeight: '600', fontSize: 15 },
+  formTitle: { fontSize: 17, fontWeight: 'bold', color: '#1a1a2e' },
+  detailCard: { backgroundColor: '#fff', borderRadius: 14, padding: 16, marginBottom: 20, elevation: 3 },
+  detailRow: { marginBottom: 12 },
+  detailLabel: { fontSize: 11, fontWeight: '600', color: '#888', textTransform: 'uppercase', marginBottom: 2 },
+  detailValueRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  detailValue: { fontSize: 15, color: '#1a1a2e' },
+  callBtn: { backgroundColor: '#22c55e', width: 32, height: 32, borderRadius: 16, alignItems: 'center', justifyContent: 'center' },
+  formLabel: { fontSize: 13, fontWeight: '600', color: '#555', marginBottom: 8 },
+  deleteBtn: { backgroundColor: '#fdecea', borderRadius: 10, padding: 14, alignItems: 'center', marginTop: 4, marginBottom: 24 },
+  deleteBtnText: { color: '#c62828', fontWeight: '600', fontSize: 14 },
+});

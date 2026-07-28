@@ -18,8 +18,11 @@ import HomeContentAdmin from './admin/HomeContentAdmin';
 import LivePlaylistsAdmin from './admin/LivePlaylistsAdmin';
 import NotificationsAdmin from './admin/NotificationsAdmin';
 import OtherSongsAdmin from './admin/OtherSongsAdmin';
+import RegistrationsAdmin from './admin/RegistrationsAdmin';
+import RegistrationsMenu from './admin/RegistrationsMenu';
 import SongsAdminMenu, { SongsModule } from './admin/SongsAdminMenu';
 import SpecialMeetingsAdmin, { AdminScreenHandle } from './admin/SpecialMeetingsAdmin';
+import { ProgramId } from '../utils/registrations';
 
 type ViewKey =
   | 'dashboard'
@@ -30,7 +33,10 @@ type ViewKey =
   | 'livePlaylists'
   | 'homeContent'
   | 'notifications'
-  | 'apiKeys';
+  | 'apiKeys'
+  | 'registrationsMenu'
+  | 'registrationsYouth'
+  | 'registrationsAcademy';
 
 interface ViewMeta {
   title: string;
@@ -47,6 +53,9 @@ const VIEW_META: Record<ViewKey, ViewMeta> = {
   homeContent: { title: '🏠 Home Screen Content', subtitle: 'Pastor & Ministry info' },
   notifications: { title: '🔔 Notifications', subtitle: 'Send announcements to all users' },
   apiKeys: { title: '🔑 API Keys', subtitle: 'Manage backup YouTube API keys' },
+  registrationsMenu: { title: '📝 View Registrations', subtitle: 'Choose a program to manage' },
+  registrationsYouth: { title: '🔥 Youth Program', subtitle: 'Discipleship Program registrations' },
+  registrationsAcademy: { title: '🎓 TGH Academy', subtitle: 'Academy registrations' },
 };
 
 interface Props {
@@ -101,10 +110,15 @@ export default function AdminPanel({ visible, onClose, onEventsUpdated }: Props)
     else if (module === 'homeContent') pushView('homeContent');
     else if (module === 'notifications') pushView('notifications');
     else if (module === 'apiKeys') pushView('apiKeys');
+    else if (module === 'registrationsMenu') pushView('registrationsMenu');
   };
 
   const handleSongsMenuSelect = (module: SongsModule) => {
     pushView(module === 'geethangalum' ? 'songsGeethangalum' : 'songsOther');
+  };
+
+  const handleRegistrationsMenuSelect = (programId: ProgramId) => {
+    pushView(programId === 'youth' ? 'registrationsYouth' : 'registrationsAcademy');
   };
 
   const meta = VIEW_META[currentView];
@@ -174,6 +188,18 @@ export default function AdminPanel({ visible, onClose, onEventsUpdated }: Props)
 
             {currentView === 'apiKeys' && (
               <ApiKeysAdmin ref={activeScreenRef} />
+            )}
+
+            {currentView === 'registrationsMenu' && (
+              <RegistrationsMenu onSelect={handleRegistrationsMenuSelect} />
+            )}
+
+            {currentView === 'registrationsYouth' && (
+              <RegistrationsAdmin ref={activeScreenRef} programId="youth" />
+            )}
+
+            {currentView === 'registrationsAcademy' && (
+              <RegistrationsAdmin ref={activeScreenRef} programId="academy" />
             )}
           </View>
         </View>

@@ -5,6 +5,18 @@ All notable changes to the Theos Gospel Hall app are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [1.2.0] - 2026-07-29
+
+### Added
+- **In-app registration** for the TGH Special Youth Discipleship Program and TGH Academy, replacing the previous WhatsApp-redirect Register buttons. The form collects Name, Date of Birth, Gender, mobile number, Place, and optional Church Details, is fully themed to the app's light/dark/sepia modes, and ends with a themed confirmation screen before returning to Home. TGH Academy registrations require an Indian (+91) mobile number with a locked country code; the Youth Discipleship Program continues to accept international numbers. Duplicate registrations are blocked per program at the Firestore rules level.
+- **View Registrations** admin module for both programs, with Registered / Accepted / Deleted status tabs, search, a detailed per-registration view, status changes, soft-delete/restore, permanent delete, and a full audit trail (which admin last modified a registration, and when). The detail view also shows a consistently formatted mobile number and a one-tap call button.
+- **Export registrations to Excel and PDF** from the Registered, Accepted, and Deleted tabs, with a scope picker (All / Registered / Accepted / Deleted) showing live record counts. Exporting "All" produces a multi-section report — separate sheets/pages per status — with frozen header rows, borders, auto-sized columns, and repeating table headers in PDF. All exported and displayed dates/times use IST regardless of device timezone. Files are named `{Program}_{Status}_{date}_{time}` and shared via the device's native share sheet.
+
+### Changed
+- Home screen: both program Register buttons now read "Register Now" with a matching icon, and show at-a-glance "🌐 Online Program" / "📍 Offline Classes – Tirupur" badges so users know the program mode before registering.
+- Home screen: corrected the Youth Discipleship Program's meeting platform from Google Meet to Zoom, and fixed the "Tiruppur" → "Tirupur" spelling throughout.
+- Admin Dashboard: the module list now scrolls instead of clipping off-screen as new modules are added.
+
 ## [1.1.0] - 2026-07-26
 
 ### Added
