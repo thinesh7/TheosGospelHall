@@ -1,7 +1,7 @@
 import { ScrollView, StyleSheet, TouchableOpacity, View } from 'react-native';
 import { Text } from '../AppText';
 
-export type AdminModule = 'specialMeetings' | 'songsMenu' | 'livePlaylists' | 'homeContent' | 'notifications' | 'apiKeys' | 'registrationsMenu';
+export type AdminModule = 'specialMeetings' | 'songsMenu' | 'livePlaylists' | 'homeContent' | 'notifications' | 'apiKeys' | 'registrationsMenu' | 'appUpdate';
 
 interface ModuleCard {
   id: AdminModule;
@@ -11,18 +11,6 @@ interface ModuleCard {
 }
 
 const MODULES: ModuleCard[] = [
-  {
-    id: 'homeContent',
-    icon: '🏠',
-    title: 'Pastor & Ministry Content',
-    subtitle: 'Manage Pastor info & About Ministry (English/Tamil)',
-  },
-  {
-    id: 'specialMeetings',
-    icon: '📅',
-    title: 'Special Meetings',
-    subtitle: 'Add, edit, and notify users about upcoming meetings',
-  },
   {
     id: 'songsMenu',
     icon: '🎵',
@@ -36,16 +24,39 @@ const MODULES: ModuleCard[] = [
     subtitle: 'Manage Youth Program & Academy registrations',
   },
   {
-    id: 'livePlaylists',
-    icon: '🎬',
-    title: 'Live Playlists',
-    subtitle: 'Manage YouTube playlists shown in the Live tab',
+    id: 'specialMeetings',
+    icon: '📅',
+    title: 'Upcoming Special Meetings',
+    subtitle: 'Add, edit, and notify users about upcoming meetings',
+  },
+  {
+    id: 'homeContent',
+    icon: '🏠',
+    title: 'Pastor & Ministry Content',
+    subtitle: 'Manage Pastor info & About Ministry (English/Tamil)',
+  },
+];
+
+// Grouped under the "App Management" section, kept last in the dashboard, in
+// this fixed order.
+const APP_MANAGEMENT_MODULES: ModuleCard[] = [
+  {
+    id: 'appUpdate',
+    icon: '⬆️',
+    title: 'App Update Settings',
+    subtitle: 'Set the latest version, minimum required version, and update message',
   },
   {
     id: 'notifications',
     icon: '🔔',
-    title: 'Notifications',
+    title: 'Send Notifications',
     subtitle: 'Send push notifications to all app users',
+  },
+  {
+    id: 'livePlaylists',
+    icon: '🎬',
+    title: 'Live Playlists',
+    subtitle: 'Manage YouTube playlists shown in the Live tab',
   },
   {
     id: 'apiKeys',
@@ -60,18 +71,24 @@ interface Props {
 }
 
 export default function AdminDashboard({ onSelect }: Props) {
+  const renderCard = (m: ModuleCard) => (
+    <TouchableOpacity key={m.id} style={styles.card} onPress={() => onSelect(m.id)} activeOpacity={0.8}>
+      <Text style={styles.cardIcon}>{m.icon}</Text>
+      <View style={styles.cardTextWrap}>
+        <Text style={styles.cardTitle}>{m.title}</Text>
+        <Text style={styles.cardSubtitle}>{m.subtitle}</Text>
+      </View>
+      <Text style={styles.cardChevron}>›</Text>
+    </TouchableOpacity>
+  );
+
   return (
     <ScrollView contentContainerStyle={styles.container}>
-      {MODULES.map(m => (
-        <TouchableOpacity key={m.id} style={styles.card} onPress={() => onSelect(m.id)} activeOpacity={0.8}>
-          <Text style={styles.cardIcon}>{m.icon}</Text>
-          <View style={styles.cardTextWrap}>
-            <Text style={styles.cardTitle}>{m.title}</Text>
-            <Text style={styles.cardSubtitle}>{m.subtitle}</Text>
-          </View>
-          <Text style={styles.cardChevron}>›</Text>
-        </TouchableOpacity>
-      ))}
+      {MODULES.map(renderCard)}
+
+      <Text style={styles.sectionHeader}>App Management</Text>
+      {APP_MANAGEMENT_MODULES.map(renderCard)}
+
       <Text style={styles.footerNote}>More modules will appear here as the admin panel grows.</Text>
     </ScrollView>
   );
@@ -79,6 +96,15 @@ export default function AdminDashboard({ onSelect }: Props) {
 
 const styles = StyleSheet.create({
   container: { padding: 16, paddingBottom: 32 },
+  sectionHeader: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#888',
+    textTransform: 'uppercase',
+    letterSpacing: 0.8,
+    marginTop: 8,
+    marginBottom: 12,
+  },
   card: {
     flexDirection: 'row',
     alignItems: 'center',

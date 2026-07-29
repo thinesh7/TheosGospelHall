@@ -1,13 +1,18 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { DarkTheme, DefaultTheme, ThemeProvider as NavThemeProvider } from '@react-navigation/native';
+import Constants from 'expo-constants';
 import { Stack } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { AppState as RNAppState } from 'react-native';
 import 'react-native-reanimated';
 
+import ForceUpdateScreen from '@/components/ForceUpdateScreen';
+import OptionalUpdateModal from '@/components/OptionalUpdateModal';
 import WelcomeSetupScreen from '@/components/WelcomeSetupScreen';
 import { useColorScheme } from '@/hooks/use-color-scheme';
+import { AppVersionConfig, fetchVersionConfig, getUpdateStatus, UpdateStatus } from '@/utils/appUpdate';
 import { loadBibleSettings } from '@/utils/bibleSettings';
 import { getCachedHomeContent } from '@/utils/homeContentSync';
 import {
@@ -29,28 +34,105 @@ type AppState = 'checking' | 'welcome' | 'ready';
 export default function RootLayout() {
   const colorScheme = useColorScheme();
   const [appState, setAppState] = useState<AppState>('checking');
+  const [versionCheckDone, setVersionCheckDone] = useState(false);
+  const [updateStatus, setUpdateStatus] = useState<UpdateStatus>('none');
+  const [updateConfig, setUpdateConfig] = useState<AppVersionConfig | null>(null);
+  // In-memory only (not AsyncStorage): a skipped optional update must only be
+  // suppressed for the current app session, and reappear on the next launch —
+  // so it's held in a ref that's naturally reset when the process restarts.
+  const skippedVersionRef = useRef<string | null>(null);
+
+  // Checks for an app update: on mount, and again whenever the app returns to
+  // the foreground (throttled), so a mandatory/optional update pushed while
+  // the app was merely backgrounded (not killed) is still caught promptly.
+  useEffect(() => {
+    let lastCheckedAt = 0;
+    const RECHECK_INTERVAL_MS = 30 * 60 * 1000; // 30 minutes
+
+    const runVersionCheck = async () => {
+      lastCheckedAt = Date.now();
+      try {
+        // Fail open: if the config can't be fetched in time (offline, error),
+        // leave whatever update state is already showing untouched rather
+        // than guessing — a transient network blip should neither impose a
+        // block nor clear an already-active one.
+        const config = await Promise.race([
+          fetchVersionConfig(),
+          new Promise<null>(resolve => setTimeout(() => resolve(null), 4000)),
+        ]);
+        if (!config) return;
+
+        // If the installed version can't be determined, also leave existing
+        // state untouched — don't guess a version that could wrongly force
+        // an update (unlike a hardcoded fallback like '0.0.0', which always
+        // reads as "below minimum").
+        // Reads from app.json via Expo config rather than expo-application's
+        // nativeApplicationVersion, which reports the Expo Go host app's own
+        // version (not this project's) when running inside Expo Go — see the
+        // matching comment in AppUpdateAdmin.tsx.
+        const installedVersion = Constants.expoConfig?.version;
+        if (!installedVersion) return;
+
+        const status = getUpdateStatus(installedVersion, config);
+
+        if (status === 'none') {
+          setUpdateConfig(null);
+          setUpdateStatus('none');
+          return;
+        }
+
+        if (status === 'optional' && skippedVersionRef.current === config.latestVersion) {
+          setUpdateConfig(null);
+          setUpdateStatus('none');
+          return;
+        }
+
+        setUpdateConfig(config);
+        setUpdateStatus(status);
+      } catch {
+        // fail open — leave existing state untouched
+      }
+    };
+
+    (async () => {
+      await runVersionCheck();
+      setVersionCheckDone(true);
+    })();
+
+    const subscription = RNAppState.addEventListener('change', nextAppState => {
+      if (nextAppState === 'active' && Date.now() - lastCheckedAt > RECHECK_INTERVAL_MS) {
+        runVersionCheck();
+      }
+    });
+    return () => subscription.remove();
+  }, []);
 
   useEffect(() => {
     (async () => {
       try {
         const setupDone = await AsyncStorage.getItem(SETUP_KEY);
         if (!setupDone) {
-          SplashScreen.hideAsync().catch(() => {});
           setAppState('welcome');
         } else {
           await Promise.race([
             Promise.all([getCachedHomeContent(), loadBibleSettings()]),
             new Promise(r => setTimeout(r, 1500)),
           ]);
-          SplashScreen.hideAsync().catch(() => {});
           setAppState('ready');
         }
       } catch {
-        SplashScreen.hideAsync().catch(() => {});
         setAppState('ready');
       }
     })();
   }, []);
+
+  // Splash only hides once both the first-run/setup check AND the version
+  // check have resolved, so there's no gap where unblocked content could
+  // flash before a mandatory-update screen is decided.
+  useEffect(() => {
+    if (appState === 'checking' || !versionCheckDone) return;
+    SplashScreen.hideAsync().catch(() => {});
+  }, [appState, versionCheckDone]);
 
   useEffect(() => {
     if (appState !== 'ready') return;
@@ -67,7 +149,7 @@ export default function RootLayout() {
     };
   }, [appState]);
 
-  if (appState === 'checking') return null;
+  if (appState === 'checking' || !versionCheckDone) return null;
 
   return (
     <AppThemeProvider>
@@ -84,6 +166,20 @@ export default function RootLayout() {
             <Stack.Screen name="other-song-reader" options={{ headerShown: false }} />
             <Stack.Screen name="bible-reader" options={{ headerShown: false }} />
           </Stack>
+        )}
+        {updateStatus === 'mandatory' && updateConfig && (
+          <ForceUpdateScreen message={updateConfig.updateMessage} storeUrl={updateConfig.androidStoreUrl} />
+        )}
+        {updateStatus === 'optional' && updateConfig && (
+          <OptionalUpdateModal
+            visible
+            message={updateConfig.updateMessage}
+            storeUrl={updateConfig.androidStoreUrl}
+            onSkip={() => {
+              skippedVersionRef.current = updateConfig.latestVersion;
+              setUpdateStatus('none');
+            }}
+          />
         )}
         <StatusBar style="auto" />
       </NavThemeProvider>

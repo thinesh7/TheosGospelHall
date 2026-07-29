@@ -5,6 +5,18 @@ All notable changes to the Theos Gospel Hall app are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [1.3.0] - 2026-07-29
+
+### Added
+- **App Update Settings** admin module (grouped under a new "App Management" section) to configure the Latest Version, Minimum Required Version, update message, and Play Store URL used to gate in-app updates. Version fields are validated to a strict `x.y.z` format with inline error hints and a hard block on save, and the screen shows an audit trail of who last saved the settings.
+- **In-app update prompts**: devices below the configured Minimum Required Version see a non-dismissable "Update Required" popup; devices below the Latest Version (but at or above the minimum) see a dismissible "Update Available" popup with Update Now / Skip. Both now appear as a themed modal over the running app — the Home screen stays visible underneath — instead of replacing the whole app with a full-screen page.
+- **Notify Users About Update**: a one-tap tool in the App Update Settings screen to broadcast an editable push notification to all app users announcing a new version.
+
+### Changed
+- **Admin Panel reorganized**: modules are now grouped, with a new "App Management" section — App Update Settings, Send Notifications, Live Playlists, API Keys, in that order — always shown last. The main module list is reordered to Songs, View Registrations, Upcoming Special Meetings (renamed from "Special Meetings"), Pastor & Ministry Content. "Notifications" is renamed "Send Notifications" throughout.
+- **Review Your Registration**: the mobile number is now shown in `+<country code>-<number>` format (e.g. `+91-7501234567`) instead of run-together digits.
+- Registration success screen copy now reads "We'll get in touch with you soon."
+
 ## [1.2.0] - 2026-07-29
 
 ### Added

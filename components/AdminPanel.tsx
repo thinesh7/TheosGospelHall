@@ -13,6 +13,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Text } from './AppText';
 import AdminDashboard, { AdminModule } from './admin/AdminDashboard';
 import ApiKeysAdmin from './admin/ApiKeysAdmin';
+import AppUpdateAdmin from './admin/AppUpdateAdmin';
 import GeethangalumAdmin from './admin/GeethangalumAdmin';
 import HomeContentAdmin from './admin/HomeContentAdmin';
 import LivePlaylistsAdmin from './admin/LivePlaylistsAdmin';
@@ -36,7 +37,8 @@ type ViewKey =
   | 'apiKeys'
   | 'registrationsMenu'
   | 'registrationsYouth'
-  | 'registrationsAcademy';
+  | 'registrationsAcademy'
+  | 'appUpdate';
 
 interface ViewMeta {
   title: string;
@@ -45,17 +47,18 @@ interface ViewMeta {
 
 const VIEW_META: Record<ViewKey, ViewMeta> = {
   dashboard: { title: '⚙️ Admin Panel', subtitle: 'Theos Gospel Hall' },
-  specialMeetings: { title: '📅 Special Meetings', subtitle: 'Manage upcoming meetings' },
+  specialMeetings: { title: '📅 Upcoming Special Meetings', subtitle: 'Manage upcoming meetings' },
   songsMenu: { title: '🎵 Songs', subtitle: 'Choose a collection to manage' },
   songsGeethangalum: { title: '📖 Geethangalum Keerthanaigalum', subtitle: 'Edit existing songs' },
   songsOther: { title: '🎶 Special Songs', subtitle: 'Add, edit, show/hide songs' },
   livePlaylists: { title: '🎬 Live Playlists', subtitle: 'Manage YouTube playlists' },
   homeContent: { title: '🏠 Home Screen Content', subtitle: 'Pastor & Ministry info' },
-  notifications: { title: '🔔 Notifications', subtitle: 'Send announcements to all users' },
+  notifications: { title: '🔔 Send Notifications', subtitle: 'Send announcements to all users' },
   apiKeys: { title: '🔑 API Keys', subtitle: 'Manage backup YouTube API keys' },
   registrationsMenu: { title: '📝 View Registrations', subtitle: 'Choose a program to manage' },
   registrationsYouth: { title: '🔥 Youth Program', subtitle: 'Discipleship Program registrations' },
   registrationsAcademy: { title: '🎓 TGH Academy', subtitle: 'Academy registrations' },
+  appUpdate: { title: '⬆️ App Update Settings', subtitle: 'Manage force/optional update rollout' },
 };
 
 interface Props {
@@ -111,6 +114,7 @@ export default function AdminPanel({ visible, onClose, onEventsUpdated }: Props)
     else if (module === 'notifications') pushView('notifications');
     else if (module === 'apiKeys') pushView('apiKeys');
     else if (module === 'registrationsMenu') pushView('registrationsMenu');
+    else if (module === 'appUpdate') pushView('appUpdate');
   };
 
   const handleSongsMenuSelect = (module: SongsModule) => {
@@ -200,6 +204,10 @@ export default function AdminPanel({ visible, onClose, onEventsUpdated }: Props)
 
             {currentView === 'registrationsAcademy' && (
               <RegistrationsAdmin ref={activeScreenRef} programId="academy" />
+            )}
+
+            {currentView === 'appUpdate' && (
+              <AppUpdateAdmin ref={activeScreenRef} />
             )}
           </View>
         </View>

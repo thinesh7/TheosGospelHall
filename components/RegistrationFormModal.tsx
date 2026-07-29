@@ -63,6 +63,8 @@ export default function RegistrationFormModal({ visible, programId, onClose }: P
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [gender, setGender] = useState<Gender | null>(null);
   const [phone, setPhone] = useState('');
+  const [phoneDigits, setPhoneDigits] = useState('');
+  const [callingCode, setCallingCode] = useState('91');
   const [indiaDigits, setIndiaDigits] = useState('');
   const [place, setPlace] = useState('');
   const [churchDetails, setChurchDetails] = useState('');
@@ -80,12 +82,21 @@ export default function RegistrationFormModal({ visible, programId, onClose }: P
   // mobile numbers with a fixed +91 code. The Youth Program stays international.
   const isIndiaOnly = programId === 'academy';
   const effectivePhone = isIndiaOnly ? (indiaDigits ? `+91${indiaDigits}` : '') : phone;
+  // Display-only, dash-separated "+<country code>-<number>" form (e.g.
+  // +91-7501234567) for the review screen — effectivePhone above stays
+  // undelimited since that's the format stored in Firestore and checked
+  // for duplicates.
+  const displayPhone = isIndiaOnly
+    ? (indiaDigits ? `+91-${indiaDigits}` : '')
+    : (phoneDigits ? `+${callingCode}-${phoneDigits}` : '');
 
   const resetForm = () => {
     setName('');
     setDob(null);
     setGender(null);
     setPhone('');
+    setPhoneDigits('');
+    setCallingCode('91');
     setIndiaDigits('');
     setPlace('');
     setChurchDetails('');
@@ -271,6 +282,8 @@ export default function RegistrationFormModal({ visible, programId, onClose }: P
                   layout="second"
                   withDarkTheme={theme === 'dark'}
                   onChangeFormattedText={setPhone}
+                  onChangeText={setPhoneDigits}
+                  onChangeCountry={country => setCallingCode(country.callingCode[0])}
                   containerStyle={[styles.phoneContainer, { backgroundColor: colors.surfaceAlt, borderColor: colors.divider }]}
                   textContainerStyle={[styles.phoneTextContainer, { backgroundColor: colors.surfaceAlt }]}
                   textInputStyle={[styles.phoneTextInput, { color: colors.text }]}
@@ -319,7 +332,7 @@ export default function RegistrationFormModal({ visible, programId, onClose }: P
                   <PreviewRow label="Name" value={name} colors={colors} />
                   <PreviewRow label="Date of Birth" value={dob ? formatDobDisplay(dob) : '—'} colors={colors} />
                   <PreviewRow label="Gender" value={gender ?? '—'} colors={colors} />
-                  <PreviewRow label="Mobile Number" value={effectivePhone || '—'} colors={colors} />
+                  <PreviewRow label="Mobile Number" value={displayPhone || '—'} colors={colors} />
                   <PreviewRow label="Place" value={place} colors={colors} />
                   <PreviewRow label="Church Details" value={churchDetails || 'Not provided'} colors={colors} last />
                 </View>
@@ -361,7 +374,7 @@ export default function RegistrationFormModal({ visible, programId, onClose }: P
                   Your registration for{' '}
                   <Text style={[styles.successProgramName, { color: colors.accent }]}>{programLabel}</Text> has been received.
                 </Text>
-                <Text style={[styles.successSubtext, { color: colors.subtext }]}>We&apos;ll be in touch with you soon.</Text>
+                <Text style={[styles.successSubtext, { color: colors.subtext }]}>We&apos;ll get in touch with you soon.</Text>
                 <TouchableOpacity style={[styles.successBtn, { backgroundColor: colors.accent }]} onPress={handleSuccessDone}>
                   <Text style={styles.successBtnText}>Done</Text>
                 </TouchableOpacity>
