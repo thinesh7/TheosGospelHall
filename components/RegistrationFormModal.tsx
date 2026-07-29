@@ -68,6 +68,12 @@ export default function RegistrationFormModal({ visible, programId, onClose }: P
   const [churchDetails, setChurchDetails] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [showSuccess, setShowSuccess] = useState(false);
+  const [showPreview, setShowPreview] = useState(false);
+  // Bumped only on a full reset (not on Preview/Edit toggling) to force
+  // PhoneInput to remount with blank state for a new registration attempt —
+  // it isn't a true controlled component, so setPhone('') alone wouldn't
+  // clear what it displays.
+  const [formKey, setFormKey] = useState(0);
 
   const programLabel = PROGRAMS[programId].label;
   // TGH Academy is an offline, Tirupur-based program — restrict it to Indian
@@ -83,11 +89,18 @@ export default function RegistrationFormModal({ visible, programId, onClose }: P
     setIndiaDigits('');
     setPlace('');
     setChurchDetails('');
+    setShowPreview(false);
+    setFormKey(k => k + 1);
   };
 
   const handleClose = () => {
     resetForm();
     onClose();
+  };
+
+  const handleModalRequestClose = () => {
+    if (showPreview) { setShowPreview(false); return; }
+    handleClose();
   };
 
   const handleSuccessDone = () => {
@@ -101,7 +114,7 @@ export default function RegistrationFormModal({ visible, programId, onClose }: P
     if (selectedDate) setDob(selectedDate);
   };
 
-  const handleSubmit = async () => {
+  const handleContinue = () => {
     const dobIso = dob ? toIsoDate(dob) : '';
     const nameError = validateName(name);
     if (nameError) { Alert.alert('Invalid Name', nameError); return; }
@@ -113,6 +126,13 @@ export default function RegistrationFormModal({ visible, programId, onClose }: P
     const placeError = validatePlace(place);
     if (placeError) { Alert.alert('Invalid Place', placeError); return; }
 
+    setShowPreview(true);
+  };
+
+  const handleConfirmSubmit = async () => {
+    const dobIso = dob ? toIsoDate(dob) : '';
+    if (!gender) return; // already validated before reaching preview
+
     setSubmitting(true);
     try {
       await submitRegistration(programId, {
@@ -123,6 +143,7 @@ export default function RegistrationFormModal({ visible, programId, onClose }: P
         place,
         churchDetails,
       });
+      setShowPreview(false);
       setShowSuccess(true);
     } catch (e) {
       if (e instanceof DuplicateRegistrationError) {
@@ -135,7 +156,7 @@ export default function RegistrationFormModal({ visible, programId, onClose }: P
   };
 
   return (
-    <Modal visible={visible} animationType="slide" statusBarTranslucent onRequestClose={handleClose}>
+    <Modal visible={visible} animationType="slide" statusBarTranslucent onRequestClose={handleModalRequestClose}>
       <StatusBar barStyle={theme === 'light' || theme === 'sepia' ? 'dark-content' : 'light-content'} />
       <View style={{ flex: 1, backgroundColor: colors.bg }}>
       <KeyboardAvoidingView behavior={Platform.OS === 'android' ? 'height' : 'padding'} style={{ flex: 1 }}>
@@ -159,6 +180,15 @@ export default function RegistrationFormModal({ visible, programId, onClose }: P
               <Text style={[styles.programBannerTitle, { color: colors.accent }]}>{programLabel}</Text>
             </View>
 
+            {/*
+              Rendered with `display: none` rather than unmounted (`showPreview && ...`)
+              when previewing. PhoneInput (from react-native-phone-number-input) isn't a
+              true controlled component — it only initializes its internal number/country
+              state from props on mount — so conditionally unmounting this block on every
+              Edit/Preview round-trip was silently resetting the typed phone number and
+              country selection back to blank/default each time.
+            */}
+            <View style={{ display: showPreview ? 'none' : 'flex' }}>
             <View style={styles.formField}>
               <Text style={[styles.formLabel, { color: colors.subtext }]}>Name *</Text>
               <TextInput
@@ -235,6 +265,7 @@ export default function RegistrationFormModal({ visible, programId, onClose }: P
                 </View>
               ) : (
                 <PhoneInput
+                  key={formKey}
                   ref={phoneInputRef}
                   defaultCode="IN"
                   layout="second"
@@ -273,12 +304,50 @@ export default function RegistrationFormModal({ visible, programId, onClose }: P
             </View>
 
             <TouchableOpacity
-              style={[styles.submitBtn, { backgroundColor: colors.accent }, submitting && { opacity: 0.6 }]}
-              onPress={handleSubmit}
-              disabled={submitting}
+              style={[styles.submitBtn, { backgroundColor: colors.accent }]}
+              onPress={handleContinue}
             >
-              <Text style={styles.submitBtnText}>{submitting ? 'Submitting...' : '✅ Submit Registration'}</Text>
+              <Text style={styles.submitBtnText}>Continue</Text>
             </TouchableOpacity>
+            </View>
+
+            {showPreview && (
+              <View style={styles.formField}>
+                <View style={[styles.previewCard, { backgroundColor: colors.surfaceAlt, borderColor: colors.divider }]}>
+                  <Text style={[styles.previewCardTitle, { color: colors.accent }]}>Review Your Registration</Text>
+                  <PreviewRow label="Program" value={programLabel} colors={colors} />
+                  <PreviewRow label="Name" value={name} colors={colors} />
+                  <PreviewRow label="Date of Birth" value={dob ? formatDobDisplay(dob) : '—'} colors={colors} />
+                  <PreviewRow label="Gender" value={gender ?? '—'} colors={colors} />
+                  <PreviewRow label="Mobile Number" value={effectivePhone || '—'} colors={colors} />
+                  <PreviewRow label="Place" value={place} colors={colors} />
+                  <PreviewRow label="Church Details" value={churchDetails || 'Not provided'} colors={colors} last />
+                </View>
+
+                <View style={styles.warningBox}>
+                  <Ionicons name="warning-outline" size={18} color="#f59e0b" />
+                  <Text style={[styles.warningText, { color: colors.text }]}>
+                    Please review carefully. Once submitted, this information cannot be changed, and we may be unable to contact you if any details are incorrect.
+                  </Text>
+                </View>
+
+                <TouchableOpacity
+                  style={[styles.editBtn, { borderColor: colors.accent }]}
+                  onPress={() => setShowPreview(false)}
+                  disabled={submitting}
+                >
+                  <Text style={[styles.editBtnText, { color: colors.accent }]}>✏️ Edit Information</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={[styles.submitBtn, { backgroundColor: colors.accent }, submitting && { opacity: 0.6 }]}
+                  onPress={handleConfirmSubmit}
+                  disabled={submitting}
+                >
+                  <Text style={styles.submitBtnText}>{submitting ? 'Submitting...' : '✅ Proceed with Submission'}</Text>
+                </TouchableOpacity>
+              </View>
+            )}
           </ScrollView>
 
           {showSuccess && (
@@ -303,6 +372,25 @@ export default function RegistrationFormModal({ visible, programId, onClose }: P
       </KeyboardAvoidingView>
       </View>
     </Modal>
+  );
+}
+
+function PreviewRow({
+  label,
+  value,
+  colors,
+  last,
+}: {
+  label: string;
+  value: string;
+  colors: { text: string; subtext: string; divider: string };
+  last?: boolean;
+}) {
+  return (
+    <View style={[styles.previewRow, !last && { borderBottomColor: colors.divider, borderBottomWidth: 1 }]}>
+      <Text style={[styles.previewRowLabel, { color: colors.subtext }]}>{label}</Text>
+      <Text style={[styles.previewRowValue, { color: colors.text }]}>{value}</Text>
+    </View>
   );
 }
 
@@ -342,6 +430,25 @@ const styles = StyleSheet.create({
   indiaPhoneCode: { paddingHorizontal: 14, height: '100%', justifyContent: 'center', borderRightWidth: 1 },
   indiaPhoneCodeText: { fontSize: 15, fontWeight: '600' },
   indiaPhoneInput: { flex: 1, paddingHorizontal: 14, fontSize: 15, height: '100%' },
+  previewCard: { borderRadius: 12, borderWidth: 1, padding: 16, marginBottom: 16, elevation: 2 },
+  previewCardTitle: { fontSize: 16, fontWeight: 'bold', marginBottom: 12 },
+  previewRow: { paddingVertical: 10 },
+  previewRowLabel: { fontSize: 11, fontWeight: '600', textTransform: 'uppercase', marginBottom: 3 },
+  previewRowValue: { fontSize: 15 },
+  warningBox: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 8,
+    backgroundColor: 'rgba(245,158,11,0.15)',
+    borderLeftWidth: 4,
+    borderLeftColor: '#f59e0b',
+    borderRadius: 10,
+    padding: 12,
+    marginBottom: 20,
+  },
+  warningText: { flex: 1, fontSize: 13, lineHeight: 19 },
+  editBtn: { borderRadius: 14, padding: 15, alignItems: 'center', marginBottom: 12, borderWidth: 2 },
+  editBtnText: { fontWeight: 'bold', fontSize: 15 },
   submitBtn: { borderRadius: 14, padding: 16, alignItems: 'center', marginTop: 8, marginBottom: 24, elevation: 4 },
   submitBtnText: { color: '#fff', fontWeight: 'bold', fontSize: 16 },
   successOverlay: {

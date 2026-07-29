@@ -1,4 +1,5 @@
 import { Ionicons } from '@expo/vector-icons';
+import * as Clipboard from 'expo-clipboard';
 import { collection, onSnapshot } from 'firebase/firestore';
 import { forwardRef, ReactNode, useEffect, useImperativeHandle, useMemo, useState } from 'react';
 import { Alert, Linking, Modal, ScrollView, StyleSheet, TouchableOpacity, View } from 'react-native';
@@ -20,7 +21,9 @@ import {
   formatPhoneDisplay,
   formatTimestampIST,
   permanentlyDeleteRegistration,
+  phoneToDocId,
   ProgramId,
+  PROGRAMS,
   Registration,
   RegistrationStatus,
   restoreRegistration,
@@ -159,17 +162,17 @@ const RegistrationsAdmin = forwardRef<AdminScreenHandle, Props>(({ programId }, 
 
   const handleDelete = () => {
     if (!selected) return;
-    Alert.alert('Delete Registration', `Delete registration for "${selected.name}"?`, [
+    Alert.alert('Reject Registration', `Reject registration for "${selected.name}"?`, [
       { text: 'Cancel', style: 'cancel' },
       {
-        text: 'Delete',
+        text: 'Reject',
         style: 'destructive',
         onPress: async () => {
           setBusy(true);
           try {
             await softDeleteRegistration(programId, selected.id);
             setSelectedId(null);
-            showToast('🗑 Registration deleted');
+            showToast('🚫 Registration rejected');
           } catch {
             Alert.alert('Error', 'Could not delete. Check internet.');
           }
@@ -217,6 +220,26 @@ const RegistrationsAdmin = forwardRef<AdminScreenHandle, Props>(({ programId }, 
     );
   };
 
+  const handleCopyDetails = async () => {
+    if (!selected) return;
+    const statusLabel = selected.isDeleted ? STATUS_OPTION_LABELS.deleted : STATUS_LABELS[selected.status];
+    const age = computeAge(selected.dob);
+    const lines = [
+      `Program Name: ${PROGRAMS[programId].label}`,
+      `Registration Date & Time: ${formatTimestampIST(selected.createdAt)}`,
+      `Name: ${selected.name}`,
+      `Age: ${age !== null ? `${age} years` : '—'}`,
+      `Date of Birth: ${formatDateDisplay(selected.dob)}`,
+      `Gender: ${selected.gender}`,
+      `Mobile Number: ${formatPhoneDisplay(selected.phone)}`,
+      `Place: ${selected.place}`,
+      `Church Details: ${selected.churchDetails || '-'}`,
+      `Registration Status: ${statusLabel}`,
+    ];
+    await Clipboard.setStringAsync(lines.join('\n'));
+    showToast('📋 Registration details copied');
+  };
+
   if (selected) {
     return (
       <View style={{ flex: 1 }}>
@@ -225,7 +248,10 @@ const RegistrationsAdmin = forwardRef<AdminScreenHandle, Props>(({ programId }, 
           <TouchableOpacity onPress={() => setSelectedId(null)}>
             <Text style={styles.formBackText}>← Back</Text>
           </TouchableOpacity>
-          <Text style={styles.formTitle}>Registration Details</Text>
+          <Text style={[styles.formTitle, { flex: 1 }]}>Registration Details</Text>
+          <TouchableOpacity onPress={handleCopyDetails} style={styles.copyBtn}>
+            <Ionicons name="copy-outline" size={20} color="#0f3460" />
+          </TouchableOpacity>
         </View>
 
         <View style={styles.detailCard}>
@@ -237,9 +263,20 @@ const RegistrationsAdmin = forwardRef<AdminScreenHandle, Props>(({ programId }, 
             label="Mobile Number"
             value={formatPhoneDisplay(selected.phone)}
             rightElement={
-              <TouchableOpacity style={styles.callBtn} onPress={() => Linking.openURL(`tel:${selected.phone}`)}>
-                <Ionicons name="call" size={16} color="#fff" />
-              </TouchableOpacity>
+              <View style={styles.contactBtnRow}>
+                <TouchableOpacity
+                  style={[styles.contactBtn, { backgroundColor: '#25d366' }]}
+                  onPress={() => Linking.openURL(`https://wa.me/${phoneToDocId(selected.phone)}`)}
+                >
+                  <Ionicons name="logo-whatsapp" size={16} color="#fff" />
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.contactBtn, { backgroundColor: '#22c55e' }]}
+                  onPress={() => Linking.openURL(`tel:${selected.phone}`)}
+                >
+                  <Ionicons name="call" size={16} color="#fff" />
+                </TouchableOpacity>
+              </View>
             }
           />
           <DetailRow label="Place" value={selected.place} />
@@ -272,7 +309,7 @@ const RegistrationsAdmin = forwardRef<AdminScreenHandle, Props>(({ programId }, 
             </View>
 
             <TouchableOpacity style={[styles.deleteBtn, busy && { opacity: 0.6 }]} disabled={busy} onPress={handleDelete}>
-              <Text style={styles.deleteBtnText}>🗑 Delete Registration</Text>
+              <Text style={styles.deleteBtnText}>🚫 Reject Registration</Text>
             </TouchableOpacity>
           </>
         ) : (
@@ -323,7 +360,7 @@ const RegistrationsAdmin = forwardRef<AdminScreenHandle, Props>(({ programId }, 
               onPress={() => { setFilterMode(mode); setSearch(''); }}
             >
               <Text style={[styles.segmentBtnText, filterMode === mode && styles.segmentBtnTextActive]}>
-                {mode === 'registered' ? 'Registered' : mode === 'accepted' ? 'Accepted' : 'Deleted'}
+                {mode === 'registered' ? 'Registered' : mode === 'accepted' ? 'Accepted' : 'Rejected'}
               </Text>
             </TouchableOpacity>
           ))}
@@ -479,6 +516,7 @@ const styles = StyleSheet.create({
   cardStatusText: { fontSize: 12, color: '#666' },
   cardChevron: { fontSize: 26, color: '#ccc', marginLeft: 8, fontWeight: '300' },
   formHeader: { flexDirection: 'row', alignItems: 'center', gap: 16, marginBottom: 20 },
+  copyBtn: { backgroundColor: '#e8f0fe', width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center' },
   formBackText: { color: '#0f3460', fontWeight: '600', fontSize: 15 },
   formTitle: { fontSize: 17, fontWeight: 'bold', color: '#1a1a2e' },
   detailCard: { backgroundColor: '#fff', borderRadius: 14, padding: 16, marginBottom: 20, elevation: 3 },
@@ -486,7 +524,8 @@ const styles = StyleSheet.create({
   detailLabel: { fontSize: 11, fontWeight: '600', color: '#888', textTransform: 'uppercase', marginBottom: 2 },
   detailValueRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   detailValue: { fontSize: 15, color: '#1a1a2e' },
-  callBtn: { backgroundColor: '#22c55e', width: 32, height: 32, borderRadius: 16, alignItems: 'center', justifyContent: 'center' },
+  contactBtnRow: { flexDirection: 'row', gap: 8 },
+  contactBtn: { width: 32, height: 32, borderRadius: 16, alignItems: 'center', justifyContent: 'center' },
   formLabel: { fontSize: 13, fontWeight: '600', color: '#555', marginBottom: 8 },
   deleteBtn: { backgroundColor: '#fdecea', borderRadius: 10, padding: 14, alignItems: 'center', marginTop: 4, marginBottom: 24 },
   deleteBtnText: { color: '#c62828', fontWeight: '600', fontSize: 14 },

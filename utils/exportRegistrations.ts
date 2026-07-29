@@ -18,11 +18,13 @@ import {
 export type ExportFormat = 'excel' | 'pdf';
 export type ExportStatusOption = 'all' | 'registered' | 'accepted' | 'deleted';
 
+// Note: the 'deleted' key is the internal ExportStatusOption/data-model name
+// (matches Registration.isDeleted) — only its display label is "Rejected".
 export const STATUS_OPTION_LABELS: Record<ExportStatusOption, string> = {
   all: 'All',
   registered: 'Registered',
   accepted: 'Accepted',
-  deleted: 'Deleted',
+  deleted: 'Rejected',
 };
 
 export interface ExportDataSets {
@@ -51,9 +53,9 @@ const COLUMNS = [
 function buildSections(status: ExportStatusOption, dataSets: ExportDataSets): Section[] {
   if (status === 'all') {
     return [
-      { title: 'Registered', registrations: dataSets.registered },
-      { title: 'Accepted', registrations: dataSets.accepted },
-      { title: 'Deleted', registrations: dataSets.deleted },
+      { title: STATUS_OPTION_LABELS.registered, registrations: dataSets.registered },
+      { title: STATUS_OPTION_LABELS.accepted, registrations: dataSets.accepted },
+      { title: STATUS_OPTION_LABELS.deleted, registrations: dataSets.deleted },
     ].filter(section => section.registrations.length > 0);
   }
   return [{ title: STATUS_OPTION_LABELS[status], registrations: dataSets[status] }];
@@ -70,7 +72,7 @@ export function countForStatus(status: ExportStatusOption, dataSets: ExportDataS
 // follow-up/accepted) — isDeleted is a separate flag — so the displayed
 // status must check isDeleted first rather than printing the raw field.
 function displayStatusLabel(r: Registration): string {
-  return r.isDeleted ? 'Deleted' : STATUS_LABELS[r.status];
+  return r.isDeleted ? STATUS_OPTION_LABELS.deleted : STATUS_LABELS[r.status];
 }
 
 function buildRows(registrations: Registration[]): (string | number)[][] {

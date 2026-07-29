@@ -7,7 +7,15 @@ import {
   setDoc,
   updateDoc,
 } from 'firebase/firestore';
-import { isValidPhoneNumber, parsePhoneNumberFromString } from 'libphonenumber-js';
+// Note: imported from 'libphonenumber-js/mobile' rather than the package
+// root. The root export uses trimmed-down metadata that can only confirm a
+// digit sequence matches *some* valid pattern for a country, without being
+// able to classify its type — so numbers that aren't real mobile numbers
+// (e.g. '+911234567890', '+911111111111') were incorrectly passing
+// validation. The /mobile entry point carries the metadata needed to
+// classify number type, so it correctly rejects those while still accepting
+// genuine mobile numbers.
+import { isValidPhoneNumber, parsePhoneNumberFromString } from 'libphonenumber-js/mobile';
 import { db } from '../firebaseConfig';
 
 export const PROGRAMS = {
