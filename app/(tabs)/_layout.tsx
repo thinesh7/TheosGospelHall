@@ -8,6 +8,7 @@ import { Text } from '../../components/AppText';
 import LiveNowPopup from '../../components/LiveNowPopup';
 import { checkCurrentlyLive, LiveNowInfo } from '../../utils/liveStatus';
 import { useTheme } from '../../utils/ThemeContext';
+import { useIsUpdateGateActive } from '../../utils/UpdateGateContext';
 import BibleScreen from './bible';
 import ContactScreen from './contact';
 import HomeScreen from './index';
@@ -34,10 +35,17 @@ export default function TabLayout() {
 
   const [liveNowInfo, setLiveNowInfo] = useState<LiveNowInfo | null>(null);
   const [autoPlayLive, setAutoPlayLive] = useState<{ videoId: string; title: string } | null>(null);
+  const isUpdateGateActive = useIsUpdateGateActive();
 
+  // Skip the live-stream check entirely while a mandatory/optional update
+  // prompt is blocking the app — otherwise the Live Now popup could appear
+  // stacked over (or under) the update screen and its "Watch" button would
+  // navigate into the Videos tab out from under a supposedly-blocking
+  // update. Re-runs once the gate clears (e.g. the user hits Skip).
   useEffect(() => {
+    if (isUpdateGateActive) return;
     checkCurrentlyLive().then(info => { if (info) setLiveNowInfo(info); });
-  }, []);
+  }, [isUpdateGateActive]);
 
   const handleWatchLiveNow = () => {
     if (!liveNowInfo) return;
@@ -124,7 +132,7 @@ export default function TabLayout() {
       </View>
 
       <LiveNowPopup
-        visible={!!liveNowInfo}
+        visible={!!liveNowInfo && !isUpdateGateActive}
         onWatch={handleWatchLiveNow}
         onSkip={() => setLiveNowInfo(null)}
       />

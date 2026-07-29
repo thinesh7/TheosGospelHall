@@ -22,6 +22,7 @@ import {
   setupTokenRefreshListener,
 } from '@/utils/notifications';
 import { ThemeProvider as AppThemeProvider } from '@/utils/ThemeContext';
+import { UpdateGateProvider } from '@/utils/UpdateGateContext';
 
 export const unstable_settings = { anchor: '(tabs)' };
 
@@ -151,8 +152,15 @@ export default function RootLayout() {
 
   if (appState === 'checking' || !versionCheckDone) return null;
 
+  // Mandatory blocks the app outright; optional blocks only while its popup
+  // is up (cleared the moment the user hits Skip) — either way, screens
+  // further down the tree (e.g. the tabs layout's live-stream check) must
+  // not run checks or show their own popups over/under the update prompt.
+  const isUpdateGateActive = updateStatus === 'mandatory' || updateStatus === 'optional';
+
   return (
     <AppThemeProvider>
+      <UpdateGateProvider active={isUpdateGateActive}>
       <NavThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
         {appState === 'welcome' ? (
           <WelcomeSetupScreen onComplete={async () => {
@@ -183,6 +191,7 @@ export default function RootLayout() {
         )}
         <StatusBar style="auto" />
       </NavThemeProvider>
+      </UpdateGateProvider>
     </AppThemeProvider>
   );
 }
