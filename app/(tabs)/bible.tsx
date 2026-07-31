@@ -13,7 +13,9 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Text } from '../../components/AppText';
+import { useResponsiveColumns } from '../../components/layout/ResponsiveGrid';
 import ThemeToggleIcon from '../../components/ThemeToggleIcon';
+import { CONTENT_MAX_WIDTH } from '../../constants/layout';
 import { BIBLE_VERSIONS, BOOKS } from '../../utils/bibleData';
 import { getMemBibleSettings, saveBibleSettings } from '../../utils/bibleSettings';
 import { useTheme } from '../../utils/ThemeContext';
@@ -62,6 +64,11 @@ export default function BibleScreen() {
   const [fontSize, setFontSize] = useState(() => getMemBibleSettings().fontSize);
   const [isBilingual, setIsBilingual] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
+  // Fixed 2/5-column grids only ever suited a phone-width screen — scale up
+  // on tablet/desktop instead of leaving a phone-narrow grid stranded in a
+  // much wider viewport.
+  const bookColumns = useResponsiveColumns({ mobile: 2, tablet: 3, desktop: 5 });
+  const chapterColumns = useResponsiveColumns({ mobile: 5, tablet: 7, desktop: 10 });
 
   const isEnglish = BIBLE_VERSIONS.find(v => v.code === version)?.lang === 'English';
 
@@ -116,7 +123,7 @@ export default function BibleScreen() {
             <Ionicons name="settings-outline" size={22} color={c.text} />
           </TouchableOpacity>
         </View>
-        <ScrollView contentContainerStyle={{ padding: 16 }}>
+        <ScrollView contentContainerStyle={{ padding: 16, width: '100%', maxWidth: CONTENT_MAX_WIDTH, alignSelf: 'center' }}>
           <TouchableOpacity style={[styles.bilingualCard, { backgroundColor: c.accent }]} onPress={() => {
             setIsBilingual(true); setVersion(getMemBibleSettings().primaryVersion);
             setView('books'); setTestament('OT');
@@ -191,9 +198,9 @@ export default function BibleScreen() {
           </TouchableOpacity>
         </View>
         <FlatList
-          data={books} key={`books-${testament}`}
-          keyExtractor={item => item.id.toString()} numColumns={2}
-          contentContainerStyle={{ padding: 12 }}
+          data={books} key={`books-${testament}-${bookColumns}`}
+          keyExtractor={item => item.id.toString()} numColumns={bookColumns}
+          contentContainerStyle={{ padding: 12, width: '100%', maxWidth: CONTENT_MAX_WIDTH, alignSelf: 'center' }}
           renderItem={({ item }) => (
             <TouchableOpacity style={[styles.bookCard, { backgroundColor: c.surface }]}
               onPress={() => { setSelectedBook(item); setView('chapters'); }}>
@@ -225,9 +232,9 @@ export default function BibleScreen() {
           </TouchableOpacity>
         </View>
         <FlatList
-          data={chapters} key={`chapters-${selectedBook.id}`}
-          keyExtractor={item => item.toString()} numColumns={5}
-          contentContainerStyle={{ padding: 12 }}
+          data={chapters} key={`chapters-${selectedBook.id}-${chapterColumns}`}
+          keyExtractor={item => item.toString()} numColumns={chapterColumns}
+          contentContainerStyle={{ padding: 12, width: '100%', maxWidth: CONTENT_MAX_WIDTH, alignSelf: 'center' }}
           renderItem={({ item }) => (
             <TouchableOpacity style={[styles.chapterBtn, { backgroundColor: c.surface }]} onPress={() => openChapter(selectedBook, item)}>
               <Text style={[styles.chapterText, { color: c.accent }]}>{item}</Text>

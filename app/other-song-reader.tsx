@@ -4,12 +4,12 @@ import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
-  Dimensions,
   FlatList,
   Modal,
   Share,
   StyleSheet,
   TouchableOpacity,
+  useWindowDimensions,
   View,
 } from 'react-native';
 import { OtherSongIndexEntry, getOtherSongById, getOtherSongsIndex } from '../utils/otherSongsSync';
@@ -20,8 +20,6 @@ import { TextInput } from '../components/AppTextInput';
 import ThemeToggleIcon from '../components/ThemeToggleIcon';
 
 const FAVORITES_KEY = 'tgh_other_song_favorites';
-
-const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 
 const MIN_FONT_SIZE = 14;
 const MAX_FONT_SIZE = 28;
@@ -72,6 +70,10 @@ export default function OtherSongReaderScreen() {
   const router = useRouter();
   const { songNumber } = useLocalSearchParams<{ songNumber: string }>();
   const { colors: c, theme, cycleTheme } = useTheme();
+  // Reactive (not Dimensions.get() frozen at module scope) so page sizing
+  // and horizontal-paging math stay correct across resize/rotation on any
+  // platform, not just whatever the screen happened to be at first mount.
+  const { width, height } = useWindowDimensions();
   const flatListRef = useRef<FlatList>(null);
   const lyricsMapRef = useRef<LyricsMap>({});
   const loadingSetRef = useRef<Set<string>>(new Set());
@@ -193,7 +195,7 @@ export default function OtherSongReaderScreen() {
 
     if (!lyrics) {
       return (
-        <View style={[styles.page, { backgroundColor: c.bg, alignItems: 'center', justifyContent: 'center' }]}>
+        <View style={[styles.page, { width, height, backgroundColor: c.bg, alignItems: 'center', justifyContent: 'center' }]}>
           <ActivityIndicator size="large" color={c.accent} />
         </View>
       );
@@ -204,7 +206,7 @@ export default function OtherSongReaderScreen() {
     const text = language === 'english' ? capitalizeParagraphs(deduped) : deduped;
 
     return (
-      <View style={[styles.page, { backgroundColor: c.bg }]}>
+      <View style={[styles.page, { width, height, backgroundColor: c.bg }]}>
         <FlatList
           data={[text]}
           keyExtractor={() => item.songId}
@@ -277,10 +279,10 @@ export default function OtherSongReaderScreen() {
         pagingEnabled
         showsHorizontalScrollIndicator={false}
         initialScrollIndex={currentIndex}
-        getItemLayout={(_, index) => ({ length: SCREEN_WIDTH, offset: SCREEN_WIDTH * index, index })}
+        getItemLayout={(_, index) => ({ length: width, offset: width * index, index })}
         onScrollToIndexFailed={() => {}}
         onMomentumScrollEnd={e => {
-          const index = Math.round(e.nativeEvent.contentOffset.x / SCREEN_WIDTH);
+          const index = Math.round(e.nativeEvent.contentOffset.x / width);
           setCurrentIndex(index);
         }}
       />
@@ -439,7 +441,7 @@ export default function OtherSongReaderScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
-  page: { width: SCREEN_WIDTH, height: SCREEN_HEIGHT },
+  page: {},
   topBar: {
     flexDirection: 'row',
     alignItems: 'center',

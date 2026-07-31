@@ -1,13 +1,13 @@
 import { forwardRef, useEffect, useImperativeHandle, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
-  Alert,
   FlatList,
   StyleSheet,
   Switch,
   TouchableOpacity,
   View,
 } from 'react-native';
+import { useAppDialog } from '../AppDialog';
 import { Text } from '../AppText';
 import { TextInput } from '../AppTextInput';
 import {
@@ -43,6 +43,7 @@ const EMPTY_FORM: EditForm = {
 };
 
 const OtherSongsAdmin = forwardRef<AdminScreenHandle, {}>((_props, ref) => {
+  const dialog = useAppDialog();
   const [songsIndex, setSongsIndex] = useState<OtherSongIndexEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [syncing, setSyncing] = useState(false);
@@ -102,7 +103,7 @@ const OtherSongsAdmin = forwardRef<AdminScreenHandle, {}>((_props, ref) => {
     const full = await getOtherSongById(entry.songId);
     setLoadingSong(false);
     if (!full) {
-      Alert.alert('Error', 'Could not load song details.');
+      dialog.alert('Error', 'Could not load song details.');
       return;
     }
     setForm({
@@ -119,19 +120,19 @@ const OtherSongsAdmin = forwardRef<AdminScreenHandle, {}>((_props, ref) => {
 
   const save = async () => {
     if (!form.title.trim()) {
-      Alert.alert('Required', 'Title (Tamil) cannot be empty.');
+      dialog.alert('Required', 'Title (Tamil) cannot be empty.');
       return;
     }
     if (!form.titleEnglish.trim()) {
-      Alert.alert('Required', 'Title (English) cannot be empty.');
+      dialog.alert('Required', 'Title (English) cannot be empty.');
       return;
     }
     if (!form.lyricsTamil.trim()) {
-      Alert.alert('Required', 'Tamil lyrics cannot be empty.');
+      dialog.alert('Required', 'Tamil lyrics cannot be empty.');
       return;
     }
     if (!form.lyricsEnglish.trim()) {
-      Alert.alert('Required', 'English lyrics cannot be empty.');
+      dialog.alert('Required', 'English lyrics cannot be empty.');
       return;
     }
     setSaving(true);
@@ -155,10 +156,10 @@ const OtherSongsAdmin = forwardRef<AdminScreenHandle, {}>((_props, ref) => {
         });
       }
       await loadIndex();
-      Alert.alert('✅ Saved', form.songId ? 'Song updated successfully.' : 'Song added successfully.');
+      dialog.alert('✅ Saved', form.songId ? 'Song updated successfully.' : 'Song added successfully.');
       setShowForm(false);
     } catch (e) {
-      Alert.alert('Error', 'Could not save. Check internet.');
+      dialog.alert('Error', 'Could not save. Check internet.');
     }
     setSaving(false);
   };
@@ -174,7 +175,7 @@ const OtherSongsAdmin = forwardRef<AdminScreenHandle, {}>((_props, ref) => {
       setSongsIndex(prev =>
         prev.map(s => (s.songId === entry.songId ? { ...s, isVisible: entry.isVisible } : s))
       );
-      Alert.alert('Error', 'Could not update visibility.');
+      dialog.alert('Error', 'Could not update visibility.');
     }
   };
 

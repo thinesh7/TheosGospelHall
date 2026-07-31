@@ -2,7 +2,8 @@ import { Ionicons } from '@expo/vector-icons';
 import * as Clipboard from 'expo-clipboard';
 import { collection, onSnapshot } from 'firebase/firestore';
 import { forwardRef, ReactNode, useEffect, useImperativeHandle, useMemo, useState } from 'react';
-import { Alert, Linking, Modal, ScrollView, StyleSheet, TouchableOpacity, View } from 'react-native';
+import { Linking, Modal, ScrollView, StyleSheet, TouchableOpacity, View } from 'react-native';
+import { useAppDialog } from '../AppDialog';
 import { Text } from '../AppText';
 import { TextInput } from '../AppTextInput';
 import { Toast, useToast } from '../Toast';
@@ -44,6 +45,7 @@ interface Props {
 }
 
 const RegistrationsAdmin = forwardRef<AdminScreenHandle, Props>(({ programId }, ref) => {
+  const dialog = useAppDialog();
   const [registrations, setRegistrations] = useState<Registration[]>([]);
   const [loading, setLoading] = useState(true);
   const [filterMode, setFilterMode] = useState<FilterMode>('registered');
@@ -117,7 +119,7 @@ const RegistrationsAdmin = forwardRef<AdminScreenHandle, Props>(({ programId }, 
 
   const handleExport = async (status: ExportStatusOption, format: ExportFormat) => {
     if (countForStatus(status, exportDataSets) === 0) {
-      Alert.alert('No Records', 'No records available to export.');
+      dialog.alert('No Records', 'No records available to export.');
       return;
     }
     setExporting(format);
@@ -126,7 +128,7 @@ const RegistrationsAdmin = forwardRef<AdminScreenHandle, Props>(({ programId }, 
       showToast('✅ Export ready — choose where to save');
     } catch (e: any) {
       console.error('Export failed:', e);
-      Alert.alert('Export Failed', `Could not generate the export file.\n\n${e?.message ?? String(e)}`);
+      dialog.alert('Export Failed', `Could not generate the export file.\n\n${e?.message ?? String(e)}`);
     }
     setExporting(null);
   };
@@ -134,10 +136,10 @@ const RegistrationsAdmin = forwardRef<AdminScreenHandle, Props>(({ programId }, 
   const chooseFormat = (status: ExportStatusOption) => {
     setShowExportMenu(false);
     if (countForStatus(status, exportDataSets) === 0) {
-      Alert.alert('No Records', 'No records available to export.');
+      dialog.alert('No Records', 'No records available to export.');
       return;
     }
-    Alert.alert(
+    dialog.alert(
       'Export Format',
       `Export ${STATUS_OPTION_LABELS[status]} registrations as:`,
       [
@@ -155,14 +157,14 @@ const RegistrationsAdmin = forwardRef<AdminScreenHandle, Props>(({ programId }, 
       await updateRegistrationStatus(programId, selected.id, status);
       showToast(`✅ Status changed to ${STATUS_LABELS[status]}`);
     } catch {
-      Alert.alert('Error', 'Could not update status. Check internet.');
+      dialog.alert('Error', 'Could not update status. Check internet.');
     }
     setBusy(false);
   };
 
   const handleDelete = () => {
     if (!selected) return;
-    Alert.alert('Reject Registration', `Reject registration for "${selected.name}"?`, [
+    dialog.alert('Reject Registration', `Reject registration for "${selected.name}"?`, [
       { text: 'Cancel', style: 'cancel' },
       {
         text: 'Reject',
@@ -174,7 +176,7 @@ const RegistrationsAdmin = forwardRef<AdminScreenHandle, Props>(({ programId }, 
             setSelectedId(null);
             showToast('🚫 Registration rejected');
           } catch {
-            Alert.alert('Error', 'Could not delete. Check internet.');
+            dialog.alert('Error', 'Could not delete. Check internet.');
           }
           setBusy(false);
         },
@@ -190,13 +192,13 @@ const RegistrationsAdmin = forwardRef<AdminScreenHandle, Props>(({ programId }, 
         setSelectedId(null);
         showToast(`♻️ Restored as ${STATUS_LABELS[status]}`);
       })
-      .catch(() => Alert.alert('Error', 'Could not restore. Check internet.'))
+      .catch(() => dialog.alert('Error', 'Could not restore. Check internet.'))
       .finally(() => setBusy(false));
   };
 
   const handlePermanentDelete = () => {
     if (!selected) return;
-    Alert.alert(
+    dialog.alert(
       'Permanently Delete',
       `Permanently delete the registration for "${selected.name}"? This cannot be undone.`,
       [
@@ -211,7 +213,7 @@ const RegistrationsAdmin = forwardRef<AdminScreenHandle, Props>(({ programId }, 
               setSelectedId(null);
               showToast('🗑 Permanently deleted');
             } catch {
-              Alert.alert('Error', 'Could not delete. Check internet.');
+              dialog.alert('Error', 'Could not delete. Check internet.');
             }
             setBusy(false);
           },

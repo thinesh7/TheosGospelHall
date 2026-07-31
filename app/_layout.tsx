@@ -8,6 +8,7 @@ import { useEffect, useRef, useState } from 'react';
 import { AppState as RNAppState, Linking } from 'react-native';
 import 'react-native-reanimated';
 
+import { AppDialogProvider } from '@/components/AppDialog';
 import ForceUpdateScreen from '@/components/ForceUpdateScreen';
 import OptionalUpdateModal from '@/components/OptionalUpdateModal';
 import WelcomeSetupScreen from '@/components/WelcomeSetupScreen';
@@ -177,6 +178,7 @@ export default function RootLayout() {
 
   return (
     <AppThemeProvider>
+      <AppDialogProvider>
       <UpdateGateProvider active={isUpdateGateActive}>
       <NavThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
         {appState === 'welcome' ? (
@@ -209,6 +211,7 @@ export default function RootLayout() {
         <StatusBar style="auto" />
       </NavThemeProvider>
       </UpdateGateProvider>
+      </AppDialogProvider>
     </AppThemeProvider>
   );
 }

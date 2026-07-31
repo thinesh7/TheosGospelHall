@@ -1,5 +1,6 @@
 import { forwardRef, useEffect, useImperativeHandle, useState } from 'react';
-import { Alert, ScrollView, StyleSheet, TouchableOpacity, View } from 'react-native';
+import { ScrollView, StyleSheet, TouchableOpacity, View } from 'react-native';
+import { useAppDialog } from '../AppDialog';
 import { Text } from '../AppText';
 import { TextInput } from '../AppTextInput';
 import {
@@ -34,6 +35,7 @@ interface Props {
 }
 
 const RegistrationManagementAdmin = forwardRef<AdminScreenHandle, Props>(({ programId }, ref) => {
+  const dialog = useAppDialog();
   const [form, setForm] = useState<FormState>(INITIAL_STATE);
 
   useImperativeHandle(ref, () => ({
@@ -69,7 +71,7 @@ const RegistrationManagementAdmin = forwardRef<AdminScreenHandle, Props>(({ prog
     // edited) while the registration is Open, so there's nothing to validate
     // in that case.
     if (form.status === 'closed' && !message) {
-      Alert.alert('Required', 'Please enter a closed message to show users while registration is closed.');
+      dialog.alert('Required', 'Please enter a closed message to show users while registration is closed.');
       return;
     }
     setField('saving', true);
@@ -80,9 +82,9 @@ const RegistrationManagementAdmin = forwardRef<AdminScreenHandle, Props>(({ prog
         hideProgram: form.hideProgram,
       });
       await loadProgram();
-      Alert.alert('✅ Saved!', `${PROGRAMS[programId].label} registration settings have been saved.`);
+      dialog.alert('✅ Saved!', `${PROGRAMS[programId].label} registration settings have been saved.`);
     } catch {
-      Alert.alert('Error', 'Could not save. Check internet.');
+      dialog.alert('Error', 'Could not save. Check internet.');
       setField('saving', false);
     }
   };
@@ -96,7 +98,7 @@ const RegistrationManagementAdmin = forwardRef<AdminScreenHandle, Props>(({ prog
 
   const handleHideProgram = () => {
     if (form.hideProgram) return;
-    Alert.alert(
+    dialog.alert(
       'Warning',
       'This will hide the program from all users on the Home screen. Users will no longer be able to view or access this program.\n\nDo you want to continue?',
       [

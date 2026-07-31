@@ -1,7 +1,6 @@
 import { forwardRef, useEffect, useImperativeHandle, useState } from 'react';
 import {
   ActivityIndicator,
-  Alert,
   FlatList,
   StyleSheet,
   Switch,
@@ -10,6 +9,7 @@ import {
 } from 'react-native';
 import { getAuth } from 'firebase/auth';
 import { doc, serverTimestamp, updateDoc } from 'firebase/firestore';
+import { useAppDialog } from '../AppDialog';
 import { Text } from '../AppText';
 import { TextInput } from '../AppTextInput';
 import { db } from '../../firebaseConfig';
@@ -48,6 +48,7 @@ function maskKey(key: string): string {
 }
 
 const ApiKeysAdmin = forwardRef<AdminScreenHandle, {}>((_props, ref) => {
+  const dialog = useAppDialog();
   const [keys, setKeys] = useState<BackupApiKey[]>([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
@@ -114,11 +115,11 @@ const ApiKeysAdmin = forwardRef<AdminScreenHandle, {}>((_props, ref) => {
 
   const save = async () => {
     if (!form.label.trim()) {
-      Alert.alert('Required', 'Please enter a label.');
+      dialog.alert('Required', 'Please enter a label.');
       return;
     }
     if (!form.key.trim()) {
-      Alert.alert('Required', 'Please enter an API key.');
+      dialog.alert('Required', 'Please enter an API key.');
       return;
     }
     setSaving(true);
@@ -140,17 +141,17 @@ const ApiKeysAdmin = forwardRef<AdminScreenHandle, {}>((_props, ref) => {
       }
       const fresh = await getCachedApiKeys();
       setKeys(fresh);
-      Alert.alert('✅ Saved', form.id ? 'API key updated.' : 'API key added.');
+      dialog.alert('✅ Saved', form.id ? 'API key updated.' : 'API key added.');
       setShowForm(false);
       checkAllStatuses(fresh);
     } catch (e) {
-      Alert.alert('Error', `Could not save: ${(e as any)?.message || 'Unknown error'}`);
+      dialog.alert('Error', `Could not save: ${(e as any)?.message || 'Unknown error'}`);
     }
     setSaving(false);
   };
 
   const removeKey = (item: BackupApiKey) => {
-    Alert.alert('Delete API Key', `Delete "${item.label}"?`, [
+    dialog.alert('Delete API Key', `Delete "${item.label}"?`, [
       { text: 'Cancel', style: 'cancel' },
       {
         text: 'Delete', style: 'destructive',
@@ -158,9 +159,9 @@ const ApiKeysAdmin = forwardRef<AdminScreenHandle, {}>((_props, ref) => {
           try {
             await deleteApiKey(item.id);
             setKeys(prev => prev.filter(k => k.id !== item.id));
-            Alert.alert('Deleted', 'API key removed.');
+            dialog.alert('Deleted', 'API key removed.');
           } catch (e) {
-            Alert.alert('Error', 'Could not delete.');
+            dialog.alert('Error', 'Could not delete.');
           }
         },
       },
@@ -173,7 +174,7 @@ const ApiKeysAdmin = forwardRef<AdminScreenHandle, {}>((_props, ref) => {
       await setApiKeyActive(item.id, !item.isActive);
     } catch (e) {
       setKeys(prev => prev.map(k => (k.id === item.id ? { ...k, isActive: item.isActive } : k)));
-      Alert.alert('Error', 'Could not update.');
+      dialog.alert('Error', 'Could not update.');
     }
   };
 

@@ -2,7 +2,8 @@ import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { collection, onSnapshot, orderBy, query } from 'firebase/firestore';
 import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from 'react';
-import { ActivityIndicator, Alert, Animated, Linking, StyleSheet, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, Animated, Linking, StyleSheet, TouchableOpacity, View } from 'react-native';
+import { useAppDialog } from './AppDialog';
 import { Text } from './AppText';
 import RegistrationFormModal from './RegistrationFormModal';
 import { db } from '../firebaseConfig';
@@ -50,6 +51,7 @@ const EVENT_LABELS: any = { service: 'Service', bible: 'Bible Study', prayer: 'P
 
 const UpcomingEvents = forwardRef((props: {}, ref) => {
   const { colors } = useTheme();
+  const dialog = useAppDialog();
   const [meetings, setMeetings] = useState<SpecialMeeting[]>([]);
   const [loading, setLoading] = useState(true);
   const [regProgram, setRegProgram] = useState<ProgramId | null>(null);
@@ -95,9 +97,14 @@ const UpcomingEvents = forwardRef((props: {}, ref) => {
   }, []);
 
   useEffect(() => {
+    // useNativeDriver: true (not false) — this only animates `transform`
+    // (translateX/rotate), which the native driver fully supports, so there's
+    // no need to keep this one animation running on the JS thread for the
+    // entire lifetime of the Home screen while the other three loops above
+    // already run off it.
     Animated.loop(Animated.sequence([
-      Animated.timing(shimmerAnim, { toValue: 1, duration: 1800, useNativeDriver: false }),
-      Animated.timing(shimmerAnim, { toValue: -1, duration: 0, useNativeDriver: false }),
+      Animated.timing(shimmerAnim, { toValue: 1, duration: 1800, useNativeDriver: true }),
+      Animated.timing(shimmerAnim, { toValue: -1, duration: 0, useNativeDriver: true }),
       Animated.delay(1200),
     ])).start();
   }, []);
@@ -120,7 +127,7 @@ const UpcomingEvents = forwardRef((props: {}, ref) => {
   const handleRegisterPress = (programId: ProgramId) => {
     const config = regManagement[programId];
     if (config.status === 'closed') {
-      Alert.alert('Registrations Closed', config.closedMessage);
+      dialog.alert('Registrations Closed', config.closedMessage);
       return;
     }
     setRegProgram(programId);
@@ -143,7 +150,7 @@ const UpcomingEvents = forwardRef((props: {}, ref) => {
       setLoading(false);
       AsyncStorage.setItem(CACHE_KEY, JSON.stringify(all)).catch(() => {});
     }, (error) => {
-      console.log('Firestore listener error:', error);
+      console.error('Firestore listener error:', error);
       setLoading(false);
     });
 

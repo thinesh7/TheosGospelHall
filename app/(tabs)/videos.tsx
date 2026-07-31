@@ -20,11 +20,13 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
-import YoutubePlayer from 'react-native-youtube-iframe';
+import YoutubePlayer from '@/components/video/YoutubePlayer';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Text } from '../../components/AppText';
 import { TextInput } from '../../components/AppTextInput';
 import VideoMaintenancePage from '../../components/VideoMaintenancePage';
+import { CONTENT_MAX_WIDTH, spacing, WIDE_CONTENT_MAX_WIDTH } from '../../constants/layout';
+import { useBreakpoint } from '../../hooks/use-breakpoint';
 import { useTheme } from '../../utils/ThemeContext';
 import { getCachedLivePlaylists, syncLivePlaylists } from '../../utils/livePlaylistsSync';
 import { subscribeVideoMaintenance } from '../../utils/videoMaintenance';
@@ -38,6 +40,10 @@ const SONGS_PLAYLIST_ID = 'PLKm9fFPbrDuw';
 const FALLBACK_LIVE_IDS = ['PLZISpWbe8RUidyhPJNs5xa8-WOnHq-NLj'];
 const PROGRESS_STORAGE_KEY = 'video_progress_v1';
 const COMPLETION_THRESHOLD = 0.98;
+// Ideal card width the desktop grid tries to hit — numColumns is derived by
+// dividing the available width by this and clamping to [3, 5] columns.
+const TARGET_CARD_WIDTH = 300;
+const GRID_GAP = spacing.lg;
 
 const getWindow = () => Dimensions.get('window');
 const { width: SW } = getWindow();
@@ -517,7 +523,13 @@ interface VideoModalProps {
 function VideoModal({ visible, videoId, title, isLive, onClose }: VideoModalProps) {
   const { width, height } = useWindowDimensions();
   const { colors } = useTheme();
-  const isLandscape = width > height;
+  const { isMobile } = useBreakpoint();
+  // Fullscreen-landscape treatment (hides title/actions, fills the screen
+  // edge-to-edge) is meant for a phone rotated sideways — gated to mobile so
+  // a desktop/tablet browser window (which is always wider than tall) isn't
+  // mistaken for that case, which previously made the player try to render
+  // wider than the viewport itself (height * 16/9 exceeding window width).
+  const isLandscape = isMobile && width > height;
   const [playerReady, setPlayerReady] = useState(false);
   const [isInFullscreen, setIsInFullscreen] = useState(false);
   const [playing, setPlaying] = useState(false);
@@ -690,8 +702,11 @@ function VideoModal({ visible, videoId, title, isLive, onClose }: VideoModalProp
           </View>
         )}
         {progressLoaded && (() => {
-          const videoH = isLandscape ? height : width * 9 / 16;
-          const videoW = isLandscape ? height * 16 / 9 : width;
+          // Math.min caps the player at CONTENT_MAX_WIDTH on tablet/desktop
+          // (a no-op on mobile, where width is already well under that cap)
+          // instead of stretching it across the full browser window.
+          const videoW = isLandscape ? height * 16 / 9 : Math.min(width, CONTENT_MAX_WIDTH);
+          const videoH = isLandscape ? height : videoW * 9 / 16;
           return (
             <View style={{ width: videoW, height: videoH }}>
               <YoutubePlayer
@@ -771,14 +786,34 @@ interface SongItemProps {
   onFullscreenToggle: () => void;
 }
 
+// Shared by SongItem and ShortsPlayerItemInner: sizes the full-screen
+// "theater" stage for a portrait (Shorts-style) video. Mobile keeps the
+// exact previous full-bleed-phone-screen behavior. Desktop/tablet renders a
+// centered, sensibly-sized portrait panel instead of treating the whole
+// (much wider, much shorter) browser window as if it were an oversized
+// phone screen held in portrait — the previous width/height-swap heuristic
+// (min/max of Dimensions.get('screen')) produced a container far taller
+// than the real viewport on desktop, which is what caused the video title
+// to render mid-page and the layout to overflow/scroll oddly.
+function useStagePlayerSize() {
+  const { width, height } = useWindowDimensions();
+  const { isMobile } = useBreakpoint();
+  if (isMobile) {
+    const w = Math.min(width, height);
+    const h = Math.max(width, height);
+    return { containerW: w, containerH: h, videoW: w, videoH: w * 9 / 16 };
+  }
+  const maxVideoH = height - 140; // leaves room for the title/actions below
+  const videoW = Math.min(420, width * 0.9, (maxVideoH * 9) / 16);
+  const videoH = (videoW * 16) / 9;
+  return { containerW: width, containerH: height, videoW, videoH };
+}
+
 function SongItem({ item, index, isActive, playerReady, progressLoaded, colors, onReady, onChangeState, playerRef, showResume, onResume, onStartOver, fsTransitionRef, isFullscreenRef, loadError, onRetry, onPlayerError, onFullscreenToggle }: SongItemProps) {
   const videoId = item?.snippet?.resourceId?.videoId;
   const title = item?.snippet?.title || '';
-  const dimsRef = useRef(Dimensions.get('window'));
-  const videoH = dimsRef.current.width * 9 / 16;
-  const videoW = dimsRef.current.width;
-  const containerW = dimsRef.current.width;
-  const containerH = dimsRef.current.height;
+  const { containerW, containerH, videoW, videoH } = useStagePlayerSize();
+  const { isTabletUp } = useBreakpoint();
   const mountedRef = useRef(true);
   useEffect(() => () => { mountedRef.current = false; }, []);
 
@@ -797,7 +832,7 @@ function SongItem({ item, index, isActive, playerReady, progressLoaded, colors, 
   }, [fsTransitionRef, isFullscreenRef, onFullscreenToggle]);
 
   return (
-    <View style={{ width: containerW, height: containerH, backgroundColor: '#000', justifyContent: 'center' }}>
+    <View style={{ width: containerW, height: containerH, backgroundColor: '#000', justifyContent: 'center', alignItems: 'center' }}>
       {(!playerReady || !progressLoaded) && isActive && (
         <View style={[StyleSheet.absoluteFillObject, { backgroundColor: '#0a0a0a', justifyContent: 'center', alignItems: 'center', zIndex: 10 }]}>
           {loadError ? <PlayerErrorState onRetry={onRetry} /> : <VideoLoadingState accentColor={colors.accent} />}
@@ -816,7 +851,7 @@ function SongItem({ item, index, isActive, playerReady, progressLoaded, colors, 
             onChangeState={onChangeState}
             onFullScreenChange={onFullScreenChange}
             webViewProps={{ allowsInlineMediaPlayback: true, mediaPlaybackRequiresUserAction: false, allowsFullscreenVideo: true }}
-            initialPlayerParams={{ rel: 0, modestbranding: 1, controls: 1, mute: 1, playsinline: 1 }}
+            initialPlayerParams={{ rel: 0, modestbranding: 1, controls: 1, playsinline: 1 }}
           />
           {showResume && videoId && (
             <Image
@@ -844,6 +879,7 @@ function SongItem({ item, index, isActive, playerReady, progressLoaded, colors, 
 function SongsPlayer({ visible, songs, startIndex, onClose, onEndReached }: SongsPlayerProps) {
   const dims = useWindowDimensions();
   const { colors } = useTheme();
+  const { isTabletUp } = useBreakpoint();
   const insets = useSafeAreaInsets();
   const width = dims.width;
   const height = dims.height;
@@ -1073,18 +1109,42 @@ function SongsPlayer({ visible, songs, startIndex, onClose, onEndReached }: Song
           }}
         />
         <View style={styles.topRightRow}>
-          <TouchableOpacity style={styles.lockToggleBtn} onPress={() => setLocked(true)}>
-            <Ionicons name="lock-open-outline" size={24} color="#fff" />
-          </TouchableOpacity>
+          {/* Lock guards against accidental touch-swipe during playback —
+              meaningless with a mouse, so desktop/tablet only shows Close. */}
+          {!isTabletUp && (
+            <TouchableOpacity style={styles.lockToggleBtn} onPress={() => setLocked(true)}>
+              <Ionicons name="lock-open-outline" size={24} color="#fff" />
+            </TouchableOpacity>
+          )}
           <TouchableOpacity style={styles.roundIconBtn} onPress={onClose}>
             <Ionicons name="close" size={26} color="#fff" />
           </TouchableOpacity>
         </View>
-        {!showResume && (
+        {/* "Swipe to navigate" describes a touch gesture — desktop/tablet
+            gets click-to-advance arrow buttons instead, below. */}
+        {!showResume && !isTabletUp && (
           <View style={[styles.songsSwipeHint, { bottom: insets.bottom + 16 }]}>
             <Ionicons name="chevron-up" size={16} color="rgba(255,255,255,0.5)" />
             <Text style={styles.songsSwipeHintText}>Swipe to navigate</Text>
             <Ionicons name="chevron-down" size={16} color="rgba(255,255,255,0.5)" />
+          </View>
+        )}
+        {isTabletUp && (
+          <View style={styles.desktopSongNavColumn}>
+            <TouchableOpacity
+              style={styles.desktopSongNavBtn}
+              disabled={currentIndex === 0}
+              onPress={() => listRef.current?.scrollToIndex({ index: currentIndex - 1, animated: true })}
+            >
+              <Ionicons name="chevron-up" size={22} color={currentIndex === 0 ? 'rgba(255,255,255,0.3)' : '#fff'} />
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.desktopSongNavBtn}
+              disabled={currentIndex === songs.length - 1}
+              onPress={() => listRef.current?.scrollToIndex({ index: currentIndex + 1, animated: true })}
+            >
+              <Ionicons name="chevron-down" size={22} color={currentIndex === songs.length - 1 ? 'rgba(255,255,255,0.3)' : '#fff'} />
+            </TouchableOpacity>
           </View>
         )}
         <Animated.View pointerEvents="none" style={[StyleSheet.absoluteFillObject, { backgroundColor: '#000', opacity: fsOverlayOpacity, zIndex: 50 }]} />
@@ -1101,6 +1161,7 @@ function ShortsPlayerItemInner({ item, index, isActive, onEnd, onClose, total, o
   const videoId = item?.snippet?.resourceId?.videoId;
   const title = item?.snippet?.title ?? '';
   const { colors } = useTheme();
+  const { isTabletUp } = useBreakpoint();
   const insets = useSafeAreaInsets();
   const playerRef = useRef<any>(null);
   const mountedRef = useRef(true);
@@ -1108,16 +1169,7 @@ function ShortsPlayerItemInner({ item, index, isActive, onEnd, onClose, total, o
   const progressIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const loadTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const dimsRef = useRef((() => {
-    const s = Dimensions.get('screen');
-    const w = Math.min(s.width, s.height);
-    const h = Math.max(s.width, s.height);
-    return { width: w, height: h };
-  })());
-  const videoH = dimsRef.current.width * 9 / 16;
-  const videoW = dimsRef.current.width;
-  const containerW = dimsRef.current.width;
-  const containerH = dimsRef.current.height;
+  const { containerW, containerH, videoW, videoH } = useStagePlayerSize();
 
   useEffect(() => () => {
     mountedRef.current = false;
@@ -1199,7 +1251,7 @@ function ShortsPlayerItemInner({ item, index, isActive, onEnd, onClose, total, o
   }, []);
 
   return (
-    <View style={{ width: containerW, height: containerH, backgroundColor: '#000', justifyContent: 'center' }}>
+    <View style={{ width: containerW, height: containerH, backgroundColor: '#000', justifyContent: 'center', alignItems: 'center' }}>
       <StatusBar hidden />
       {(!shortReady || !progressLoaded) && (
         <View style={[StyleSheet.absoluteFillObject, { backgroundColor: '#0a0a0a', justifyContent: 'center', alignItems: 'center', zIndex: 10 }]}>
@@ -1269,7 +1321,7 @@ function ShortsPlayerItemInner({ item, index, isActive, onEnd, onClose, total, o
       <TouchableOpacity style={styles.modalClose} onPress={onClose}>
         <Ionicons name="close" size={26} color="#fff" />
       </TouchableOpacity>
-      {shortReady && (
+      {shortReady && !isTabletUp && (
         <View style={[styles.songsSwipeHint, { bottom: insets.bottom + 16 }]}>
           <Ionicons name="chevron-up" size={16} color="rgba(255,255,255,0.5)" />
           <Text style={styles.songsSwipeHintText}>Swipe to navigate</Text>
@@ -1288,6 +1340,15 @@ interface VideosScreenProps {
 
 function VideosScreenContent({ autoPlayLive, onAutoPlayLiveConsumed, isActive }: VideosScreenProps = {}) {
   const { colors } = useTheme();
+  const { isMobile, isTablet, isTabletUp, width: bpWidth } = useBreakpoint();
+  // Fluid column count for the video/song/live/category grids: 1 on mobile
+  // (unchanged), 2 on tablet, and a 3-5 column grid on desktop that scales
+  // with the actual available width instead of a single fixed count — a
+  // "true desktop" grid rather than a stretched single-column mobile list.
+  const numColumns = isMobile ? 1 : isTablet ? 2 : Math.max(3, Math.min(5, Math.round((Math.min(bpWidth, WIDE_CONTENT_MAX_WIDTH) - GRID_GAP * 2) / TARGET_CARD_WIDTH)));
+  const gridColumnProps = numColumns > 1
+    ? { numColumns, key: `grid-${numColumns}`, columnWrapperStyle: styles.columnWrapper }
+    : { numColumns: 1, key: 'grid-1' };
 
   const [activeTab, setActiveTab] = useState<Tab>('shorts');
   const [search, setSearch] = useState('');
@@ -1694,7 +1755,6 @@ function VideosScreenContent({ autoPlayLive, onAutoPlayLiveConsumed, isActive }:
   }, [playingShortId, handleShortEnd]);
 
   const VideoCard = ({ item }: any) => {
-    const { width: cardW } = useWindowDimensions();
     const videoId = item?.snippet?.resourceId?.videoId;
     const thumb = item?.snippet?.thumbnails?.medium?.url;
     const title = decodeHtml(item?.snippet?.title || '');
@@ -1702,9 +1762,12 @@ function VideosScreenContent({ autoPlayLive, onAutoPlayLiveConsumed, isActive }:
     const duration = item?.snippet?.duration || '';
     if (!videoId || !thumb) return null;
     return (
-      <TouchableOpacity style={[styles.card, { backgroundColor: colors.surface }]} onPress={() => openVideo(videoId, title)}>
+      <TouchableOpacity
+        style={[styles.card, { backgroundColor: colors.surface }, isTabletUp && [styles.cardDesktop, { borderColor: colors.divider }]]}
+        onPress={() => openVideo(videoId, title)}
+      >
         <View>
-          <Image source={{ uri: thumb }} style={[styles.thumb, { height: cardW * 0.52 }]} />
+          <Image source={{ uri: thumb }} style={styles.thumb} />
           {!!duration && (
             <View style={styles.durationBadge}>
               <Text style={styles.durationText}>{duration}</Text>
@@ -1720,7 +1783,6 @@ function VideosScreenContent({ autoPlayLive, onAutoPlayLiveConsumed, isActive }:
   };
 
   const SongCard = ({ item, index }: any) => {
-    const { width: cardW } = useWindowDimensions();
     const videoId = item?.snippet?.resourceId?.videoId;
     const thumb = item?.snippet?.thumbnails?.medium?.url;
     const title = decodeHtml(item?.snippet?.title || '');
@@ -1728,11 +1790,11 @@ function VideosScreenContent({ autoPlayLive, onAutoPlayLiveConsumed, isActive }:
     if (!videoId || !thumb) return null;
     return (
       <TouchableOpacity
-        style={[styles.card, { backgroundColor: colors.surface }]}
+        style={[styles.card, { backgroundColor: colors.surface }, isTabletUp && [styles.cardDesktop, { borderColor: colors.divider }]]}
         onPress={() => { setCurrentSongIndex(index); setSongsPlayerVisible(true); }}
       >
         <View>
-          <Image source={{ uri: thumb }} style={[styles.thumb, { height: cardW * 0.52 }]} />
+          <Image source={{ uri: thumb }} style={styles.thumb} />
           <View style={styles.songPlayOverlay}>
             <Ionicons name="musical-notes" size={20} color="#fff" />
           </View>
@@ -1765,7 +1827,6 @@ function VideosScreenContent({ autoPlayLive, onAutoPlayLiveConsumed, isActive }:
   };
 
   const LiveCard = ({ item }: any) => {
-    const { width: cardW } = useWindowDimensions();
     const videoId = item?.snippet?.resourceId?.videoId;
     const thumb = item?.snippet?.thumbnails?.medium?.url;
     const title = decodeHtml(item?.snippet?.title || '');
@@ -1782,9 +1843,12 @@ function VideosScreenContent({ autoPlayLive, onAutoPlayLiveConsumed, isActive }:
       openVideo(videoId, title, liveNow);
     };
     return (
-      <TouchableOpacity style={[styles.card, { backgroundColor: colors.surface }]} onPress={handlePress}>
+      <TouchableOpacity
+        style={[styles.card, { backgroundColor: colors.surface }, isTabletUp && [styles.cardDesktop, { borderColor: colors.divider }]]}
+        onPress={handlePress}
+      >
         <View>
-          <Image source={{ uri: thumb }} style={[styles.thumb, { height: cardW * 0.52 }]} />
+          <Image source={{ uri: thumb }} style={styles.thumb} />
           {isUpcoming ? (
             <View style={styles.scheduledBadge}>
               <Ionicons name="time" size={11} color="#fff" />
@@ -1808,12 +1872,14 @@ function VideosScreenContent({ autoPlayLive, onAutoPlayLiveConsumed, isActive }:
   };
 
   const CategoryCard = ({ item }: any) => {
-    const { width: cardW } = useWindowDimensions();
     if (!item?.id || !item?.thumbnail) return null;
     return (
-      <TouchableOpacity style={[styles.card, { backgroundColor: colors.surface }]} onPress={() => openCategory({ id: item.id, title: item.title, itemCount: item.itemCount })}>
+      <TouchableOpacity
+        style={[styles.card, { backgroundColor: colors.surface }, isTabletUp && [styles.cardDesktop, { borderColor: colors.divider }]]}
+        onPress={() => openCategory({ id: item.id, title: item.title, itemCount: item.itemCount })}
+      >
         <View>
-          <Image source={{ uri: item.thumbnail }} style={[styles.thumb, { height: cardW * 0.52 }]} />
+          <Image source={{ uri: item.thumbnail }} style={styles.thumb} />
         </View>
         <View style={styles.cardInfo}>
           <Text style={[styles.cardTitle, { color: colors.text }]} numberOfLines={2}>{item.title} ({item.itemCount})</Text>
@@ -1930,7 +1996,7 @@ function VideosScreenContent({ autoPlayLive, onAutoPlayLiveConsumed, isActive }:
       {isSearching && (
         searching
           ? <TabLoadingState tab="search" />
-          : <FlatList data={searchResults} keyExtractor={(_, i) => `sr${i}`} renderItem={({ item }) => <VideoCard item={item} />} contentContainerStyle={styles.list} ListEmptyComponent={<Text style={[styles.empty, { color: colors.subtext }]}>No results found</Text>} />
+          : <FlatList {...gridColumnProps} data={searchResults} keyExtractor={(_, i) => `sr${i}`} renderItem={({ item }) => <VideoCard item={item} />} contentContainerStyle={styles.list} ListEmptyComponent={<Text style={[styles.empty, { color: colors.subtext }]}>No results found</Text>} />
       )}
 
       {!isSearching && activeTab === 'shorts' && (
@@ -1942,25 +2008,25 @@ function VideosScreenContent({ autoPlayLive, onAutoPlayLiveConsumed, isActive }:
       {!isSearching && activeTab === 'videos' && (
         loadingVideos ? <TabLoadingState tab="videos" />
         : videosError ? <VideoErrorState onRetry={() => { setVideosLoaded(false); fetchVideos(); }} />
-        : <FlatList data={videos} keyExtractor={i => i.snippet.resourceId.videoId} refreshing={loadingVideos} onRefresh={() => fetchVideos('', true)} renderItem={({ item }) => <VideoCard item={item} />} contentContainerStyle={styles.list} ListEmptyComponent={<Text style={[styles.empty, { color: colors.subtext }]}>No videos found</Text>} ListFooterComponent={<LoadMore token={videosNextToken} loading={loadingMoreVideos} onPress={() => fetchVideos(videosNextToken)} />} />
+        : <FlatList {...gridColumnProps} data={videos} keyExtractor={i => i.snippet.resourceId.videoId} refreshing={loadingVideos} onRefresh={() => fetchVideos('', true)} renderItem={({ item }) => <VideoCard item={item} />} contentContainerStyle={styles.list} ListEmptyComponent={<Text style={[styles.empty, { color: colors.subtext }]}>No videos found</Text>} ListFooterComponent={<LoadMore token={videosNextToken} loading={loadingMoreVideos} onPress={() => fetchVideos(videosNextToken)} />} />
       )}
 
       {!isSearching && activeTab === 'songs' && (
         loadingSongs ? <TabLoadingState tab="songs" />
         : songsError ? <VideoErrorState onRetry={() => { setSongsLoaded(false); fetchSongs(); }} />
-        : <FlatList data={songs} keyExtractor={i => i.snippet.resourceId.videoId} refreshing={loadingSongs} onRefresh={() => fetchSongs('', true)} renderItem={({ item, index }) => <SongCard item={item} index={index} />} contentContainerStyle={styles.list} ListEmptyComponent={<Text style={[styles.empty, { color: colors.subtext }]}>No songs found</Text>} ListFooterComponent={<LoadMore token={songsNextToken} loading={loadingMoreSongs} onPress={() => fetchSongs(songsNextToken)} />} />
+        : <FlatList {...gridColumnProps} data={songs} keyExtractor={i => i.snippet.resourceId.videoId} refreshing={loadingSongs} onRefresh={() => fetchSongs('', true)} renderItem={({ item, index }) => <SongCard item={item} index={index} />} contentContainerStyle={styles.list} ListEmptyComponent={<Text style={[styles.empty, { color: colors.subtext }]}>No songs found</Text>} ListFooterComponent={<LoadMore token={songsNextToken} loading={loadingMoreSongs} onPress={() => fetchSongs(songsNextToken)} />} />
       )}
 
       {!isSearching && activeTab === 'live' && (
         loadingLive ? <TabLoadingState tab="live" />
         : liveError ? <VideoErrorState onRetry={() => { setLiveLoaded(false); loadLiveAndFetch(); }} />
-        : <FlatList data={liveVideos} keyExtractor={i => i.snippet.resourceId.videoId} refreshing={loadingLive} onRefresh={() => loadLiveAndFetch()} renderItem={({ item }) => <LiveCard item={item} />} contentContainerStyle={styles.list} ListEmptyComponent={<Text style={[styles.empty, { color: colors.subtext }]}>No live streams found</Text>} ListFooterComponent={hasMoreLive ? <TouchableOpacity style={[styles.loadMore, { backgroundColor: colors.accent }]} onPress={() => fetchLive(true)}>{loadingMoreLive ? <ActivityIndicator color="#fff" /> : <Text style={styles.loadMoreText}>Load More</Text>}</TouchableOpacity> : null} />
+        : <FlatList {...gridColumnProps} data={liveVideos} keyExtractor={i => i.snippet.resourceId.videoId} refreshing={loadingLive} onRefresh={() => loadLiveAndFetch()} renderItem={({ item }) => <LiveCard item={item} />} contentContainerStyle={styles.list} ListEmptyComponent={<Text style={[styles.empty, { color: colors.subtext }]}>No live streams found</Text>} ListFooterComponent={hasMoreLive ? <TouchableOpacity style={[styles.loadMore, { backgroundColor: colors.accent }]} onPress={() => fetchLive(true)}>{loadingMoreLive ? <ActivityIndicator color="#fff" /> : <Text style={styles.loadMoreText}>Load More</Text>}</TouchableOpacity> : null} />
       )}
 
       {!isSearching && activeTab === 'categories' && !selectedCategory && (
         loadingCategories ? <TabLoadingState tab="categories" />
         : categoriesError ? <VideoErrorState onRetry={() => { setCategoriesLoaded(false); fetchCategories(); }} />
-        : <FlatList data={categories} keyExtractor={i => i.id} refreshing={loadingCategories} onRefresh={() => fetchCategories('', true)} renderItem={({ item }) => <CategoryCard item={item} />} contentContainerStyle={styles.list} ListEmptyComponent={<Text style={[styles.empty, { color: colors.subtext }]}>No playlists found</Text>} ListFooterComponent={<LoadMore token={categoriesNextToken} loading={loadingMoreCategories} onPress={() => fetchCategories(categoriesNextToken)} />} />
+        : <FlatList {...gridColumnProps} data={categories} keyExtractor={i => i.id} refreshing={loadingCategories} onRefresh={() => fetchCategories('', true)} renderItem={({ item }) => <CategoryCard item={item} />} contentContainerStyle={styles.list} ListEmptyComponent={<Text style={[styles.empty, { color: colors.subtext }]}>No playlists found</Text>} ListFooterComponent={<LoadMore token={categoriesNextToken} loading={loadingMoreCategories} onPress={() => fetchCategories(categoriesNextToken)} />} />
       )}
 
       {!isSearching && activeTab === 'categories' && selectedCategory && (
@@ -1973,13 +2039,13 @@ function VideosScreenContent({ autoPlayLive, onAutoPlayLiveConsumed, isActive }:
       {!isSearching && activeTab === 'categories' && selectedCategory && (
         loadingCategoryVideos ? <TabLoadingState tab="videos" />
         : categoryVideosError ? <VideoErrorState onRetry={() => { setCategoryVideosLoaded(false); fetchCategoryVideos(selectedCategory.id, '', true); }} />
-        : <FlatList style={{ flex: 1 }} data={categoryVideos} keyExtractor={i => i.snippet.resourceId.videoId} refreshing={loadingCategoryVideos} onRefresh={() => fetchCategoryVideos(selectedCategory.id, '', true)} renderItem={({ item }) => <VideoCard item={item} />} contentContainerStyle={styles.list} ListEmptyComponent={<Text style={[styles.empty, { color: colors.subtext }]}>No videos found</Text>} ListFooterComponent={<LoadMore token={categoryVideosNextToken} loading={loadingMoreCategoryVideos} onPress={() => fetchCategoryVideos(selectedCategory.id, categoryVideosNextToken)} />} />
+        : <FlatList {...gridColumnProps} style={{ flex: 1 }} data={categoryVideos} keyExtractor={i => i.snippet.resourceId.videoId} refreshing={loadingCategoryVideos} onRefresh={() => fetchCategoryVideos(selectedCategory.id, '', true)} renderItem={({ item }) => <VideoCard item={item} />} contentContainerStyle={styles.list} ListEmptyComponent={<Text style={[styles.empty, { color: colors.subtext }]}>No videos found</Text>} ListFooterComponent={<LoadMore token={categoryVideosNextToken} loading={loadingMoreCategoryVideos} onPress={() => fetchCategoryVideos(selectedCategory.id, categoryVideosNextToken)} />} />
       )}
 
       {!isSearching && activeTab === 'all' && (
         loadingAll ? <TabLoadingState tab="all" />
         : allError ? <VideoErrorState onRetry={() => { setAllLoaded(false); fetchAll(); }} />
-        : <FlatList data={allVideos} keyExtractor={i => i.snippet.resourceId.videoId} refreshing={loadingAll} onRefresh={() => fetchAll('', true)} renderItem={({ item }) => <VideoCard item={item} />} contentContainerStyle={styles.list} ListEmptyComponent={<Text style={[styles.empty, { color: colors.subtext }]}>No videos found</Text>} ListFooterComponent={<LoadMore token={allNextToken} loading={loadingMoreAll} onPress={() => fetchAll(allNextToken)} />} />
+        : <FlatList {...gridColumnProps} data={allVideos} keyExtractor={i => i.snippet.resourceId.videoId} refreshing={loadingAll} onRefresh={() => fetchAll('', true)} renderItem={({ item }) => <VideoCard item={item} />} contentContainerStyle={styles.list} ListEmptyComponent={<Text style={[styles.empty, { color: colors.subtext }]}>No videos found</Text>} ListFooterComponent={<LoadMore token={allNextToken} loading={loadingMoreAll} onPress={() => fetchAll(allNextToken)} />} />
       )}
       </>
       )}
@@ -2014,9 +2080,24 @@ const styles = StyleSheet.create({
   tabsRow: { flexDirection: 'row', paddingHorizontal: 12, paddingTop: 4, paddingBottom: 10, gap: 8, alignItems: 'center' },
   tab: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 9, paddingHorizontal: 18, borderRadius: 20, elevation: 2, alignSelf: 'flex-start' },
   tabText: { fontSize: 13, fontWeight: '600' },
-  list: { padding: 12, paddingBottom: 100 },
-  card: { borderRadius: 12, marginBottom: 12, overflow: 'hidden', elevation: 3 },
-  thumb: { width: '100%', resizeMode: 'cover' },
+  // maxWidth/alignSelf keep the grid from stretching full-bleed across a
+  // wide desktop viewport — width:'100%' lets it still fill narrower
+  // (mobile/tablet) viewports up to that cap. WIDE_CONTENT_MAX_WIDTH (not
+  // the standard CONTENT_MAX_WIDTH) since a video/card grid benefits from
+  // more horizontal room than a text-reading column.
+  list: { padding: 12, paddingBottom: 100, width: '100%', maxWidth: WIDE_CONTENT_MAX_WIDTH, alignSelf: 'center' },
+  columnWrapper: { gap: GRID_GAP },
+  card: { flex: 1, borderRadius: 12, marginBottom: GRID_GAP, overflow: 'hidden', elevation: 3 },
+  // Desktop-only refinement: a flatter, bordered card (common in web grid
+  // UIs) instead of the mobile-native drop shadow, plus a pointer cursor as
+  // a hover affordance — applied conditionally so mobile stays pixel-for-
+  // pixel unchanged.
+  cardDesktop: { elevation: 0, borderRadius: 14, borderWidth: 1, cursor: 'pointer' } as any,
+  // aspectRatio (not a height computed from window width) so the thumbnail
+  // renders correctly regardless of the card's actual rendered width — e.g.
+  // the desktop web shell's sidebar means the content column is narrower
+  // than the raw window width, which a width-based height calc got wrong.
+  thumb: { width: '100%', aspectRatio: 16 / 9, resizeMode: 'cover' },
   cardInfo: { padding: 10 },
   cardTitle: { fontSize: 14, fontWeight: 'bold' },
   cardDate: { fontSize: 12, marginTop: 4 },
@@ -2044,9 +2125,13 @@ const styles = StyleSheet.create({
   shortsClose: { position: 'absolute', top: 50, right: 16, backgroundColor: 'rgba(0,0,0,0.5)', borderRadius: 20, padding: 6, zIndex: 10 },
   songsSwipeHint: { position: 'absolute', alignSelf: 'center', flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: 'rgba(255,255,255,0.15)', borderRadius: 20, paddingHorizontal: 16, paddingVertical: 8 },
   songsSwipeHintText: { color: 'rgba(255,255,255,0.9)', fontSize: 12, fontWeight: '600' },
-  videoModal: { flex: 1, backgroundColor: '#000', justifyContent: 'center', paddingTop: 10 },
+  // Desktop/tablet replacement for the touch "swipe to navigate" hint —
+  // click-to-advance prev/next column, vertically centered on the right edge.
+  desktopSongNavColumn: { position: 'absolute', right: 24, top: '50%', marginTop: -52, gap: 12 },
+  desktopSongNavBtn: { backgroundColor: 'rgba(255,255,255,0.15)', borderRadius: 22, width: 44, height: 44, alignItems: 'center', justifyContent: 'center', cursor: 'pointer' } as any,
+  videoModal: { flex: 1, backgroundColor: '#000', justifyContent: 'center', alignItems: 'center', paddingTop: 10 },
   videoModalLandscape: { justifyContent: 'center', alignItems: 'center' },
-  videoModalTitle: { color: '#fff', fontSize: 15, fontWeight: '600', padding: 20, lineHeight: 22 },
+  videoModalTitle: { color: '#fff', fontSize: 15, fontWeight: '600', padding: 20, lineHeight: 22, width: '100%', maxWidth: 700, alignSelf: 'center' },
   modalClose: { position: 'absolute', top: 50, right: 16, backgroundColor: 'rgba(0,0,0,0.5)', borderRadius: 20, padding: 8, zIndex: 10 },
   modalCloseLandscape: { top: 16, right: 16 },
   topRightRow: { position: 'absolute', top: 50, right: 16, flexDirection: 'row', gap: 10, zIndex: 10 },

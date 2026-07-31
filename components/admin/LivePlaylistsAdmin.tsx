@@ -1,7 +1,6 @@
 import { forwardRef, useEffect, useImperativeHandle, useState } from 'react';
 import {
   ActivityIndicator,
-  Alert,
   FlatList,
   StyleSheet,
   Switch,
@@ -10,6 +9,7 @@ import {
 } from 'react-native';
 import { getAuth } from 'firebase/auth';
 import { doc, serverTimestamp, updateDoc } from 'firebase/firestore';
+import { useAppDialog } from '../AppDialog';
 import { Text } from '../AppText';
 import { TextInput } from '../AppTextInput';
 import { db } from '../../firebaseConfig';
@@ -34,6 +34,7 @@ interface EditForm {
 const EMPTY_FORM: EditForm = { id: null, playlistId: '', label: '', isActive: true };
 
 const LivePlaylistsAdmin = forwardRef<AdminScreenHandle, {}>((_props, ref) => {
+  const dialog = useAppDialog();
   const [playlists, setPlaylists] = useState<LivePlaylist[]>([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
@@ -78,11 +79,11 @@ const LivePlaylistsAdmin = forwardRef<AdminScreenHandle, {}>((_props, ref) => {
 
   const save = async () => {
     if (!form.label.trim()) {
-      Alert.alert('Required', 'Please enter a label.');
+      dialog.alert('Required', 'Please enter a label.');
       return;
     }
     if (!form.playlistId.trim()) {
-      Alert.alert('Required', 'Please enter a playlist ID.');
+      dialog.alert('Required', 'Please enter a playlist ID.');
       return;
     }
     setSaving(true);
@@ -104,16 +105,16 @@ const LivePlaylistsAdmin = forwardRef<AdminScreenHandle, {}>((_props, ref) => {
       }
       const fresh = await getCachedLivePlaylists();
       setPlaylists(fresh);
-      Alert.alert('✅ Saved', form.id ? 'Playlist updated.' : 'Playlist added.');
+      dialog.alert('✅ Saved', form.id ? 'Playlist updated.' : 'Playlist added.');
       setShowForm(false);
     } catch (e) {
-      Alert.alert('Error', `Could not save: ${(e as any)?.message || 'Unknown error'}`);
+      dialog.alert('Error', `Could not save: ${(e as any)?.message || 'Unknown error'}`);
     }
     setSaving(false);
   };
 
   const deletePlaylist = (item: LivePlaylist) => {
-    Alert.alert('Delete Playlist', `Delete "${item.label}"?`, [
+    dialog.alert('Delete Playlist', `Delete "${item.label}"?`, [
       { text: 'Cancel', style: 'cancel' },
       {
         text: 'Delete', style: 'destructive',
@@ -121,9 +122,9 @@ const LivePlaylistsAdmin = forwardRef<AdminScreenHandle, {}>((_props, ref) => {
           try {
             await deleteLivePlaylist(item.id);
             setPlaylists(prev => prev.filter(p => p.id !== item.id));
-            Alert.alert('Deleted', 'Playlist removed.');
+            dialog.alert('Deleted', 'Playlist removed.');
           } catch (e) {
-            Alert.alert('Error', 'Could not delete.');
+            dialog.alert('Error', 'Could not delete.');
           }
         },
       },
@@ -136,7 +137,7 @@ const LivePlaylistsAdmin = forwardRef<AdminScreenHandle, {}>((_props, ref) => {
       await setLivePlaylistActive(item.id, !item.isActive);
     } catch (e) {
       setPlaylists(prev => prev.map(p => (p.id === item.id ? { ...p, isActive: item.isActive } : p)));
-      Alert.alert('Error', 'Could not update.');
+      dialog.alert('Error', 'Could not update.');
     }
   };
 

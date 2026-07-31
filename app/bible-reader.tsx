@@ -9,13 +9,13 @@ import {
   PanResponder,
   ScrollView,
   StyleSheet,
-  ToastAndroid,
   TouchableOpacity,
   View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Text } from '../components/AppText';
 import ThemeToggleIcon from '../components/ThemeToggleIcon';
+import { Toast, useToast } from '../components/Toast';
 import { BIBLE_ASSETS, BIBLE_VERSIONS, BOOKS, cleanText } from '../utils/bibleData';
 import { getMemBibleSettings, saveBibleSettings } from '../utils/bibleSettings';
 import { useTheme } from '../utils/ThemeContext';
@@ -219,6 +219,7 @@ export default function BibleReaderScreen() {
   }>();
   const { colors: c, theme, cycleTheme } = useTheme();
   const insets = useSafeAreaInsets();
+  const { message: toastMessage, opacity: toastOpacity, showToast } = useToast();
 
   const [selectedBook, setSelectedBook] = useState<any>(BOOKS.find(b => b.id === Number(params.bookId)));
   const [selectedChapter, setSelectedChapter] = useState(Number(params.chapter));
@@ -368,7 +369,7 @@ export default function BibleReaderScreen() {
     const bookName = isEnglish ? selectedBook?.name : selectedBook?.tamil;
     const copyText = `${bookName} ${selectedChapter}:${verseNum} - ${unavailable ? UNAVAILABLE_NOTE : cleanText(text)}`;
     await Clipboard.setStringAsync(copyText);
-    ToastAndroid.show('Verse copied!', ToastAndroid.SHORT);
+    showToast('Verse copied!');
   };
 
   const copySelectedVerses = async () => {
@@ -393,7 +394,7 @@ export default function BibleReaderScreen() {
     });
 
     await Clipboard.setStringAsync(blocks.join('\n\n'));
-    ToastAndroid.show(`${sorted.length} verse${sorted.length > 1 ? 's' : ''} copied!`, ToastAndroid.SHORT);
+    showToast(`${sorted.length} verse${sorted.length > 1 ? 's' : ''} copied!`);
     clearSelection();
   };
 
@@ -656,6 +657,8 @@ export default function BibleReaderScreen() {
           loadChapterData(book, 1, versionRef.current, isBilingual, secondaryVersionRef.current);
         }}
       />
+
+      <Toast message={toastMessage} opacity={toastOpacity} />
     </View>
   );
 }

@@ -1,5 +1,6 @@
 import { forwardRef, useEffect, useImperativeHandle, useState } from 'react';
-import { Alert, ScrollView, StyleSheet, TouchableOpacity, View } from 'react-native';
+import { ScrollView, StyleSheet, TouchableOpacity, View } from 'react-native';
+import { useAppDialog } from '../AppDialog';
 import { Text } from '../AppText';
 import {
   fetchVideoMaintenanceConfig,
@@ -23,6 +24,7 @@ const INITIAL_STATE: FormState = {
 };
 
 const VideoMaintenanceAdmin = forwardRef<AdminScreenHandle, {}>((_, ref) => {
+  const dialog = useAppDialog();
   const [form, setForm] = useState<FormState>(INITIAL_STATE);
 
   useImperativeHandle(ref, () => ({
@@ -53,7 +55,7 @@ const VideoMaintenanceAdmin = forwardRef<AdminScreenHandle, {}>((_, ref) => {
   // that a selected-but-unsaved change must not affect the Videos tab.
   const handleTurnOn = () => {
     if (form.enabled) return;
-    Alert.alert(
+    dialog.alert(
       'Enable Maintenance Mode?',
       'Users will not be able to access the Videos section while maintenance mode is enabled. Instead, they will see a maintenance page.\n\nDo you want to continue?',
       [
@@ -70,9 +72,9 @@ const VideoMaintenanceAdmin = forwardRef<AdminScreenHandle, {}>((_, ref) => {
     try {
       await saveVideoMaintenanceConfig(form.enabled);
       await loadConfig();
-      Alert.alert('✅ Saved!', 'Video maintenance settings have been saved.');
+      dialog.alert('✅ Saved!', 'Video maintenance settings have been saved.');
     } catch {
-      Alert.alert('Error', 'Could not save. Check internet.');
+      dialog.alert('Error', 'Could not save. Check internet.');
       setField('saving', false);
     }
   };

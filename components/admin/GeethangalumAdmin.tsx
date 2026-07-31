@@ -1,12 +1,12 @@
 import { forwardRef, useEffect, useImperativeHandle, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
-  Alert,
   FlatList,
   StyleSheet,
   TouchableOpacity,
   View,
 } from 'react-native';
+import { useAppDialog } from '../AppDialog';
 import { Text } from '../AppText';
 import { TextInput } from '../AppTextInput';
 import { SongIndexEntry, getSongById, getSongsIndex, syncSongs, updateGeethangalumSong } from '../../utils/songsSync';
@@ -21,6 +21,7 @@ interface EditForm {
 }
 
 const GeethangalumAdmin = forwardRef<AdminScreenHandle, {}>((_props, ref) => {
+  const dialog = useAppDialog();
   const [songsIndex, setSongsIndex] = useState<SongIndexEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [syncing, setSyncing] = useState(false);
@@ -74,7 +75,7 @@ const GeethangalumAdmin = forwardRef<AdminScreenHandle, {}>((_props, ref) => {
     const full = await getSongById(entry.songId);
     setLoadingSong(false);
     if (!full) {
-      Alert.alert('Error', 'Could not load song details.');
+      dialog.alert('Error', 'Could not load song details.');
       return;
     }
     setEditForm({
@@ -89,15 +90,15 @@ const GeethangalumAdmin = forwardRef<AdminScreenHandle, {}>((_props, ref) => {
   const save = async () => {
     if (!editForm) return;
     if (!editForm.title.trim()) {
-      Alert.alert('Required', 'Title cannot be empty.');
+      dialog.alert('Required', 'Title cannot be empty.');
       return;
     }
     if (!editForm.lyricsTamil.trim()) {
-      Alert.alert('Required', 'Tamil lyrics cannot be empty.');
+      dialog.alert('Required', 'Tamil lyrics cannot be empty.');
       return;
     }
     if (!editForm.lyricsEnglish.trim()) {
-      Alert.alert('Required', 'English lyrics cannot be empty.');
+      dialog.alert('Required', 'English lyrics cannot be empty.');
       return;
     }
     setSaving(true);
@@ -109,10 +110,10 @@ const GeethangalumAdmin = forwardRef<AdminScreenHandle, {}>((_props, ref) => {
       setSongsIndex(prev =>
         prev.map(s => (s.songId === editForm.songId ? { ...s, title: editForm.title } : s))
       );
-      Alert.alert('✅ Saved', 'Song updated successfully.');
+      dialog.alert('✅ Saved', 'Song updated successfully.');
       setEditForm(null);
     } catch (e) {
-      Alert.alert('Error', 'Could not save. Check internet.');
+      dialog.alert('Error', 'Could not save. Check internet.');
     }
     setSaving(false);
   };

@@ -1,6 +1,7 @@
 import Constants from 'expo-constants';
 import { forwardRef, useEffect, useImperativeHandle, useState } from 'react';
-import { Alert, Modal, ScrollView, StyleSheet, TouchableOpacity, View } from 'react-native';
+import { Modal, ScrollView, StyleSheet, TouchableOpacity, View } from 'react-native';
+import { useAppDialog } from '../AppDialog';
 import { Text } from '../AppText';
 import { TextInput } from '../AppTextInput';
 import {
@@ -28,6 +29,7 @@ const DEFAULT_NOTIFY_MESSAGE =
   '📲 🚀 A new update is available! ✨\n\n🌟 Update your TGH App from the Google Play Store and experience the latest enhancements.';
 
 const AppUpdateAdmin = forwardRef<AdminScreenHandle, {}>((_, ref) => {
+  const dialog = useAppDialog();
   const [latestVersion, setLatestVersion] = useState('');
   const [minimumRequiredVersion, setMinimumRequiredVersion] = useState('');
   // Tracks the version actually saved in Firestore (separate from the
@@ -76,23 +78,23 @@ const AppUpdateAdmin = forwardRef<AdminScreenHandle, {}>((_, ref) => {
     const minRequired = minimumRequiredVersion.trim();
 
     if (!latest || !minRequired) {
-      Alert.alert('Required', 'Please enter both the latest and minimum required versions.');
+      dialog.alert('Required', 'Please enter both the latest and minimum required versions.');
       return;
     }
     if (!isValidVersionFormat(latest)) {
-      Alert.alert('Invalid Format', 'Latest Version must be in the format number.number.number (e.g. 1.4.0).');
+      dialog.alert('Invalid Format', 'Latest Version must be in the format number.number.number (e.g. 1.4.0).');
       return;
     }
     if (!isValidVersionFormat(minRequired)) {
-      Alert.alert('Invalid Format', 'Minimum Required Version must be in the format number.number.number (e.g. 1.2.0).');
+      dialog.alert('Invalid Format', 'Minimum Required Version must be in the format number.number.number (e.g. 1.2.0).');
       return;
     }
     if (!androidStoreUrl.trim()) {
-      Alert.alert('Required', 'Please enter the Play Store URL.');
+      dialog.alert('Required', 'Please enter the Play Store URL.');
       return;
     }
     if (compareVersions(minRequired, latest) > 0) {
-      Alert.alert('Invalid Versions', 'Minimum Required Version cannot be higher than Latest Version.');
+      dialog.alert('Invalid Versions', 'Minimum Required Version cannot be higher than Latest Version.');
       return;
     }
     setSaving(true);
@@ -104,9 +106,9 @@ const AppUpdateAdmin = forwardRef<AdminScreenHandle, {}>((_, ref) => {
         androidStoreUrl: androidStoreUrl.trim(),
       });
       await loadConfig();
-      Alert.alert('✅ Saved!', 'App update settings have been saved.');
+      dialog.alert('✅ Saved!', 'App update settings have been saved.');
     } catch {
-      Alert.alert('Error', 'Could not save. Check internet.');
+      dialog.alert('Error', 'Could not save. Check internet.');
     }
     setSaving(false);
   };
@@ -119,7 +121,7 @@ const AppUpdateAdmin = forwardRef<AdminScreenHandle, {}>((_, ref) => {
   const handleSendNotify = async () => {
     const trimmed = notifyMessage.trim();
     if (!trimmed) {
-      Alert.alert('Required', 'Please enter a notification message.');
+      dialog.alert('Required', 'Please enter a notification message.');
       return;
     }
     setSendingNotify(true);
@@ -130,15 +132,15 @@ const AppUpdateAdmin = forwardRef<AdminScreenHandle, {}>((_, ref) => {
       });
       setShowNotifyModal(false);
       if (result.failedCount > 0) {
-        Alert.alert(
+        dialog.alert(
           'Partially Sent',
           `✅ ${result.successCount} delivered\n❌ ${result.failedCount} failed\n\nCheck Firebase → notificationLogs for details.`
         );
       } else {
-        Alert.alert('✅ Sent!', `Notification delivered to ${result.successCount} device${result.successCount === 1 ? '' : 's'}.`);
+        dialog.alert('✅ Sent!', `Notification delivered to ${result.successCount} device${result.successCount === 1 ? '' : 's'}.`);
       }
     } catch (e: any) {
-      Alert.alert('Error', e?.message || 'Could not send notification. Please try again.');
+      dialog.alert('Error', e?.message || 'Could not send notification. Please try again.');
     }
     setSendingNotify(false);
   };

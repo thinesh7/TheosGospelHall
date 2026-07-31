@@ -3,13 +3,13 @@ import { getAuth } from 'firebase/auth';
 import { addDoc, collection, deleteDoc, doc, getDocs, orderBy, query, serverTimestamp, setDoc, Timestamp, updateDoc } from 'firebase/firestore';
 import { forwardRef, useEffect, useImperativeHandle, useState } from 'react';
 import {
-  Alert,
   ScrollView,
   StyleSheet,
   Switch,
   TouchableOpacity,
   View,
 } from 'react-native';
+import { useAppDialog } from '../AppDialog';
 import { Text } from '../AppText';
 import { TextInput } from '../AppTextInput';
 import { db } from '../../firebaseConfig';
@@ -61,6 +61,7 @@ interface Props {
 
 
 const SpecialMeetingsAdmin = forwardRef<AdminScreenHandle, Props>(({ onEventsUpdated }, ref) => {
+  const dialog = useAppDialog();
   const [adminMeetings, setAdminMeetings] = useState<SpecialMeeting[]>([]);
   const [loadingAdmin, setLoadingAdmin] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -89,7 +90,7 @@ const SpecialMeetingsAdmin = forwardRef<AdminScreenHandle, Props>(({ onEventsUpd
       }));
       setAdminMeetings(list);
     } catch (e) {
-      Alert.alert('Error', 'Could not load meetings. Check internet.');
+      dialog.alert('Error', 'Could not load meetings. Check internet.');
     }
     setLoadingAdmin(false);
   };
@@ -118,7 +119,7 @@ const SpecialMeetingsAdmin = forwardRef<AdminScreenHandle, Props>(({ onEventsUpd
         .filter(d => d.token && typeof d.token === 'string' && d.token.startsWith('ExponentPushToken'));
 
       if (tokenDocs.length === 0) {
-        Alert.alert('No users', 'No registered devices found.');
+        dialog.alert('No users', 'No registered devices found.');
         return;
       }
 
@@ -196,13 +197,13 @@ const SpecialMeetingsAdmin = forwardRef<AdminScreenHandle, Props>(({ onEventsUpd
       });
 
       if (failedTickets.length > 0) {
-        Alert.alert(
+        dialog.alert(
           'Partially Sent',
           `✅ ${successTickets.length} delivered\n❌ ${failedTickets.length} failed\n\nCheck Firebase → notificationLogs for details.`
         );
       }
     } catch (e: any) {
-      Alert.alert('Error', `Could not send notifications.\n\n${e?.message ?? String(e)}`);
+      dialog.alert('Error', `Could not send notifications.\n\n${e?.message ?? String(e)}`);
     }
   };
 
@@ -235,10 +236,10 @@ const SpecialMeetingsAdmin = forwardRef<AdminScreenHandle, Props>(({ onEventsUpd
   };
 
   const saveMeeting = async () => {
-    if (!form.title.trim()) { Alert.alert('Required', 'Please enter a title.'); return; }
-    if (!form.date.trim()) { Alert.alert('Required', 'Please enter a start date.'); return; }
+    if (!form.title.trim()) { dialog.alert('Required', 'Please enter a title.'); return; }
+    if (!form.date.trim()) { dialog.alert('Required', 'Please enter a start date.'); return; }
     if (form.numberOfDays === 'multiple' && !form.endDate.trim()) {
-      Alert.alert('Required', 'Please enter an end date for multi-day events.');
+      dialog.alert('Required', 'Please enter an end date for multi-day events.');
       return;
     }
 
@@ -269,7 +270,7 @@ const SpecialMeetingsAdmin = forwardRef<AdminScreenHandle, Props>(({ onEventsUpd
       await refreshCache();
       setShowForm(false);
       if (form.isActive) {
-        Alert.alert(
+        dialog.alert(
           '✅ Saved!',
           isNew ? 'Meeting added. Send notification to all users?' : 'Meeting updated. Send notification to all users?',
           [
@@ -278,22 +279,22 @@ const SpecialMeetingsAdmin = forwardRef<AdminScreenHandle, Props>(({ onEventsUpd
               text: '📢 Send Notification',
               onPress: async () => {
                 await sendNotificationToAll(payload);
-                Alert.alert('✅ Sent!', 'Notification sent to all users.');
+                dialog.alert('✅ Sent!', 'Notification sent to all users.');
               },
             },
           ]
         );
       } else {
-        Alert.alert('✅ Saved!', editingId ? 'Meeting updated.' : 'Meeting added.');
+        dialog.alert('✅ Saved!', editingId ? 'Meeting updated.' : 'Meeting added.');
       }
     } catch (e) {
-      Alert.alert('Error', 'Could not save. Check internet.');
+      dialog.alert('Error', 'Could not save. Check internet.');
     }
     setSaving(false);
   };
 
   const deleteMeeting = (meeting: SpecialMeeting) => {
-    Alert.alert('Delete Meeting', `Delete "${meeting.title}"?`, [
+    dialog.alert('Delete Meeting', `Delete "${meeting.title}"?`, [
       { text: 'Cancel', style: 'cancel' },
       {
         text: 'Delete', style: 'destructive',
@@ -301,9 +302,9 @@ const SpecialMeetingsAdmin = forwardRef<AdminScreenHandle, Props>(({ onEventsUpd
           try {
             await deleteDoc(doc(db, 'events', meeting.id));
             await refreshCache();
-            Alert.alert('Deleted', 'Meeting removed.');
+            dialog.alert('Deleted', 'Meeting removed.');
           } catch (e) {
-            Alert.alert('Error', 'Could not delete.');
+            dialog.alert('Error', 'Could not delete.');
           }
         },
       },
@@ -320,7 +321,7 @@ const SpecialMeetingsAdmin = forwardRef<AdminScreenHandle, Props>(({ onEventsUpd
       });
       await refreshCache();
     } catch (e) {
-      Alert.alert('Error', 'Could not update.');
+      dialog.alert('Error', 'Could not update.');
     }
   };
 
@@ -370,13 +371,13 @@ const SpecialMeetingsAdmin = forwardRef<AdminScreenHandle, Props>(({ onEventsUpd
                     style={[styles.notifBtn, !meeting.isActive && { opacity: 0.4 }]}
                     disabled={!meeting.isActive}
                     onPress={() => {
-                      Alert.alert('📢 Send Notification', `Notify all users about "${meeting.title}"?`, [
+                      dialog.alert('📢 Send Notification', `Notify all users about "${meeting.title}"?`, [
                         { text: 'Cancel', style: 'cancel' },
                         {
                           text: 'Send',
                           onPress: async () => {
                             await sendNotificationToAll(meeting);
-                            Alert.alert('✅ Sent!', 'Notification sent to all users.');
+                            dialog.alert('✅ Sent!', 'Notification sent to all users.');
                           },
                         },
                       ]);

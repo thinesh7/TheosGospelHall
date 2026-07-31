@@ -1,19 +1,20 @@
 import { forwardRef, useEffect, useImperativeHandle, useState } from 'react';
 import {
   ActivityIndicator,
-  Alert,
   ScrollView,
   StyleSheet,
   TouchableOpacity,
   View,
 } from 'react-native';
 import { getAuth } from 'firebase/auth';
+import { useAppDialog } from '../AppDialog';
 import { Text } from '../AppText';
 import { TextInput } from '../AppTextInput';
 import { EMPTY_HOME_CONTENT, HomeContent, subscribeHomeContent, updateHomeContent } from '../../utils/homeContentSync';
 import { AdminScreenHandle } from './SpecialMeetingsAdmin';
 
 const HomeContentAdmin = forwardRef<AdminScreenHandle, {}>((_props, ref) => {
+  const dialog = useAppDialog();
   const [form, setForm] = useState<HomeContent>(EMPTY_HOME_CONTENT);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -34,20 +35,20 @@ const HomeContentAdmin = forwardRef<AdminScreenHandle, {}>((_props, ref) => {
     setForm(prev => ({ ...prev, [field]: val }));
 
   const save = async () => {
-    if (!form.pastorName.trim()) { Alert.alert('Required', 'Pastor Name cannot be empty.'); return; }
-    if (!form.pastorDesignation.trim()) { Alert.alert('Required', 'Designation cannot be empty.'); return; }
-    if (!form.aboutPastorEnglish.trim()) { Alert.alert('Required', 'About Pastor (English) cannot be empty.'); return; }
-    if (!form.aboutPastorTamil.trim()) { Alert.alert('Required', 'About Pastor (Tamil) cannot be empty.'); return; }
-    if (!form.aboutMinistryEnglish.trim()) { Alert.alert('Required', 'About Ministry (English) cannot be empty.'); return; }
-    if (!form.aboutMinistryTamil.trim()) { Alert.alert('Required', 'About Ministry (Tamil) cannot be empty.'); return; }
+    if (!form.pastorName.trim()) { dialog.alert('Required', 'Pastor Name cannot be empty.'); return; }
+    if (!form.pastorDesignation.trim()) { dialog.alert('Required', 'Designation cannot be empty.'); return; }
+    if (!form.aboutPastorEnglish.trim()) { dialog.alert('Required', 'About Pastor (English) cannot be empty.'); return; }
+    if (!form.aboutPastorTamil.trim()) { dialog.alert('Required', 'About Pastor (Tamil) cannot be empty.'); return; }
+    if (!form.aboutMinistryEnglish.trim()) { dialog.alert('Required', 'About Ministry (English) cannot be empty.'); return; }
+    if (!form.aboutMinistryTamil.trim()) { dialog.alert('Required', 'About Ministry (Tamil) cannot be empty.'); return; }
     setSaving(true);
     try {
       const currentUser = getAuth().currentUser?.email ?? 'unknown';
       const { lastModifiedTimestamp, ...payload } = form;
       await updateHomeContent({ ...payload, modifiedBy: currentUser } as any);
-      Alert.alert('✅ Saved', 'Home screen content updated. Changes will appear immediately for users.');
+      dialog.alert('✅ Saved', 'Home screen content updated. Changes will appear immediately for users.');
     } catch (e) {
-      Alert.alert('Error', 'Could not save. Check internet.');
+      dialog.alert('Error', 'Could not save. Check internet.');
     }
     setSaving(false);
   };

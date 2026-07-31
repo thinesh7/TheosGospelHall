@@ -1,8 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
-import DateTimePicker from '@react-native-community/datetimepicker';
-import { useRef, useState } from 'react';
+import { useState } from 'react';
 import {
-  Alert,
   KeyboardAvoidingView,
   Modal,
   Platform,
@@ -12,10 +10,12 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
-import PhoneInput from 'react-native-phone-number-input';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useAppDialog } from './AppDialog';
 import { Text } from './AppText';
 import { TextInput } from './AppTextInput';
+import DateField, { formatDateDisplay } from './fields/DateField';
+import PhoneField from './fields/PhoneField';
 import {
   DuplicateRegistrationError,
   Gender,
@@ -39,11 +39,7 @@ interface Props {
 const TODAY = new Date();
 const MIN_DOB_DATE = new Date();
 MIN_DOB_DATE.setFullYear(TODAY.getFullYear() - 120);
-
-function formatDobDisplay(date: Date | null): string {
-  if (!date) return '';
-  return date.toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' });
-}
+const DEFAULT_DOB_PICKER_DATE = new Date(TODAY.getFullYear() - 20, 0, 1);
 
 function toIsoDate(date: Date): string {
   const y = date.getFullYear();
@@ -54,13 +50,12 @@ function toIsoDate(date: Date): string {
 
 export default function RegistrationFormModal({ visible, programId, onClose }: Props) {
   const { theme, colors } = useTheme();
+  const dialog = useAppDialog();
   const insets = useSafeAreaInsets();
   const statusBarHeight = Platform.OS === 'android' ? (StatusBar.currentHeight ?? insets.top) : insets.top;
-  const phoneInputRef = useRef<PhoneInput>(null);
 
   const [name, setName] = useState('');
   const [dob, setDob] = useState<Date | null>(null);
-  const [showDatePicker, setShowDatePicker] = useState(false);
   const [gender, setGender] = useState<Gender | null>(null);
   const [phone, setPhone] = useState('');
   const [phoneDigits, setPhoneDigits] = useState('');
@@ -119,23 +114,17 @@ export default function RegistrationFormModal({ visible, programId, onClose }: P
     handleClose();
   };
 
-  const onChangeDob = (event: any, selectedDate?: Date) => {
-    if (Platform.OS === 'android') setShowDatePicker(false);
-    if (event.type === 'dismissed') return;
-    if (selectedDate) setDob(selectedDate);
-  };
-
   const handleContinue = () => {
     const dobIso = dob ? toIsoDate(dob) : '';
     const nameError = validateName(name);
-    if (nameError) { Alert.alert('Invalid Name', nameError); return; }
+    if (nameError) { dialog.alert('Invalid Name', nameError); return; }
     const dobError = validateDob(dobIso);
-    if (dobError) { Alert.alert('Invalid Date of Birth', dobError); return; }
-    if (!gender) { Alert.alert('Gender Required', 'Please select your gender.'); return; }
+    if (dobError) { dialog.alert('Invalid Date of Birth', dobError); return; }
+    if (!gender) { dialog.alert('Gender Required', 'Please select your gender.'); return; }
     const phoneError = isIndiaOnly ? validateIndianMobile(indiaDigits) : validatePhone(phone);
-    if (phoneError) { Alert.alert('Invalid Mobile Number', phoneError); return; }
+    if (phoneError) { dialog.alert('Invalid Mobile Number', phoneError); return; }
     const placeError = validatePlace(place);
-    if (placeError) { Alert.alert('Invalid Place', placeError); return; }
+    if (placeError) { dialog.alert('Invalid Place', placeError); return; }
 
     setShowPreview(true);
   };
@@ -158,9 +147,9 @@ export default function RegistrationFormModal({ visible, programId, onClose }: P
       setShowSuccess(true);
     } catch (e) {
       if (e instanceof DuplicateRegistrationError) {
-        Alert.alert('Already Registered', 'This mobile number has already been registered for this program.');
+        dialog.alert('Already Registered', 'This mobile number has already been registered for this program.');
       } else {
-        Alert.alert('Error', 'Could not submit your registration. Please check your internet connection and try again.');
+        dialog.alert('Error', 'Could not submit your registration. Please check your internet connection and try again.');
       }
     }
     setSubmitting(false);
@@ -213,29 +202,14 @@ export default function RegistrationFormModal({ visible, programId, onClose }: P
 
             <View style={styles.formField}>
               <Text style={[styles.formLabel, { color: colors.subtext }]}>Date of Birth *</Text>
-              <TouchableOpacity
-                style={[styles.formInput, { backgroundColor: colors.surfaceAlt, borderColor: colors.divider }]}
-                onPress={() => setShowDatePicker(true)}
-              >
-                <Text style={{ color: dob ? colors.text : colors.subtext, fontSize: 15 }}>
-                  {dob ? formatDobDisplay(dob) : 'Select your date of birth'}
-                </Text>
-              </TouchableOpacity>
-              {showDatePicker && (
-                <DateTimePicker
-                  value={dob ?? new Date(TODAY.getFullYear() - 20, 0, 1)}
-                  mode="date"
-                  display={Platform.OS === 'ios' ? 'spinner' : 'default'}
-                  maximumDate={TODAY}
-                  minimumDate={MIN_DOB_DATE}
-                  onChange={onChangeDob}
-                />
-              )}
-              {Platform.OS === 'ios' && showDatePicker && (
-                <TouchableOpacity style={[styles.doneBtn, { backgroundColor: colors.accent }]} onPress={() => setShowDatePicker(false)}>
-                  <Text style={styles.doneBtnText}>Done</Text>
-                </TouchableOpacity>
-              )}
+              <DateField
+                value={dob}
+                onChange={setDob}
+                minimumDate={MIN_DOB_DATE}
+                maximumDate={TODAY}
+                defaultDate={DEFAULT_DOB_PICKER_DATE}
+                placeholder="Select your date of birth"
+              />
             </View>
 
             <View style={styles.formField}>
@@ -275,20 +249,14 @@ export default function RegistrationFormModal({ visible, programId, onClose }: P
                   />
                 </View>
               ) : (
-                <PhoneInput
-                  key={formKey}
-                  ref={phoneInputRef}
-                  defaultCode="IN"
-                  layout="second"
-                  withDarkTheme={theme === 'dark'}
-                  onChangeFormattedText={setPhone}
-                  onChangeText={setPhoneDigits}
-                  onChangeCountry={country => setCallingCode(country.callingCode[0])}
-                  containerStyle={[styles.phoneContainer, { backgroundColor: colors.surfaceAlt, borderColor: colors.divider }]}
-                  textContainerStyle={[styles.phoneTextContainer, { backgroundColor: colors.surfaceAlt }]}
-                  textInputStyle={[styles.phoneTextInput, { color: colors.text }]}
-                  codeTextStyle={[styles.phoneCodeText, { color: colors.text }]}
-                  textInputProps={{ placeholderTextColor: colors.subtext }}
+                <PhoneField
+                  formKey={formKey}
+                  defaultCountry="IN"
+                  onChange={({ formattedNumber, nationalNumber, callingCode: code }) => {
+                    setPhone(formattedNumber);
+                    setPhoneDigits(nationalNumber);
+                    setCallingCode(code);
+                  }}
                 />
               )}
             </View>
@@ -330,7 +298,7 @@ export default function RegistrationFormModal({ visible, programId, onClose }: P
                   <Text style={[styles.previewCardTitle, { color: colors.accent }]}>Review Your Registration</Text>
                   <PreviewRow label="Program" value={programLabel} colors={colors} />
                   <PreviewRow label="Name" value={name} colors={colors} />
-                  <PreviewRow label="Date of Birth" value={dob ? formatDobDisplay(dob) : '—'} colors={colors} />
+                  <PreviewRow label="Date of Birth" value={dob ? formatDateDisplay(dob) : '—'} colors={colors} />
                   <PreviewRow label="Gender" value={gender ?? '—'} colors={colors} />
                   <PreviewRow label="Mobile Number" value={displayPhone || '—'} colors={colors} />
                   <PreviewRow label="Place" value={place} colors={colors} />
@@ -430,15 +398,9 @@ const styles = StyleSheet.create({
   formLabel: { fontSize: 13, fontWeight: '600', marginBottom: 6 },
   formInput: { borderRadius: 10, padding: 12, fontSize: 15, elevation: 2, borderWidth: 1, justifyContent: 'center' },
   formInputMulti: { minHeight: 80, textAlignVertical: 'top' },
-  doneBtn: { alignSelf: 'flex-end', borderRadius: 8, paddingHorizontal: 16, paddingVertical: 8, marginTop: 8 },
-  doneBtnText: { color: '#fff', fontWeight: '600' },
   segmentRow: { flexDirection: 'row', gap: 10 },
   segmentBtn: { flex: 1, paddingVertical: 12, borderRadius: 10, borderWidth: 1, alignItems: 'center' },
   segmentBtnText: { fontSize: 13, fontWeight: '600' },
-  phoneContainer: { width: '100%', height: 56, borderRadius: 10, borderWidth: 1, elevation: 2 },
-  phoneTextContainer: { borderRadius: 10, paddingVertical: 0 },
-  phoneTextInput: { fontSize: 15 },
-  phoneCodeText: { fontSize: 15 },
   indiaPhoneRow: { flexDirection: 'row', alignItems: 'center', height: 56, borderRadius: 10, borderWidth: 1, elevation: 2 },
   indiaPhoneCode: { paddingHorizontal: 14, height: '100%', justifyContent: 'center', borderRightWidth: 1 },
   indiaPhoneCodeText: { fontSize: 15, fontWeight: '600' },
