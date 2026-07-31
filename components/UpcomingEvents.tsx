@@ -2,10 +2,15 @@ import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { collection, onSnapshot, orderBy, query } from 'firebase/firestore';
 import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from 'react';
-import { ActivityIndicator, Animated, Linking, StyleSheet, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, Alert, Animated, Linking, StyleSheet, TouchableOpacity, View } from 'react-native';
 import { Text } from './AppText';
 import RegistrationFormModal from './RegistrationFormModal';
 import { db } from '../firebaseConfig';
+import {
+  DEFAULT_CLOSED_MESSAGE,
+  RegistrationManagementConfig,
+  subscribeRegistrationManagement,
+} from '../utils/registrationManagement';
 import { PROGRAMS, ProgramId } from '../utils/registrations';
 import { useTheme } from '../utils/ThemeContext';
 
@@ -48,6 +53,13 @@ const UpcomingEvents = forwardRef((props: {}, ref) => {
   const [meetings, setMeetings] = useState<SpecialMeeting[]>([]);
   const [loading, setLoading] = useState(true);
   const [regProgram, setRegProgram] = useState<ProgramId | null>(null);
+  // Defaults every program to 'open' until its live config arrives (or if it
+  // never existed, e.g. no admin has touched Manage Registrations yet) —
+  // registration must never be blocked by a missing/slow config fetch.
+  const [regManagement, setRegManagement] = useState<Record<ProgramId, RegistrationManagementConfig>>({
+    youth: { status: 'open', closedMessage: DEFAULT_CLOSED_MESSAGE, hideProgram: false },
+    academy: { status: 'open', closedMessage: DEFAULT_CLOSED_MESSAGE, hideProgram: false },
+  });
   const shakeAnim = useRef(new Animated.Value(0)).current;
   const pulseAnim = useRef(new Animated.Value(1)).current;
   const glowAnim = useRef(new Animated.Value(0.08)).current;
@@ -91,6 +103,28 @@ const UpcomingEvents = forwardRef((props: {}, ref) => {
   }, []);
 
   useImperativeHandle(ref, () => ({ reload: () => {} }));
+
+  useEffect(() => {
+    const unsubYouth = subscribeRegistrationManagement('youth', config =>
+      setRegManagement(prev => ({ ...prev, youth: config }))
+    );
+    const unsubAcademy = subscribeRegistrationManagement('academy', config =>
+      setRegManagement(prev => ({ ...prev, academy: config }))
+    );
+    return () => {
+      unsubYouth();
+      unsubAcademy();
+    };
+  }, []);
+
+  const handleRegisterPress = (programId: ProgramId) => {
+    const config = regManagement[programId];
+    if (config.status === 'closed') {
+      Alert.alert('Registrations Closed', config.closedMessage);
+      return;
+    }
+    setRegProgram(programId);
+  };
 
   useEffect(() => {
     AsyncStorage.getItem(CACHE_KEY).then(cached => {
@@ -297,6 +331,7 @@ const UpcomingEvents = forwardRef((props: {}, ref) => {
         </Text>
       </View>
 
+      {!regManagement.youth.hideProgram && (
       <View style={styles.youthCard}>
         <View style={styles.youthHeader}>
           <Ionicons name="flash" size={20} color="#fff" />
@@ -329,14 +364,18 @@ const UpcomingEvents = forwardRef((props: {}, ref) => {
           </View>
         ))}
         <TouchableOpacity
-          style={styles.youthRegisterBtn}
-          onPress={() => setRegProgram('youth')}
+          style={[styles.youthRegisterBtn, regManagement.youth.status === 'closed' && styles.registerBtnClosed]}
+          onPress={() => handleRegisterPress('youth')}
         >
           <Ionicons name="create-outline" size={18} color="#e63946" />
-          <Text style={styles.youthRegisterBtnText}>Register Now</Text>
+          <Text style={styles.youthRegisterBtnText}>
+            {regManagement.youth.status === 'closed' ? 'Registrations Closed' : 'Register Now'}
+          </Text>
         </TouchableOpacity>
       </View>
+      )}
 
+      {!regManagement.academy.hideProgram && (
       <View style={styles.academyCard}>
         <View style={styles.academyHeader}>
           <Ionicons name="school" size={24} color="#fff" />
@@ -366,13 +405,16 @@ const UpcomingEvents = forwardRef((props: {}, ref) => {
         <View style={styles.academyDivider} />
         <Text style={styles.academyNote}>📌 For registration & next batch details, contact directly</Text>
         <TouchableOpacity
-          style={styles.whatsappBtn}
-          onPress={() => setRegProgram('academy')}
+          style={[styles.whatsappBtn, regManagement.academy.status === 'closed' && styles.registerBtnClosed]}
+          onPress={() => handleRegisterPress('academy')}
         >
           <Ionicons name="create-outline" size={18} color="#fff" />
-          <Text style={styles.btnText}>Register Now</Text>
+          <Text style={styles.btnText}>
+            {regManagement.academy.status === 'closed' ? 'Registrations Closed' : 'Register Now'}
+          </Text>
         </TouchableOpacity>
       </View>
+      )}
 
       <RegistrationFormModal
         visible={regProgram !== null}
@@ -445,6 +487,7 @@ const styles = StyleSheet.create({
   youthEventMeta: { fontSize: 14, color: '#ffe0d6', flex: 1, lineHeight: 19 },
   youthRegisterBtn: { backgroundColor: '#fff', borderRadius: 10, padding: 14, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 },
   youthRegisterBtnText: { color: '#e63946', fontWeight: 'bold', fontSize: 15 },
+  registerBtnClosed: { opacity: 0.5 },
   academyCard: { backgroundColor: '#2d6a4f', margin: 16, marginBottom: 0, borderRadius: 16, padding: 20, elevation: 6, borderWidth: 2, borderColor: '#52b788' },
   academyHeader: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 6 },
   academyHeaderText: { fontSize: 20, fontWeight: 'bold', color: '#fff', flexShrink: 1 },

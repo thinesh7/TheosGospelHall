@@ -24,8 +24,10 @@ import YoutubePlayer from 'react-native-youtube-iframe';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Text } from '../../components/AppText';
 import { TextInput } from '../../components/AppTextInput';
+import VideoMaintenancePage from '../../components/VideoMaintenancePage';
 import { useTheme } from '../../utils/ThemeContext';
 import { getCachedLivePlaylists, syncLivePlaylists } from '../../utils/livePlaylistsSync';
+import { subscribeVideoMaintenance } from '../../utils/videoMaintenance';
 import { QuotaExhaustedError, ytFetch } from '../../utils/youtubeProxy';
 
 const CHANNEL_ID = 'UCFg0eNTRs2UIcihQAVpyrJA';
@@ -1284,7 +1286,7 @@ interface VideosScreenProps {
   isActive?: boolean;
 }
 
-export default function VideosScreen({ autoPlayLive, onAutoPlayLiveConsumed, isActive }: VideosScreenProps = {}) {
+function VideosScreenContent({ autoPlayLive, onAutoPlayLiveConsumed, isActive }: VideosScreenProps = {}) {
   const { colors } = useTheme();
 
   const [activeTab, setActiveTab] = useState<Tab>('shorts');
@@ -1983,6 +1985,25 @@ export default function VideosScreen({ autoPlayLive, onAutoPlayLiveConsumed, isA
       )}
     </View>
   );
+}
+
+// Wraps the real screen so Video Maintenance mode (set from Admin Panel →
+// App Management → Site Maintenance → Videos) can swap in a maintenance
+// page without touching any of the existing Videos functionality above —
+// the Videos tab itself always stays visible; only what renders inside it
+// changes. Defaults to showing normal content (not a loading gate) so a
+// slow/offline config fetch never blocks access, consistent with how the
+// rest of the app fails open.
+export default function VideosScreen(props: VideosScreenProps = {}) {
+  const [maintenanceEnabled, setMaintenanceEnabled] = useState(false);
+
+  useEffect(() => {
+    const unsubscribe = subscribeVideoMaintenance(config => setMaintenanceEnabled(config.enabled));
+    return unsubscribe;
+  }, []);
+
+  if (maintenanceEnabled) return <VideoMaintenancePage />;
+  return <VideosScreenContent {...props} />;
 }
 
 const styles = StyleSheet.create({

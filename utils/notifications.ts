@@ -278,6 +278,21 @@ export function setupNotificationListeners(
   };
 }
 
+export async function getLastNotificationResponse(): Promise<any | null> {
+  if (isExpoGo) return null;
+  const Notifications = getNotifications();
+  try {
+    const response = await Notifications.getLastNotificationResponseAsync();
+    // Without this, the same response keeps getting returned on every future
+    // cold start (not just the one right after the tap), re-triggering
+    // whatever action it causes on every subsequent app launch.
+    if (response) await Notifications.clearLastNotificationResponseAsync();
+    return response;
+  } catch {
+    return null;
+  }
+}
+
 export async function checkStoredToken(): Promise<string | null> {
   try {
     return await AsyncStorage.getItem(TOKEN_KEY);

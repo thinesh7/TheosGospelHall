@@ -5,6 +5,15 @@ All notable changes to the Theos Gospel Hall app are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [1.4.0] - 2026-07-31
+
+### Added
+- **Manage Registrations**: a new admin screen (Admin Panel → Discipleship & Academy Registrations → Manage Registrations) for independently controlling the Youth Program and Academy registrations. For each, administrators can set the registration to Open or Closed, define a custom "Closed Message (Shown to Users)" — mandatory while Closed, disabled while Open — and show or hide the program's card on the Home screen, with a confirmation warning before hiding. Changes are staged locally and only take effect after Save. When a registration is Closed, its Home screen button is grayed out and shows the configured message instead of opening the registration form; when hidden, the program's card is removed from the Home screen entirely.
+- **Site Maintenance for Videos**: a new admin screen (Admin Panel → App Management → Site Maintenance → Videos) to put the Videos section into maintenance mode for all users, with a confirmation warning before enabling and changes only taking effect after Save. While enabled, the Videos tab stays visible but shows a themed "Videos are currently under maintenance" page in place of its normal content.
+
+### Changed
+- **Admin Panel reorganized**: "View Registrations" is renamed "Discipleship & Academy Registrations" and now opens a chooser between View Registrations (unchanged) and the new Manage Registrations. "App Management" moved to the last position on the main Admin Panel and now appears as a single warning-styled card noting that changes inside take effect immediately, opening into a dedicated screen listing App Update Settings, Send Notifications, Live Playlists, API Keys, and the new Site Maintenance.
+
 ## [1.3.0] - 2026-07-29
 
 ### Added

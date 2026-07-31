@@ -13,16 +13,22 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Text } from './AppText';
 import AdminDashboard, { AdminModule } from './admin/AdminDashboard';
 import ApiKeysAdmin from './admin/ApiKeysAdmin';
+import AppManagementMenu, { AppManagementModule } from './admin/AppManagementMenu';
 import AppUpdateAdmin from './admin/AppUpdateAdmin';
 import GeethangalumAdmin from './admin/GeethangalumAdmin';
 import HomeContentAdmin from './admin/HomeContentAdmin';
 import LivePlaylistsAdmin from './admin/LivePlaylistsAdmin';
 import NotificationsAdmin from './admin/NotificationsAdmin';
 import OtherSongsAdmin from './admin/OtherSongsAdmin';
+import RegistrationManagementAdmin from './admin/RegistrationManagementAdmin';
+import RegistrationManagementMenu from './admin/RegistrationManagementMenu';
 import RegistrationsAdmin from './admin/RegistrationsAdmin';
 import RegistrationsMenu from './admin/RegistrationsMenu';
+import RegistrationsTopMenu, { RegistrationsTopMenuOption } from './admin/RegistrationsTopMenu';
+import SiteMaintenanceMenu, { SiteMaintenanceTarget } from './admin/SiteMaintenanceMenu';
 import SongsAdminMenu, { SongsModule } from './admin/SongsAdminMenu';
 import SpecialMeetingsAdmin, { AdminScreenHandle } from './admin/SpecialMeetingsAdmin';
+import VideoMaintenanceAdmin from './admin/VideoMaintenanceAdmin';
 import { ProgramId } from '../utils/registrations';
 
 type ViewKey =
@@ -35,9 +41,16 @@ type ViewKey =
   | 'homeContent'
   | 'notifications'
   | 'apiKeys'
-  | 'registrationsMenu'
+  | 'appManagementMenu'
+  | 'siteMaintenanceMenu'
+  | 'videoMaintenance'
+  | 'registrationsTopMenu'
+  | 'registrationsViewMenu'
   | 'registrationsYouth'
   | 'registrationsAcademy'
+  | 'registrationsManageMenu'
+  | 'registrationsManageYouth'
+  | 'registrationsManageAcademy'
   | 'appUpdate';
 
 interface ViewMeta {
@@ -55,9 +68,16 @@ const VIEW_META: Record<ViewKey, ViewMeta> = {
   homeContent: { title: '🏠 Home Screen Content', subtitle: 'Pastor & Ministry info' },
   notifications: { title: '🔔 Send Notifications', subtitle: 'Send announcements to all users' },
   apiKeys: { title: '🔑 API Keys', subtitle: 'Manage backup YouTube API keys' },
-  registrationsMenu: { title: '📝 View Registrations', subtitle: 'Choose a program to manage' },
+  appManagementMenu: { title: '⚠️ App Management', subtitle: 'High-impact application settings' },
+  siteMaintenanceMenu: { title: '🚧 Site Maintenance', subtitle: 'Choose a section to manage' },
+  videoMaintenance: { title: '🎬 Video Maintenance', subtitle: 'Show a maintenance page for the Videos tab' },
+  registrationsTopMenu: { title: '📝 Discipleship & Academy Registrations', subtitle: 'View or manage registrations' },
+  registrationsViewMenu: { title: '📋 View Registrations', subtitle: 'Choose a program to manage' },
   registrationsYouth: { title: '🔥 Youth Program', subtitle: 'Discipleship Program registrations' },
   registrationsAcademy: { title: '🎓 TGH Academy', subtitle: 'Academy registrations' },
+  registrationsManageMenu: { title: '⚙️ Manage Registrations', subtitle: 'Choose a registration type to manage' },
+  registrationsManageYouth: { title: '🔥 Manage Youth Program', subtitle: 'Status, closed message & visibility' },
+  registrationsManageAcademy: { title: '🎓 Manage TGH Academy', subtitle: 'Status, closed message & visibility' },
   appUpdate: { title: '⬆️ App Update Settings', subtitle: 'Manage force/optional update rollout' },
 };
 
@@ -109,20 +129,34 @@ export default function AdminPanel({ visible, onClose, onEventsUpdated }: Props)
   const handleDashboardSelect = (module: AdminModule) => {
     if (module === 'specialMeetings') pushView('specialMeetings');
     else if (module === 'songsMenu') pushView('songsMenu');
-    else if (module === 'livePlaylists') pushView('livePlaylists');
     else if (module === 'homeContent') pushView('homeContent');
-    else if (module === 'notifications') pushView('notifications');
-    else if (module === 'apiKeys') pushView('apiKeys');
-    else if (module === 'registrationsMenu') pushView('registrationsMenu');
-    else if (module === 'appUpdate') pushView('appUpdate');
+    else if (module === 'registrations') pushView('registrationsTopMenu');
+    else if (module === 'appManagement') pushView('appManagementMenu');
   };
 
   const handleSongsMenuSelect = (module: SongsModule) => {
     pushView(module === 'geethangalum' ? 'songsGeethangalum' : 'songsOther');
   };
 
+  const handleAppManagementMenuSelect = (module: AppManagementModule) => {
+    if (module === 'siteMaintenance') { pushView('siteMaintenanceMenu'); return; }
+    pushView(module);
+  };
+
+  const handleSiteMaintenanceMenuSelect = (target: SiteMaintenanceTarget) => {
+    if (target === 'videos') pushView('videoMaintenance');
+  };
+
+  const handleRegistrationsTopMenuSelect = (option: RegistrationsTopMenuOption) => {
+    pushView(option === 'view' ? 'registrationsViewMenu' : 'registrationsManageMenu');
+  };
+
   const handleRegistrationsMenuSelect = (programId: ProgramId) => {
     pushView(programId === 'youth' ? 'registrationsYouth' : 'registrationsAcademy');
+  };
+
+  const handleRegistrationsManageMenuSelect = (programId: ProgramId) => {
+    pushView(programId === 'youth' ? 'registrationsManageYouth' : 'registrationsManageAcademy');
   };
 
   const meta = VIEW_META[currentView];
@@ -194,7 +228,23 @@ export default function AdminPanel({ visible, onClose, onEventsUpdated }: Props)
               <ApiKeysAdmin ref={activeScreenRef} />
             )}
 
-            {currentView === 'registrationsMenu' && (
+            {currentView === 'appManagementMenu' && (
+              <AppManagementMenu onSelect={handleAppManagementMenuSelect} />
+            )}
+
+            {currentView === 'siteMaintenanceMenu' && (
+              <SiteMaintenanceMenu onSelect={handleSiteMaintenanceMenuSelect} />
+            )}
+
+            {currentView === 'videoMaintenance' && (
+              <VideoMaintenanceAdmin ref={activeScreenRef} />
+            )}
+
+            {currentView === 'registrationsTopMenu' && (
+              <RegistrationsTopMenu onSelect={handleRegistrationsTopMenuSelect} />
+            )}
+
+            {currentView === 'registrationsViewMenu' && (
               <RegistrationsMenu onSelect={handleRegistrationsMenuSelect} />
             )}
 
@@ -204,6 +254,18 @@ export default function AdminPanel({ visible, onClose, onEventsUpdated }: Props)
 
             {currentView === 'registrationsAcademy' && (
               <RegistrationsAdmin ref={activeScreenRef} programId="academy" />
+            )}
+
+            {currentView === 'registrationsManageMenu' && (
+              <RegistrationManagementMenu onSelect={handleRegistrationsManageMenuSelect} />
+            )}
+
+            {currentView === 'registrationsManageYouth' && (
+              <RegistrationManagementAdmin ref={activeScreenRef} programId="youth" />
+            )}
+
+            {currentView === 'registrationsManageAcademy' && (
+              <RegistrationManagementAdmin ref={activeScreenRef} programId="academy" />
             )}
 
             {currentView === 'appUpdate' && (

@@ -5,7 +5,7 @@ import { Stack } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
 import { useEffect, useRef, useState } from 'react';
-import { AppState as RNAppState } from 'react-native';
+import { AppState as RNAppState, Linking } from 'react-native';
 import 'react-native-reanimated';
 
 import ForceUpdateScreen from '@/components/ForceUpdateScreen';
@@ -17,6 +17,7 @@ import { loadBibleSettings } from '@/utils/bibleSettings';
 import { getCachedHomeContent } from '@/utils/homeContentSync';
 import {
   configureNotificationHandler,
+  getLastNotificationResponse,
   registerForPushNotifications,
   setupNotificationListeners,
   setupTokenRefreshListener,
@@ -29,6 +30,16 @@ export const unstable_settings = { anchor: '(tabs)' };
 const SETUP_KEY = 'tgh_app_setup_complete';
 
 SplashScreen.preventAutoHideAsync().catch(() => {});
+
+// A tapped "app update available" notification carries a Play Store url in
+// its data payload (set in AppUpdateAdmin.tsx) — open that directly instead
+// of just foregrounding the app, so the user lands straight on the update.
+function handleNotificationResponse(response: any) {
+  const data = response?.notification?.request?.content?.data;
+  if (data?.type === 'app_update' && typeof data.url === 'string' && data.url) {
+    Linking.openURL(data.url).catch(() => {});
+  }
+}
 
 type AppState = 'checking' | 'welcome' | 'ready';
 
@@ -139,7 +150,13 @@ export default function RootLayout() {
     if (appState !== 'ready') return;
     configureNotificationHandler();
     const tokenSub = setupTokenRefreshListener();
-    const removeListeners = setupNotificationListeners();
+    const removeListeners = setupNotificationListeners(undefined, handleNotificationResponse);
+    // Covers the case where the app was killed and launched by tapping the
+    // notification — the response listener above only fires for taps
+    // received while the app is already running.
+    getLastNotificationResponse().then(response => {
+      if (response) handleNotificationResponse(response);
+    });
     const delay = setTimeout(() => {
       registerForPushNotifications();
     }, 5000);

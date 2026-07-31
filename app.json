@@ -2,7 +2,7 @@
   "expo": {
     "name": "Theos Gospel Hall",
     "slug": "theosgospelhall",
-    "version": "1.3.0",
+    "version": "1.4.0",
     "orientation": "default",
     "icon": "./assets/images/logo.png",
     "scheme": "theosgospelhall",

@@ -80,7 +80,7 @@ const AppUpdateAdmin = forwardRef<AdminScreenHandle, {}>((_, ref) => {
       return;
     }
     if (!isValidVersionFormat(latest)) {
-      Alert.alert('Invalid Format', 'Latest Version must be in the format number.number.number (e.g. 1.3.0).');
+      Alert.alert('Invalid Format', 'Latest Version must be in the format number.number.number (e.g. 1.4.0).');
       return;
     }
     if (!isValidVersionFormat(minRequired)) {
@@ -124,7 +124,10 @@ const AppUpdateAdmin = forwardRef<AdminScreenHandle, {}>((_, ref) => {
     }
     setSendingNotify(true);
     try {
-      const result = await sendPushNotificationToAll(NOTIFY_TITLE, trimmed);
+      const result = await sendPushNotificationToAll(NOTIFY_TITLE, trimmed, {
+        type: 'app_update',
+        url: androidStoreUrl.trim(),
+      });
       setShowNotifyModal(false);
       if (result.failedCount > 0) {
         Alert.alert(
@@ -148,7 +151,7 @@ const AppUpdateAdmin = forwardRef<AdminScreenHandle, {}>((_, ref) => {
     );
   }
 
-  const versionFormatError = 'Format must be number.number.number (e.g. 1.3.0)';
+  const versionFormatError = 'Format must be number.number.number (e.g. 1.4.0)';
   const latestVersionInvalid = !!latestVersion.trim() && !isValidVersionFormat(latestVersion);
   const minimumVersionInvalid = !!minimumRequiredVersion.trim() && !isValidVersionFormat(minimumRequiredVersion);
 
@@ -180,7 +183,7 @@ const AppUpdateAdmin = forwardRef<AdminScreenHandle, {}>((_, ref) => {
         <Text style={styles.formLabel}>Latest Version *</Text>
         <TextInput
           style={[styles.formInput, latestVersionInvalid && styles.formInputError]}
-          placeholder="e.g. 1.3.0"
+          placeholder="e.g. 1.4.0"
           placeholderTextColor="#999"
           value={latestVersion}
           onChangeText={setLatestVersion}

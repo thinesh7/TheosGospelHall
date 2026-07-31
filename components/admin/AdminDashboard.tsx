@@ -1,7 +1,7 @@
 import { ScrollView, StyleSheet, TouchableOpacity, View } from 'react-native';
 import { Text } from '../AppText';
 
-export type AdminModule = 'specialMeetings' | 'songsMenu' | 'livePlaylists' | 'homeContent' | 'notifications' | 'apiKeys' | 'registrationsMenu' | 'appUpdate';
+export type AdminModule = 'specialMeetings' | 'songsMenu' | 'homeContent' | 'registrations' | 'appManagement';
 
 interface ModuleCard {
   id: AdminModule;
@@ -18,10 +18,10 @@ const MODULES: ModuleCard[] = [
     subtitle: 'Manage Geethangalum Keerthanaigalum and Other Songs',
   },
   {
-    id: 'registrationsMenu',
+    id: 'registrations',
     icon: '📝',
-    title: 'View Registrations',
-    subtitle: 'Manage Youth Program & Academy registrations',
+    title: 'Discipleship & Academy Registrations',
+    subtitle: 'View or manage Youth Program & Academy registrations',
   },
   {
     id: 'specialMeetings',
@@ -34,35 +34,6 @@ const MODULES: ModuleCard[] = [
     icon: '🏠',
     title: 'Pastor & Ministry Content',
     subtitle: 'Manage Pastor info & About Ministry (English/Tamil)',
-  },
-];
-
-// Grouped under the "App Management" section, kept last in the dashboard, in
-// this fixed order.
-const APP_MANAGEMENT_MODULES: ModuleCard[] = [
-  {
-    id: 'appUpdate',
-    icon: '⬆️',
-    title: 'App Update Settings',
-    subtitle: 'Set the latest version, minimum required version, and update message',
-  },
-  {
-    id: 'notifications',
-    icon: '🔔',
-    title: 'Send Notifications',
-    subtitle: 'Send push notifications to all app users',
-  },
-  {
-    id: 'livePlaylists',
-    icon: '🎬',
-    title: 'Live Playlists',
-    subtitle: 'Manage YouTube playlists shown in the Live tab',
-  },
-  {
-    id: 'apiKeys',
-    icon: '🔑',
-    title: 'API Keys',
-    subtitle: 'Manage backup YouTube API keys and check their status',
   },
 ];
 
@@ -86,8 +57,23 @@ export default function AdminDashboard({ onSelect }: Props) {
     <ScrollView contentContainerStyle={styles.container}>
       {MODULES.map(renderCard)}
 
-      <Text style={styles.sectionHeader}>App Management</Text>
-      {APP_MANAGEMENT_MODULES.map(renderCard)}
+      {/* Kept last and visually distinct (amber/red) — everything inside
+          takes effect on the live app immediately, unlike the content-only
+          modules above. */}
+      <TouchableOpacity
+        style={styles.warningCard}
+        onPress={() => onSelect('appManagement')}
+        activeOpacity={0.8}
+      >
+        <View style={styles.warningCardHeader}>
+          <Text style={styles.warningCardIcon}>⚠️</Text>
+          <Text style={styles.warningCardTitle}>App Management</Text>
+          <Text style={styles.warningCardChevron}>›</Text>
+        </View>
+        <Text style={styles.warningCardText}>
+          Warning: Changes made in this section will immediately affect the application and its users.
+        </Text>
+      </TouchableOpacity>
 
       <Text style={styles.footerNote}>More modules will appear here as the admin panel grows.</Text>
     </ScrollView>
@@ -96,15 +82,6 @@ export default function AdminDashboard({ onSelect }: Props) {
 
 const styles = StyleSheet.create({
   container: { padding: 16, paddingBottom: 32 },
-  sectionHeader: {
-    fontSize: 13,
-    fontWeight: '700',
-    color: '#888',
-    textTransform: 'uppercase',
-    letterSpacing: 0.8,
-    marginTop: 8,
-    marginBottom: 12,
-  },
   card: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -121,5 +98,19 @@ const styles = StyleSheet.create({
   cardTitle: { fontSize: 16, fontWeight: 'bold', color: '#1a1a2e', marginBottom: 4 },
   cardSubtitle: { fontSize: 12, color: '#777', lineHeight: 17 },
   cardChevron: { fontSize: 26, color: '#ccc', marginLeft: 8, fontWeight: '300' },
+  warningCard: {
+    backgroundColor: '#fff3e0',
+    borderRadius: 16,
+    padding: 18,
+    marginTop: 8,
+    elevation: 3,
+    borderWidth: 1.5,
+    borderColor: '#e65100',
+  },
+  warningCardHeader: { flexDirection: 'row', alignItems: 'center', marginBottom: 8 },
+  warningCardIcon: { fontSize: 22, marginRight: 10 },
+  warningCardTitle: { flex: 1, fontSize: 16, fontWeight: 'bold', color: '#e65100' },
+  warningCardChevron: { fontSize: 22, color: '#e65100', fontWeight: '300' },
+  warningCardText: { fontSize: 12, color: '#8a4b00', lineHeight: 17, fontWeight: '600' },
   footerNote: { textAlign: 'center', color: '#aaa', fontSize: 12, marginTop: 12, fontStyle: 'italic' },
 });
