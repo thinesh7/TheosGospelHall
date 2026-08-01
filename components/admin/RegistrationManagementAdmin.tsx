@@ -10,6 +10,7 @@ import {
   saveRegistrationManagementConfig,
 } from '../../utils/registrationManagement';
 import { formatTimestampIST, ProgramId, PROGRAMS } from '../../utils/registrations';
+import { useTheme } from '../../utils/ThemeContext';
 import { AdminScreenHandle } from './SpecialMeetingsAdmin';
 
 interface FormState {
@@ -36,6 +37,7 @@ interface Props {
 
 const RegistrationManagementAdmin = forwardRef<AdminScreenHandle, Props>(({ programId }, ref) => {
   const dialog = useAppDialog();
+  const { colors } = useTheme();
   const [form, setForm] = useState<FormState>(INITIAL_STATE);
 
   useImperativeHandle(ref, () => ({
@@ -111,7 +113,7 @@ const RegistrationManagementAdmin = forwardRef<AdminScreenHandle, Props>(({ prog
   if (form.loading) {
     return (
       <View style={styles.loadingBox}>
-        <Text style={styles.loadingText}>Loading...</Text>
+        <Text style={[styles.loadingText, { color: colors.subtext }]}>Loading...</Text>
       </View>
     );
   }
@@ -120,38 +122,39 @@ const RegistrationManagementAdmin = forwardRef<AdminScreenHandle, Props>(({ prog
 
   return (
     <ScrollView contentContainerStyle={{ padding: 16 }} keyboardShouldPersistTaps="handled">
-      <View style={styles.infoBox}>
-        <Text style={styles.infoText}>
+      <View style={[styles.infoBox, { backgroundColor: colors.accent + '15' }]}>
+        <Text style={[styles.infoText, { color: colors.text }]}>
           Set this registration to Open or Closed. When Closed, the registration option is grayed out for users and
           the message below is shown instead of the registration form. Hiding the program removes its card from the
           Home screen entirely, regardless of status.
         </Text>
       </View>
 
-      <View style={styles.programCard}>
-        <Text style={styles.programTitle}>{PROGRAMS[programId].label}</Text>
+      <View style={[styles.programCard, { backgroundColor: colors.surface, borderLeftColor: colors.accent }]}>
+        <Text style={[styles.programTitle, { color: colors.text }]}>{PROGRAMS[programId].label}</Text>
 
         {!!form.updatedAt && (
-          <View style={styles.auditBox}>
-            <Text style={styles.auditText}>
-              Last updated by <Text style={styles.auditBold}>{form.updatedBy}</Text> on {formatTimestampIST(form.updatedAt)}
+          <View style={[styles.auditBox, { backgroundColor: colors.raised, borderColor: colors.divider }]}>
+            <Text style={[styles.auditText, { color: colors.subtext }]}>
+              Last updated by <Text style={[styles.auditBold, { color: colors.text }]}>{form.updatedBy}</Text> on {formatTimestampIST(form.updatedAt)}
             </Text>
           </View>
         )}
 
         <View style={styles.formField}>
-          <Text style={styles.formLabel}>Registration Status</Text>
+          <Text style={[styles.formLabel, { color: colors.subtext }]}>Registration Status</Text>
           <View style={styles.segmentRow}>
             {(['open', 'closed'] as RegistrationAvailability[]).map(status => (
               <TouchableOpacity
                 key={status}
                 style={[
                   styles.segmentBtn,
+                  { backgroundColor: colors.surfaceAlt, borderColor: colors.divider },
                   form.status === status && (status === 'open' ? styles.segmentBtnOpenActive : styles.segmentBtnClosedActive),
                 ]}
                 onPress={() => setField('status', status)}
               >
-                <Text style={[styles.segmentBtnText, form.status === status && styles.segmentBtnTextActive]}>
+                <Text style={[styles.segmentBtnText, { color: colors.subtext }, form.status === status && styles.segmentBtnTextActive]}>
                   {status === 'open' ? 'Open' : 'Closed'}
                 </Text>
               </TouchableOpacity>
@@ -160,11 +163,16 @@ const RegistrationManagementAdmin = forwardRef<AdminScreenHandle, Props>(({ prog
         </View>
 
         <View style={styles.formField}>
-          <Text style={styles.formLabel}>Closed Message (Shown to Users)</Text>
+          <Text style={[styles.formLabel, { color: colors.subtext }]}>Closed Message (Shown to Users)</Text>
           <TextInput
-            style={[styles.formInput, styles.formInputMulti, form.status === 'open' && styles.formInputDisabled]}
+            style={[
+              styles.formInput,
+              styles.formInputMulti,
+              { backgroundColor: colors.surfaceAlt, borderColor: colors.divider, color: colors.text },
+              form.status === 'open' && [styles.formInputDisabled, { backgroundColor: colors.raised, color: colors.subtext }],
+            ]}
             placeholder={DEFAULT_CLOSED_MESSAGE}
-            placeholderTextColor="#999"
+            placeholderTextColor={colors.subtext}
             value={form.closedMessage}
             onChangeText={v => setField('closedMessage', v)}
             multiline
@@ -176,28 +184,28 @@ const RegistrationManagementAdmin = forwardRef<AdminScreenHandle, Props>(({ prog
         </View>
 
         <View style={styles.formField}>
-          <Text style={styles.formLabel}>Home Screen Visibility</Text>
+          <Text style={[styles.formLabel, { color: colors.subtext }]}>Home Screen Visibility</Text>
           <View style={styles.segmentRow}>
             <TouchableOpacity
-              style={[styles.segmentBtn, !form.hideProgram && styles.segmentBtnOpenActive]}
+              style={[styles.segmentBtn, { backgroundColor: colors.surfaceAlt, borderColor: colors.divider }, !form.hideProgram && styles.segmentBtnOpenActive]}
               onPress={handleShowProgram}
             >
-              <Text style={[styles.segmentBtnText, !form.hideProgram && styles.segmentBtnTextActive]}>Show</Text>
+              <Text style={[styles.segmentBtnText, { color: colors.subtext }, !form.hideProgram && styles.segmentBtnTextActive]}>Show</Text>
             </TouchableOpacity>
             <TouchableOpacity
-              style={[styles.segmentBtn, styles.hideBtn, form.hideProgram && styles.segmentBtnClosedActive]}
+              style={[styles.segmentBtn, { backgroundColor: colors.surfaceAlt }, styles.hideBtn, form.hideProgram && styles.segmentBtnClosedActive]}
               onPress={handleHideProgram}
             >
               <Text style={[styles.segmentBtnText, styles.hideBtnText, form.hideProgram && styles.segmentBtnTextActive]}>Hide</Text>
             </TouchableOpacity>
           </View>
-          <Text style={styles.hideHint}>
+          <Text style={[styles.hideHint, { color: colors.subtext }]}>
             Hiding removes this program&apos;s card from the Home screen for all users. Takes effect after you Save.
           </Text>
         </View>
 
         <TouchableOpacity
-          style={[styles.saveBtn, (form.saving || closedMessageInvalid) && { opacity: 0.6 }]}
+          style={[styles.saveBtn, { backgroundColor: colors.accent }, (form.saving || closedMessageInvalid) && { opacity: 0.6 }]}
           onPress={handleSave}
           disabled={form.saving || closedMessageInvalid}
         >
@@ -212,29 +220,29 @@ export default RegistrationManagementAdmin;
 
 const styles = StyleSheet.create({
   loadingBox: { padding: 40, alignItems: 'center' },
-  loadingText: { color: '#888' },
-  infoBox: { backgroundColor: '#e8f0fe', borderRadius: 12, padding: 14, marginBottom: 20 },
-  infoText: { fontSize: 13, color: '#333', lineHeight: 19 },
-  programCard: { backgroundColor: '#fff', borderRadius: 16, padding: 18, marginBottom: 20, elevation: 3, borderLeftWidth: 5, borderLeftColor: '#0f3460' },
-  programTitle: { fontSize: 16, fontWeight: 'bold', color: '#1a1a2e', marginBottom: 10 },
-  auditBox: { backgroundColor: '#f5f5f5', borderRadius: 10, padding: 12, marginBottom: 16, borderWidth: 1, borderColor: '#eee' },
-  auditText: { fontSize: 12, color: '#666' },
-  auditBold: { fontWeight: '700', color: '#333' },
+  loadingText: {},
+  infoBox: { borderRadius: 12, padding: 14, marginBottom: 20 },
+  infoText: { fontSize: 13, lineHeight: 19 },
+  programCard: { borderRadius: 16, padding: 18, marginBottom: 20, elevation: 3, borderLeftWidth: 5 },
+  programTitle: { fontSize: 16, fontWeight: 'bold', marginBottom: 10 },
+  auditBox: { borderRadius: 10, padding: 12, marginBottom: 16, borderWidth: 1 },
+  auditText: { fontSize: 12 },
+  auditBold: { fontWeight: '700' },
   formField: { marginBottom: 16 },
-  formLabel: { fontSize: 13, fontWeight: '600', color: '#555', marginBottom: 6 },
+  formLabel: { fontSize: 13, fontWeight: '600', marginBottom: 6 },
   segmentRow: { flexDirection: 'row', gap: 10 },
-  segmentBtn: { flex: 1, paddingVertical: 12, borderRadius: 10, borderWidth: 1, borderColor: '#eee', backgroundColor: '#fafafa', alignItems: 'center' },
+  segmentBtn: { flex: 1, paddingVertical: 12, borderRadius: 10, borderWidth: 1, alignItems: 'center' },
   segmentBtnOpenActive: { backgroundColor: '#2d6a4f', borderColor: '#2d6a4f' },
   segmentBtnClosedActive: { backgroundColor: '#c0392b', borderColor: '#c0392b' },
-  segmentBtnText: { fontSize: 13, fontWeight: '600', color: '#555' },
+  segmentBtnText: { fontSize: 13, fontWeight: '600' },
   segmentBtnTextActive: { color: '#fff' },
   hideBtn: { borderColor: '#c0392b' },
   hideBtnText: { color: '#c0392b' },
-  formInput: { backgroundColor: '#fff', borderRadius: 10, padding: 12, fontSize: 15, elevation: 2, borderWidth: 1, borderColor: '#eee', color: '#1a1a2e' },
+  formInput: { borderRadius: 10, padding: 12, fontSize: 15, elevation: 2, borderWidth: 1 },
   formInputMulti: { minHeight: 90, textAlignVertical: 'top' },
-  formInputDisabled: { backgroundColor: '#f0f0f0', color: '#999', elevation: 0 },
+  formInputDisabled: { elevation: 0 },
   formErrorText: { color: '#c0392b', fontSize: 12, marginTop: 6 },
-  hideHint: { fontSize: 12, color: '#888', marginTop: 8, lineHeight: 16 },
-  saveBtn: { backgroundColor: '#0f3460', borderRadius: 14, padding: 16, alignItems: 'center', marginTop: 4, elevation: 4 },
+  hideHint: { fontSize: 12, marginTop: 8, lineHeight: 16 },
+  saveBtn: { borderRadius: 14, padding: 16, alignItems: 'center', marginTop: 4, elevation: 4 },
   saveBtnText: { color: '#fff', fontWeight: 'bold', fontSize: 15 },
 });

@@ -32,7 +32,12 @@ interface ResponsiveGridProps {
 export function ResponsiveGrid({ children, columns, gap = 'md', style }: ResponsiveGridProps) {
   const numColumns = useResponsiveColumns(columns);
   const gapValue = resolveSpacing(gap);
-  const itemWidth = `${100 / numColumns}%` as const;
+  // Fewer items than columns (a single announcement, a hidden program panel)
+  // would otherwise still get a fixed 100/numColumns width each, leaving a
+  // dangling empty gap in the row instead of filling it.
+  const childCount = Children.count(children);
+  const effectiveColumns = Math.min(numColumns, Math.max(childCount, 1));
+  const itemWidth = `${100 / effectiveColumns}%` as const;
 
   return (
     <View style={[{ flexDirection: 'row', flexWrap: 'wrap', marginHorizontal: -gapValue / 2 }, style]}>

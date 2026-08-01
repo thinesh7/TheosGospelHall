@@ -1,5 +1,6 @@
 import { ScrollView, StyleSheet, TouchableOpacity, View } from 'react-native';
 import { Text } from '../AppText';
+import { useTheme } from '../../utils/ThemeContext';
 
 export type AdminModule = 'specialMeetings' | 'songsMenu' | 'homeContent' | 'registrations' | 'appManagement';
 
@@ -42,14 +43,21 @@ interface Props {
 }
 
 export default function AdminDashboard({ onSelect }: Props) {
+  const { colors } = useTheme();
+
   const renderCard = (m: ModuleCard) => (
-    <TouchableOpacity key={m.id} style={styles.card} onPress={() => onSelect(m.id)} activeOpacity={0.8}>
+    <TouchableOpacity
+      key={m.id}
+      style={[styles.card, { backgroundColor: colors.surface, borderLeftColor: colors.accent }]}
+      onPress={() => onSelect(m.id)}
+      activeOpacity={0.8}
+    >
       <Text style={styles.cardIcon}>{m.icon}</Text>
       <View style={styles.cardTextWrap}>
-        <Text style={styles.cardTitle}>{m.title}</Text>
-        <Text style={styles.cardSubtitle}>{m.subtitle}</Text>
+        <Text style={[styles.cardTitle, { color: colors.text }]}>{m.title}</Text>
+        <Text style={[styles.cardSubtitle, { color: colors.subtext }]}>{m.subtitle}</Text>
       </View>
-      <Text style={styles.cardChevron}>›</Text>
+      <Text style={[styles.cardChevron, { color: colors.divider }]}>›</Text>
     </TouchableOpacity>
   );
 
@@ -75,7 +83,7 @@ export default function AdminDashboard({ onSelect }: Props) {
         </Text>
       </TouchableOpacity>
 
-      <Text style={styles.footerNote}>More modules will appear here as the admin panel grows.</Text>
+      <Text style={[styles.footerNote, { color: colors.subtext }]}>More modules will appear here as the admin panel grows.</Text>
     </ScrollView>
   );
 }
@@ -85,19 +93,17 @@ const styles = StyleSheet.create({
   card: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#fff',
     borderRadius: 16,
     padding: 18,
     marginBottom: 14,
     elevation: 3,
     borderLeftWidth: 5,
-    borderLeftColor: '#0f3460',
   },
   cardIcon: { fontSize: 28, marginRight: 16 },
   cardTextWrap: { flex: 1 },
-  cardTitle: { fontSize: 16, fontWeight: 'bold', color: '#1a1a2e', marginBottom: 4 },
-  cardSubtitle: { fontSize: 12, color: '#777', lineHeight: 17 },
-  cardChevron: { fontSize: 26, color: '#ccc', marginLeft: 8, fontWeight: '300' },
+  cardTitle: { fontSize: 16, fontWeight: 'bold', marginBottom: 4 },
+  cardSubtitle: { fontSize: 12, lineHeight: 17 },
+  cardChevron: { fontSize: 26, marginLeft: 8, fontWeight: '300' },
   warningCard: {
     backgroundColor: '#fff3e0',
     borderRadius: 16,
@@ -112,5 +118,5 @@ const styles = StyleSheet.create({
   warningCardTitle: { flex: 1, fontSize: 16, fontWeight: 'bold', color: '#e65100' },
   warningCardChevron: { fontSize: 22, color: '#e65100', fontWeight: '300' },
   warningCardText: { fontSize: 12, color: '#8a4b00', lineHeight: 17, fontWeight: '600' },
-  footerNote: { textAlign: 'center', color: '#aaa', fontSize: 12, marginTop: 12, fontStyle: 'italic' },
+  footerNote: { textAlign: 'center', fontSize: 12, marginTop: 12, fontStyle: 'italic' },
 });

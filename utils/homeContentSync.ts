@@ -50,18 +50,57 @@ async function saveCachedHomeContent(content: HomeContent) {
   await AsyncStorage.setItem(CACHE_KEY, JSON.stringify(content));
 }
 
-export function subscribeHomeContent(onUpdate: (content: HomeContent) => void): () => void {
+// index.tsx, contact.tsx, and the admin Home Content screen each subscribe
+// independently, and the tab shell keeps Home/Contact mounted simultaneously
+// — without ref-counting that's 2-3 concurrent onSnapshot listeners on the
+// same doc for the app's whole foreground lifetime. Instead, keep exactly one
+// real Firestore listener alive per process and fan its updates out to every
+// subscriber; the public subscribe/unsubscribe contract is unchanged.
+type HomeContentListener = (content: HomeContent) => void;
+
+const listeners = new Set<HomeContentListener>();
+let unsubscribeFirestore: (() => void) | null = null;
+let lastSnapshotContent: HomeContent | null = null;
+
+function ensureFirestoreListener() {
+  if (unsubscribeFirestore) return;
   const ref = doc(db, ...DOC_PATH);
-  const unsubscribe = onSnapshot(ref, snap => {
+  unsubscribeFirestore = onSnapshot(ref, snap => {
+    let content: HomeContent | null = null;
     if (snap.exists()) {
-      const content = { ...EMPTY_HOME_CONTENT, ...(snap.data() as Partial<HomeContent>) };
-      onUpdate(content);
+      content = { ...EMPTY_HOME_CONTENT, ...(snap.data() as Partial<HomeContent>) };
       saveCachedHomeContent(content).catch(() => {});
     } else if (!snap.metadata.fromCache) {
-      onUpdate(EMPTY_HOME_CONTENT);
+      content = EMPTY_HOME_CONTENT;
+    }
+    if (content) {
+      lastSnapshotContent = content;
+      listeners.forEach(listener => listener(content as HomeContent));
     }
   }, () => {});
-  return unsubscribe;
+}
+
+export function subscribeHomeContent(onUpdate: HomeContentListener): () => void {
+  listeners.add(onUpdate);
+  ensureFirestoreListener();
+  // Deliver the last known value to a newly-joined subscriber without
+  // waiting for the next Firestore event — deferred to a microtask (never
+  // synchronous) so it behaves like a real onSnapshot callback for callers
+  // that build their unsubscribe-handle closure right after this call.
+  if (lastSnapshotContent) {
+    const snapshot = lastSnapshotContent;
+    Promise.resolve().then(() => {
+      if (listeners.has(onUpdate)) onUpdate(snapshot);
+    });
+  }
+  return () => {
+    listeners.delete(onUpdate);
+    if (listeners.size === 0 && unsubscribeFirestore) {
+      unsubscribeFirestore();
+      unsubscribeFirestore = null;
+      lastSnapshotContent = null;
+    }
+  };
 }
 
 export function fetchHomeContentOnce(): Promise<HomeContent | null> {

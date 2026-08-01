@@ -8,11 +8,9 @@ import {
   View,
 } from 'react-native';
 import { getAuth } from 'firebase/auth';
-import { doc, serverTimestamp, updateDoc } from 'firebase/firestore';
 import { useAppDialog } from '../AppDialog';
 import { Text } from '../AppText';
 import { TextInput } from '../AppTextInput';
-import { db } from '../../firebaseConfig';
 import {
   LivePlaylist,
   addLivePlaylist,
@@ -22,6 +20,7 @@ import {
   syncLivePlaylists,
   updateLivePlaylist,
 } from '../../utils/livePlaylistsSync';
+import { useTheme } from '../../utils/ThemeContext';
 import { AdminScreenHandle } from './SpecialMeetingsAdmin';
 
 interface EditForm {
@@ -35,6 +34,7 @@ const EMPTY_FORM: EditForm = { id: null, playlistId: '', label: '', isActive: tr
 
 const LivePlaylistsAdmin = forwardRef<AdminScreenHandle, {}>((_props, ref) => {
   const dialog = useAppDialog();
+  const { colors } = useTheme();
   const [playlists, setPlaylists] = useState<LivePlaylist[]>([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
@@ -90,17 +90,18 @@ const LivePlaylistsAdmin = forwardRef<AdminScreenHandle, {}>((_props, ref) => {
     const currentUser = getAuth().currentUser?.email ?? 'unknown';
     try {
       if (form.id) {
-        await updateLivePlaylist(form.id, { playlistId: form.playlistId.trim(), label: form.label.trim(), isActive: form.isActive });
-        await updateDoc(doc(db, 'LivePlaylists', form.id), {
+        await updateLivePlaylist(form.id, {
+          playlistId: form.playlistId.trim(),
+          label: form.label.trim(),
+          isActive: form.isActive,
           modifiedBy: currentUser,
-          modifiedAt: serverTimestamp(),
         });
       } else {
-        const newId = await addLivePlaylist({ playlistId: form.playlistId.trim(), label: form.label.trim(), isActive: form.isActive });
-        await updateDoc(doc(db, 'LivePlaylists', newId), {
+        await addLivePlaylist({
+          playlistId: form.playlistId.trim(),
+          label: form.label.trim(),
+          isActive: form.isActive,
           createdBy: currentUser,
-          modifiedBy: currentUser,
-          modifiedAt: serverTimestamp(),
         });
       }
       const fresh = await getCachedLivePlaylists();
@@ -144,45 +145,45 @@ const LivePlaylistsAdmin = forwardRef<AdminScreenHandle, {}>((_props, ref) => {
   if (showForm) {
     return (
       <View style={styles.formContainer}>
-        <View style={styles.formHeader}>
+        <View style={[styles.formHeader, { backgroundColor: colors.surface }]}>
           <TouchableOpacity onPress={() => setShowForm(false)}>
-            <Text style={styles.formBackText}>← Back</Text>
+            <Text style={[styles.formBackText, { color: colors.accent }]}>← Back</Text>
           </TouchableOpacity>
-          <Text style={styles.formTitle}>{form.id ? 'Edit Playlist' : 'New Playlist'}</Text>
+          <Text style={[styles.formTitle, { color: colors.text }]}>{form.id ? 'Edit Playlist' : 'New Playlist'}</Text>
         </View>
 
         <View style={{ padding: 16 }}>
-          <Text style={styles.fieldLabel}>Label *</Text>
+          <Text style={[styles.fieldLabel, { color: colors.subtext }]}>Label *</Text>
           <TextInput
-            style={styles.input}
+            style={[styles.input, { backgroundColor: colors.surfaceAlt, borderColor: colors.divider, color: colors.text }]}
             value={form.label}
             onChangeText={v => setForm(prev => ({ ...prev, label: v }))}
             placeholder="e.g. Sunday Sermons"
-            placeholderTextColor="#999"
+            placeholderTextColor={colors.subtext}
           />
 
-          <Text style={styles.fieldLabel}>YouTube Playlist ID *</Text>
-          <Text style={styles.fieldHint}>Found in the playlist URL after "list="</Text>
+          <Text style={[styles.fieldLabel, { color: colors.subtext }]}>YouTube Playlist ID *</Text>
+          <Text style={[styles.fieldHint, { color: colors.subtext }]}>Found in the playlist URL after "list="</Text>
           <TextInput
-            style={styles.input}
+            style={[styles.input, { backgroundColor: colors.surfaceAlt, borderColor: colors.divider, color: colors.text }]}
             value={form.playlistId}
             onChangeText={v => setForm(prev => ({ ...prev, playlistId: v }))}
             placeholder="e.g. PLZISpWbe8RUidyhPJNs5xa8-WOnHq-NLj"
-            placeholderTextColor="#999"
+            placeholderTextColor={colors.subtext}
             autoCapitalize="none"
           />
 
-          <View style={styles.toggleRow}>
-            <Text style={styles.fieldLabel}>Active</Text>
+          <View style={[styles.toggleRow, { backgroundColor: colors.surface }]}>
+            <Text style={[styles.fieldLabel, { color: colors.subtext }]}>Active</Text>
             <Switch
               value={form.isActive}
               onValueChange={v => setForm(prev => ({ ...prev, isActive: v }))}
-              trackColor={{ true: '#0f3460', false: '#ccc' }}
+              trackColor={{ true: colors.accent, false: colors.divider }}
             />
           </View>
 
           <TouchableOpacity
-            style={[styles.saveBtn, saving && { opacity: 0.6 }]}
+            style={[styles.saveBtn, { backgroundColor: colors.accent }, saving && { opacity: 0.6 }]}
             onPress={save}
             disabled={saving}
           >
@@ -198,31 +199,31 @@ const LivePlaylistsAdmin = forwardRef<AdminScreenHandle, {}>((_props, ref) => {
   return (
     <View style={styles.container}>
       <View style={{ paddingHorizontal: 16, paddingTop: 12 }}>
-        <TouchableOpacity style={styles.addBtn} onPress={openAddForm}>
+        <TouchableOpacity style={[styles.addBtn, { backgroundColor: colors.accent }]} onPress={openAddForm}>
           <Text style={styles.addBtnText}>＋ Add New Playlist</Text>
         </TouchableOpacity>
       </View>
 
       {loading ? (
-        <ActivityIndicator size="large" color="#0f3460" style={{ marginTop: 40 }} />
+        <ActivityIndicator size="large" color={colors.accent} style={{ marginTop: 40 }} />
       ) : (
         <FlatList
           data={playlists}
           keyExtractor={item => item.id}
           contentContainerStyle={{ padding: 16, paddingTop: 8 }}
           renderItem={({ item }) => (
-            <View style={styles.row}>
+            <View style={[styles.row, { backgroundColor: colors.surface }]}>
               <TouchableOpacity style={styles.rowMain} onPress={() => openEditForm(item)}>
-                <Text style={styles.rowLabel}>{item.label}</Text>
-                <Text style={styles.rowId} numberOfLines={1}>{item.playlistId}</Text>
-                <Text style={[styles.statusText, { color: item.isActive ? '#25d366' : '#999' }]}>
+                <Text style={[styles.rowLabel, { color: colors.text }]}>{item.label}</Text>
+                <Text style={[styles.rowId, { color: colors.subtext }]} numberOfLines={1}>{item.playlistId}</Text>
+                <Text style={[styles.statusText, { color: item.isActive ? '#25d366' : colors.subtext }]}>
                   {item.isActive ? '● Active' : '● Inactive'}
                 </Text>
               </TouchableOpacity>
               <Switch
                 value={item.isActive}
                 onValueChange={() => toggleActive(item)}
-                trackColor={{ true: '#0f3460', false: '#ccc' }}
+                trackColor={{ true: colors.accent, false: colors.divider }}
               />
               <TouchableOpacity style={styles.deleteBtn} onPress={() => deletePlaylist(item)}>
                 <Text style={styles.deleteBtnText}>🗑</Text>
@@ -230,7 +231,7 @@ const LivePlaylistsAdmin = forwardRef<AdminScreenHandle, {}>((_props, ref) => {
             </View>
           )}
           ListEmptyComponent={
-            <Text style={styles.emptyText}>No playlists yet. Tap above to add one.</Text>
+            <Text style={[styles.emptyText, { color: colors.subtext }]}>No playlists yet. Tap above to add one.</Text>
           }
         />
       )}
@@ -242,12 +243,11 @@ export default LivePlaylistsAdmin;
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
-  addBtn: { backgroundColor: '#0f3460', borderRadius: 14, padding: 16, alignItems: 'center', elevation: 4 },
+  addBtn: { borderRadius: 14, padding: 16, alignItems: 'center', elevation: 4 },
   addBtnText: { color: '#fff', fontWeight: 'bold', fontSize: 16 },
   row: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#fff',
     borderRadius: 12,
     padding: 14,
     marginBottom: 10,
@@ -255,40 +255,35 @@ const styles = StyleSheet.create({
     gap: 10,
   },
   rowMain: { flex: 1 },
-  rowLabel: { fontSize: 14, fontWeight: 'bold', color: '#1a1a2e', marginBottom: 2 },
-  rowId: { fontSize: 11, color: '#888', marginBottom: 4 },
+  rowLabel: { fontSize: 14, fontWeight: 'bold', marginBottom: 2 },
+  rowId: { fontSize: 11, marginBottom: 4 },
   statusText: { fontSize: 11, fontWeight: '600' },
   deleteBtn: { backgroundColor: '#fdecea', borderRadius: 10, padding: 10, alignItems: 'center', width: 44 },
   deleteBtnText: { color: '#c62828', fontWeight: '600', fontSize: 13 },
-  emptyText: { textAlign: 'center', color: '#999', marginTop: 40, fontStyle: 'italic' },
+  emptyText: { textAlign: 'center', marginTop: 40, fontStyle: 'italic' },
   formContainer: { flex: 1 },
-  formHeader: { flexDirection: 'row', alignItems: 'center', gap: 16, padding: 16, backgroundColor: '#fff', elevation: 2 },
-  formBackText: { color: '#0f3460', fontWeight: '600', fontSize: 15 },
-  formTitle: { fontSize: 16, fontWeight: 'bold', color: '#1a1a2e' },
-  fieldLabel: { fontSize: 13, fontWeight: '600', color: '#555', marginBottom: 6, marginTop: 14 },
-  fieldHint: { fontSize: 11, color: '#999', marginBottom: 6, fontStyle: 'italic' },
+  formHeader: { flexDirection: 'row', alignItems: 'center', gap: 16, padding: 16, elevation: 2 },
+  formBackText: { fontWeight: '600', fontSize: 15 },
+  formTitle: { fontSize: 16, fontWeight: 'bold' },
+  fieldLabel: { fontSize: 13, fontWeight: '600', marginBottom: 6, marginTop: 14 },
+  fieldHint: { fontSize: 11, marginBottom: 6, fontStyle: 'italic' },
   input: {
-    backgroundColor: '#fff',
     borderRadius: 10,
     padding: 12,
     fontSize: 15,
     elevation: 2,
     borderWidth: 1,
-    borderColor: '#eee',
-    color: '#1a1a2e',
   },
   toggleRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    backgroundColor: '#fff',
     padding: 14,
     borderRadius: 12,
     marginTop: 16,
     elevation: 2,
   },
   saveBtn: {
-    backgroundColor: '#0f3460',
     borderRadius: 14,
     padding: 16,
     alignItems: 'center',

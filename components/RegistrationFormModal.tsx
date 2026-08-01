@@ -16,6 +16,7 @@ import { Text } from './AppText';
 import { TextInput } from './AppTextInput';
 import DateField, { formatDateDisplay } from './fields/DateField';
 import PhoneField from './fields/PhoneField';
+import { useBreakpoint } from '../hooks/use-breakpoint';
 import {
   DuplicateRegistrationError,
   Gender,
@@ -50,6 +51,7 @@ function toIsoDate(date: Date): string {
 
 export default function RegistrationFormModal({ visible, programId, onClose }: Props) {
   const { theme, colors } = useTheme();
+  const { isTabletUp } = useBreakpoint();
   const dialog = useAppDialog();
   const insets = useSafeAreaInsets();
   const statusBarHeight = Platform.OS === 'android' ? (StatusBar.currentHeight ?? insets.top) : insets.top;
@@ -174,7 +176,11 @@ export default function RegistrationFormModal({ visible, programId, onClose }: P
             </TouchableOpacity>
           </View>
 
-          <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 24 }} keyboardShouldPersistTaps="handled">
+          <ScrollView
+            contentContainerStyle={[{ padding: 16, paddingBottom: 24 }, isTabletUp && styles.scrollContentDesktop]}
+            keyboardShouldPersistTaps="handled"
+          >
+          <View style={isTabletUp && styles.formColumn}>
             <View style={[styles.programBanner, { backgroundColor: colors.raised, borderLeftColor: colors.accent }]}>
               <Text style={[styles.programBannerLabel, { color: colors.subtext }]}>You wish to register for the program:</Text>
               <Text style={[styles.programBannerTitle, { color: colors.accent }]}>{programLabel}</Text>
@@ -200,7 +206,7 @@ export default function RegistrationFormModal({ visible, programId, onClose }: P
               />
             </View>
 
-            <View style={styles.formField}>
+            <View style={[styles.formField, isTabletUp && styles.dobFieldDesktop]}>
               <Text style={[styles.formLabel, { color: colors.subtext }]}>Date of Birth *</Text>
               <DateField
                 value={dob}
@@ -329,6 +335,7 @@ export default function RegistrationFormModal({ visible, programId, onClose }: P
                 </TouchableOpacity>
               </View>
             )}
+          </View>
           </ScrollView>
 
           {showSuccess && (
@@ -391,6 +398,17 @@ const styles = StyleSheet.create({
   modeBadgeText: { fontSize: 11, fontWeight: '700' },
   closeBtn: { borderRadius: 8, paddingHorizontal: 12, paddingVertical: 6, marginLeft: 12 },
   closeBtnText: { color: '#fff', fontWeight: '600' },
+  // On tablet-up, the whole form/review column is capped to a comfortable
+  // single-column reading/data-entry width instead of stretching across the
+  // full browser window — narrower than the app's general CONTENT_MAX_WIDTH
+  // (meant for dashboards/grids), matching what a data-entry form actually
+  // benefits from.
+  scrollContentDesktop: { alignItems: 'center' },
+  formColumn: { width: '100%', maxWidth: 640 },
+  // A native <input type="date"> doesn't need the full form-column width —
+  // capped separately so it doesn't visually stretch even within the
+  // already-narrowed formColumn.
+  dobFieldDesktop: { width: '100%', maxWidth: 320 },
   programBanner: { borderRadius: 12, padding: 14, marginBottom: 20, borderLeftWidth: 4 },
   programBannerLabel: { fontSize: 12, marginBottom: 2 },
   programBannerTitle: { fontSize: 16, fontWeight: 'bold' },

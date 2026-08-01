@@ -11,10 +11,12 @@ import { useAppDialog } from '../AppDialog';
 import { Text } from '../AppText';
 import { TextInput } from '../AppTextInput';
 import { EMPTY_HOME_CONTENT, HomeContent, subscribeHomeContent, updateHomeContent } from '../../utils/homeContentSync';
+import { useTheme } from '../../utils/ThemeContext';
 import { AdminScreenHandle } from './SpecialMeetingsAdmin';
 
 const HomeContentAdmin = forwardRef<AdminScreenHandle, {}>((_props, ref) => {
   const dialog = useAppDialog();
+  const { colors } = useTheme();
   const [form, setForm] = useState<HomeContent>(EMPTY_HOME_CONTENT);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -54,20 +56,20 @@ const HomeContentAdmin = forwardRef<AdminScreenHandle, {}>((_props, ref) => {
   };
 
   if (loading) {
-    return <ActivityIndicator size="large" color="#0f3460" style={{ marginTop: 60 }} />;
+    return <ActivityIndicator size="large" color={colors.accent} style={{ marginTop: 60 }} />;
   }
 
   return (
     <ScrollView contentContainerStyle={{ padding: 16 }} keyboardShouldPersistTaps="handled">
-      <Text style={styles.sectionHeader}>👤 Pastor Section</Text>
+      <Text style={[styles.sectionHeader, { color: colors.text }]}>👤 Pastor Section</Text>
 
       <View style={styles.formField}>
-        <Text style={styles.formLabel}>Pastor Photo URL</Text>
-        <Text style={styles.fieldHint}>Leave blank to use the default app photo</Text>
+        <Text style={[styles.formLabel, { color: colors.subtext }]}>Pastor Photo URL</Text>
+        <Text style={[styles.fieldHint, { color: colors.subtext }]}>Leave blank to use the default app photo</Text>
         <TextInput
-          style={styles.formInput}
+          style={[styles.formInput, { backgroundColor: colors.surfaceAlt, borderColor: colors.divider, color: colors.text }]}
           placeholder="https://..."
-          placeholderTextColor="#999"
+          placeholderTextColor={colors.subtext}
           value={form.pastorPhotoUrl}
           onChangeText={v => F('pastorPhotoUrl', v)}
           autoCapitalize="none"
@@ -75,34 +77,34 @@ const HomeContentAdmin = forwardRef<AdminScreenHandle, {}>((_props, ref) => {
       </View>
 
       <View style={styles.formField}>
-        <Text style={styles.formLabel}>Pastor Name *</Text>
+        <Text style={[styles.formLabel, { color: colors.subtext }]}>Pastor Name *</Text>
         <TextInput
-          style={styles.formInput}
+          style={[styles.formInput, { backgroundColor: colors.surfaceAlt, borderColor: colors.divider, color: colors.text }]}
           placeholder="e.g. Bro. Salaman Tirupur"
-          placeholderTextColor="#999"
+          placeholderTextColor={colors.subtext}
           value={form.pastorName}
           onChangeText={v => F('pastorName', v)}
         />
       </View>
 
       <View style={styles.formField}>
-        <Text style={styles.formLabel}>Designation *</Text>
+        <Text style={[styles.formLabel, { color: colors.subtext }]}>Designation *</Text>
         <TextInput
-          style={styles.formInput}
+          style={[styles.formInput, { backgroundColor: colors.surfaceAlt, borderColor: colors.divider, color: colors.text }]}
           placeholder="e.g. Pastor & Founder"
-          placeholderTextColor="#999"
+          placeholderTextColor={colors.subtext}
           value={form.pastorDesignation}
           onChangeText={v => F('pastorDesignation', v)}
         />
       </View>
 
       <View style={styles.formField}>
-        <Text style={styles.formLabel}>About Pastor (English) *</Text>
-        <Text style={styles.fieldHint}>Line breaks and paragraph spacing are preserved exactly as typed</Text>
+        <Text style={[styles.formLabel, { color: colors.subtext }]}>About Pastor (English) *</Text>
+        <Text style={[styles.fieldHint, { color: colors.subtext }]}>Line breaks and paragraph spacing are preserved exactly as typed</Text>
         <TextInput
-          style={[styles.formInput, styles.formInputMulti]}
+          style={[styles.formInput, styles.formInputMulti, { backgroundColor: colors.surfaceAlt, borderColor: colors.divider, color: colors.text }]}
           placeholder="About the Pastor, in English..."
-          placeholderTextColor="#999"
+          placeholderTextColor={colors.subtext}
           value={form.aboutPastorEnglish}
           onChangeText={v => F('aboutPastorEnglish', v)}
           multiline
@@ -111,11 +113,11 @@ const HomeContentAdmin = forwardRef<AdminScreenHandle, {}>((_props, ref) => {
       </View>
 
       <View style={styles.formField}>
-        <Text style={styles.formLabel}>About Pastor (Tamil) *</Text>
+        <Text style={[styles.formLabel, { color: colors.subtext }]}>About Pastor (Tamil) *</Text>
         <TextInput
-          style={[styles.formInput, styles.formInputMulti]}
+          style={[styles.formInput, styles.formInputMulti, { backgroundColor: colors.surfaceAlt, borderColor: colors.divider, color: colors.text }]}
           placeholder="போதகரைப் பற்றி, தமிழில்..."
-          placeholderTextColor="#999"
+          placeholderTextColor={colors.subtext}
           value={form.aboutPastorTamil}
           onChangeText={v => F('aboutPastorTamil', v)}
           multiline
@@ -123,17 +125,17 @@ const HomeContentAdmin = forwardRef<AdminScreenHandle, {}>((_props, ref) => {
         />
       </View>
 
-      <View style={styles.divider} />
+      <View style={[styles.divider, { backgroundColor: colors.divider }]} />
 
-      <Text style={styles.sectionHeader}>⛪ About Ministry Section</Text>
+      <Text style={[styles.sectionHeader, { color: colors.text }]}>⛪ About Ministry Section</Text>
 
       <View style={styles.formField}>
-        <Text style={styles.formLabel}>About Ministry (English) *</Text>
-        <Text style={styles.fieldHint}>Line breaks and paragraph spacing are preserved exactly as typed</Text>
+        <Text style={[styles.formLabel, { color: colors.subtext }]}>About Ministry (English) *</Text>
+        <Text style={[styles.fieldHint, { color: colors.subtext }]}>Line breaks and paragraph spacing are preserved exactly as typed</Text>
         <TextInput
-          style={[styles.formInput, styles.formInputMulti, { minHeight: 160 }]}
+          style={[styles.formInput, styles.formInputMulti, { minHeight: 160 }, { backgroundColor: colors.surfaceAlt, borderColor: colors.divider, color: colors.text }]}
           placeholder="About the ministry, in English..."
-          placeholderTextColor="#999"
+          placeholderTextColor={colors.subtext}
           value={form.aboutMinistryEnglish}
           onChangeText={v => F('aboutMinistryEnglish', v)}
           multiline
@@ -142,11 +144,11 @@ const HomeContentAdmin = forwardRef<AdminScreenHandle, {}>((_props, ref) => {
       </View>
 
       <View style={styles.formField}>
-        <Text style={styles.formLabel}>About Ministry (Tamil) *</Text>
+        <Text style={[styles.formLabel, { color: colors.subtext }]}>About Ministry (Tamil) *</Text>
         <TextInput
-          style={[styles.formInput, styles.formInputMulti, { minHeight: 160 }]}
+          style={[styles.formInput, styles.formInputMulti, { minHeight: 160 }, { backgroundColor: colors.surfaceAlt, borderColor: colors.divider, color: colors.text }]}
           placeholder="ஊழியத்தைப் பற்றி, தமிழில்..."
-          placeholderTextColor="#999"
+          placeholderTextColor={colors.subtext}
           value={form.aboutMinistryTamil}
           onChangeText={v => F('aboutMinistryTamil', v)}
           multiline
@@ -155,7 +157,7 @@ const HomeContentAdmin = forwardRef<AdminScreenHandle, {}>((_props, ref) => {
       </View>
 
       <TouchableOpacity
-        style={[styles.saveBtn, saving && { opacity: 0.6 }]}
+        style={[styles.saveBtn, { backgroundColor: colors.accent }, saving && { opacity: 0.6 }]}
         onPress={save}
         disabled={saving}
       >
@@ -169,24 +171,20 @@ const HomeContentAdmin = forwardRef<AdminScreenHandle, {}>((_props, ref) => {
 export default HomeContentAdmin;
 
 const styles = StyleSheet.create({
-  sectionHeader: { fontSize: 16, fontWeight: 'bold', color: '#1a1a2e', marginBottom: 12, marginTop: 4 },
-  divider: { height: 1, backgroundColor: '#eee', marginVertical: 20 },
+  sectionHeader: { fontSize: 16, fontWeight: 'bold', marginBottom: 12, marginTop: 4 },
+  divider: { height: 1, marginVertical: 20 },
   formField: { marginBottom: 16 },
-  formLabel: { fontSize: 13, fontWeight: '600', color: '#555', marginBottom: 6 },
-  fieldHint: { fontSize: 11, color: '#999', marginBottom: 6, fontStyle: 'italic' },
+  formLabel: { fontSize: 13, fontWeight: '600', marginBottom: 6 },
+  fieldHint: { fontSize: 11, marginBottom: 6, fontStyle: 'italic' },
   formInput: {
-    backgroundColor: '#fff',
     borderRadius: 10,
     padding: 12,
     fontSize: 15,
     elevation: 2,
     borderWidth: 1,
-    borderColor: '#eee',
-    color: '#1a1a2e',
   },
   formInputMulti: { minHeight: 100 },
   saveBtn: {
-    backgroundColor: '#0f3460',
     borderRadius: 14,
     padding: 16,
     alignItems: 'center',

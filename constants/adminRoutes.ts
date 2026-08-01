@@ -12,7 +12,7 @@ export interface AdminRouteMeta {
 }
 
 export const ADMIN_ROUTE_META: Record<string, AdminRouteMeta> = {
-  '/admin': { title: '⚙️ Admin Panel', subtitle: 'Theos Gospel Hall' },
+  '/admin': { title: '📊 Dashboard', subtitle: 'Overview of admin modules' },
   '/admin/special-meetings': { title: '📅 Upcoming Special Meetings', subtitle: 'Manage upcoming meetings' },
   '/admin/songs': { title: '🎵 Songs', subtitle: 'Choose a collection to manage' },
   '/admin/songs/geethangalum': { title: '📖 Geethangalum Keerthanaigalum', subtitle: 'Edit existing songs' },
@@ -45,12 +45,17 @@ export interface AdminSidebarItem {
 // AdminDashboard's own card grid) — deeper screens are reached via the same
 // in-page menu components used on mobile (SongsAdminMenu, RegistrationsTopMenu,
 // etc.), now navigating with router.push instead of local stack state.
+// Labels match ADMIN_ROUTE_META's titles (minus emoji) for the same route,
+// so the sidebar, the page header, and the mobile Stack header never show
+// three different names for the same destination. Order matches
+// AdminDashboard's own card order (Songs, Registrations, Special Meetings,
+// Home Content, App Management last) so the two navigation surfaces agree.
 export const ADMIN_SIDEBAR_ITEMS: AdminSidebarItem[] = [
   { key: 'dashboard', label: 'Dashboard', href: '/admin', icon: 'grid-outline' },
-  { key: 'special-meetings', label: 'Special Meetings', href: '/admin/special-meetings', icon: 'calendar-outline' },
   { key: 'songs', label: 'Songs', href: '/admin/songs', icon: 'musical-notes-outline' },
-  { key: 'registrations', label: 'Registrations', href: '/admin/registrations', icon: 'document-text-outline' },
-  { key: 'home-content', label: 'Home Content', href: '/admin/home-content', icon: 'home-outline' },
+  { key: 'registrations', label: 'Discipleship & Academy Registrations', href: '/admin/registrations', icon: 'document-text-outline' },
+  { key: 'special-meetings', label: 'Upcoming Special Meetings', href: '/admin/special-meetings', icon: 'calendar-outline' },
+  { key: 'home-content', label: 'Home Screen Content', href: '/admin/home-content', icon: 'home-outline' },
   { key: 'app-management', label: 'App Management', href: '/admin/app-management', icon: 'warning-outline' },
 ];
 

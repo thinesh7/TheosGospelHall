@@ -221,7 +221,7 @@ export async function addOtherSong(data: {
 
 export async function updateOtherSong(
   songId: string,
-  updates: { title?: string; lyrics?: { tamil: string; english: string }; titleEnglish?: string }
+  updates: { title?: string; lyrics?: { tamil: string; english: string }; titleEnglish?: string; isVisible?: boolean }
 ): Promise<void> {
   const existing = await getOtherSongById(songId);
   if (!existing) return;
@@ -245,7 +245,7 @@ export async function updateOtherSong(
   const index = await getOtherSongsIndex();
   const newIndex = index.map(e =>
     e.songId === songId
-      ? { ...e, title: merged.title, titleEnglish: merged.titleEnglish }
+      ? { ...e, title: merged.title, titleEnglish: merged.titleEnglish, isVisible: merged.isVisible }
       : e
   );
   await saveOtherSongsIndexCache(newIndex);

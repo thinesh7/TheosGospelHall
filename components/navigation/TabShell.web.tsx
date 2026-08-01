@@ -1,6 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
+import { usePathname, useRouter } from 'expo-router';
 import { useEffect, useState } from 'react';
-import { StyleSheet, TouchableOpacity, View } from 'react-native';
+import { Image, StyleSheet, TouchableOpacity, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Text } from '@/components/AppText';
 import LiveNowPopup from '@/components/LiveNowPopup';
@@ -14,6 +15,17 @@ import VideosScreen from '@/app/(tabs)/videos';
 import { checkCurrentlyLive, LiveNowInfo } from '@/utils/liveStatus';
 import { useTheme } from '@/utils/ThemeContext';
 import { useIsUpdateGateActive } from '@/utils/UpdateGateContext';
+
+// Route each tab corresponds to — index must line up 1:1 with TABS below.
+// Unlike the native shell (no URL concept), web needs this so a direct load,
+// refresh, or browser back/forward on e.g. /videos lands on the Videos tab
+// instead of always falling back to Home.
+const TAB_PATHS = ['/', '/videos', '/bible', '/songs-hub', '/contact'];
+
+function pathToTabIndex(pathname: string): number {
+  const idx = TAB_PATHS.indexOf(pathname);
+  return idx === -1 ? 0 : idx;
+}
 
 // Web variant of the tab shell (see TabShell.tsx for why the fork lives here,
 // outside app/, rather than as app/(tabs)/_layout.web.tsx). Drops
@@ -38,8 +50,10 @@ export default function TabShell() {
   const { colors } = useTheme();
   const { isDesktopUp } = useBreakpoint();
   const insets = useSafeAreaInsets();
-  const [activeTab, setActiveTab] = useState(0);
-  const [visitedTabs, setVisitedTabs] = useState<Set<number>>(new Set([0]));
+  const router = useRouter();
+  const pathname = usePathname();
+  const activeTab = pathToTabIndex(pathname);
+  const [visitedTabs, setVisitedTabs] = useState<Set<number>>(() => new Set([activeTab]));
 
   const [liveNowInfo, setLiveNowInfo] = useState<LiveNowInfo | null>(null);
   const [autoPlayLive, setAutoPlayLive] = useState<{ videoId: string; title: string } | null>(null);
@@ -52,9 +66,12 @@ export default function TabShell() {
     checkCurrentlyLive().then(info => { if (info) setLiveNowInfo(info); });
   }, [isUpdateGateActive]);
 
+  useEffect(() => {
+    setVisitedTabs(prev => (prev.has(activeTab) ? prev : new Set(prev).add(activeTab)));
+  }, [activeTab]);
+
   const goToTab = (index: number) => {
-    setActiveTab(index);
-    setVisitedTabs(prev => (prev.has(index) ? prev : new Set(prev).add(index)));
+    router.push(TAB_PATHS[index] as any);
   };
 
   const handleWatchLiveNow = () => {
@@ -101,8 +118,13 @@ export default function TabShell() {
           width={260}
           header={
             <View style={[styles.sidebarHeader, { borderBottomColor: colors.divider }]}>
-              <Text style={[styles.brandTitle, { color: colors.text }]}>Theos Gospel Hall</Text>
-              <Text style={[styles.brandSubtitle, { color: colors.subtext }]}>Proclaiming the Word of God</Text>
+              <View style={styles.brandRow}>
+                <Image source={require('../../assets/images/logo.png')} style={styles.brandLogo} resizeMode="contain" />
+                <View style={styles.brandTextCol}>
+                  <Text style={[styles.brandTitle, { color: colors.text }]}>Theos Gospel Hall</Text>
+                  <Text style={[styles.brandSubtitle, { color: colors.subtext }]}>Proclaiming the Word of God</Text>
+                </View>
+              </View>
             </View>
           }
         />
@@ -148,6 +170,9 @@ const styles = StyleSheet.create({
   tabLabel: { fontSize: 10, marginTop: 2 },
   tabLabelActive: { fontWeight: 'bold' },
   sidebarHeader: { paddingHorizontal: 20, paddingBottom: 20, marginBottom: 12, borderBottomWidth: 1 },
+  brandRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  brandLogo: { width: 36, height: 36, borderRadius: 8 },
+  brandTextCol: { flex: 1 },
   brandTitle: { fontSize: 18, fontWeight: '700' },
   brandSubtitle: { fontSize: 12, marginTop: 4, fontStyle: 'italic' },
 });

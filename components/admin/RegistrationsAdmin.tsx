@@ -1,7 +1,8 @@
 import { Ionicons } from '@expo/vector-icons';
 import * as Clipboard from 'expo-clipboard';
+import { useFocusEffect } from 'expo-router';
 import { collection, onSnapshot } from 'firebase/firestore';
-import { forwardRef, ReactNode, useEffect, useImperativeHandle, useMemo, useState } from 'react';
+import { forwardRef, ReactNode, useCallback, useImperativeHandle, useMemo, useState } from 'react';
 import { Linking, Modal, ScrollView, StyleSheet, TouchableOpacity, View } from 'react-native';
 import { useAppDialog } from '../AppDialog';
 import { Text } from '../AppText';
@@ -32,6 +33,7 @@ import {
   STATUS_LABELS,
   updateRegistrationStatus,
 } from '../../utils/registrations';
+import { useTheme } from '../../utils/ThemeContext';
 import { AdminScreenHandle } from './SpecialMeetingsAdmin';
 
 type FilterMode = 'registered' | 'accepted' | 'deleted';
@@ -46,6 +48,7 @@ interface Props {
 
 const RegistrationsAdmin = forwardRef<AdminScreenHandle, Props>(({ programId }, ref) => {
   const dialog = useAppDialog();
+  const { colors } = useTheme();
   const [registrations, setRegistrations] = useState<Registration[]>([]);
   const [loading, setLoading] = useState(true);
   const [filterMode, setFilterMode] = useState<FilterMode>('registered');
@@ -63,21 +66,29 @@ const RegistrationsAdmin = forwardRef<AdminScreenHandle, Props>(({ programId }, 
     },
   }));
 
-  useEffect(() => {
-    setLoading(true);
-    const collectionName = programId === 'youth' ? 'youthProgramRegistrations' : 'academyRegistrations';
-    const unsubscribe = onSnapshot(
-      collection(db, collectionName),
-      snapshot => {
-        const list: Registration[] = snapshot.docs.map(d => ({ id: d.id, ...(d.data() as any) }));
-        list.sort((a, b) => (b.createdAt?.toMillis?.() ?? 0) - (a.createdAt?.toMillis?.() ?? 0));
-        setRegistrations(list);
-        setLoading(false);
-      },
-      () => setLoading(false)
-    );
-    return () => unsubscribe();
-  }, [programId]);
+  // Focus-scoped rather than mount-scoped: the mobile admin Stack doesn't
+  // force-unmount backgrounded routes, so a plain useEffect here would keep
+  // this unbounded collection listener streaming updates to a screen the
+  // admin has navigated away from (and could even stack two of them if
+  // youth/academy are reached via repeated push). Subscribing only while
+  // focused means exactly one screen ever holds this listener at a time.
+  useFocusEffect(
+    useCallback(() => {
+      setLoading(true);
+      const collectionName = programId === 'youth' ? 'youthProgramRegistrations' : 'academyRegistrations';
+      const unsubscribe = onSnapshot(
+        collection(db, collectionName),
+        snapshot => {
+          const list: Registration[] = snapshot.docs.map(d => ({ id: d.id, ...(d.data() as any) }));
+          list.sort((a, b) => (b.createdAt?.toMillis?.() ?? 0) - (a.createdAt?.toMillis?.() ?? 0));
+          setRegistrations(list);
+          setLoading(false);
+        },
+        () => setLoading(false)
+      );
+      return () => unsubscribe();
+    }, [programId])
+  );
 
   const selected = useMemo(
     () => registrations.find(r => r.id === selectedId) ?? null,
@@ -248,15 +259,15 @@ const RegistrationsAdmin = forwardRef<AdminScreenHandle, Props>(({ programId }, 
       <ScrollView contentContainerStyle={{ padding: 16 }} keyboardShouldPersistTaps="handled">
         <View style={styles.formHeader}>
           <TouchableOpacity onPress={() => setSelectedId(null)}>
-            <Text style={styles.formBackText}>← Back</Text>
+            <Text style={[styles.formBackText, { color: colors.accent }]}>← Back</Text>
           </TouchableOpacity>
-          <Text style={[styles.formTitle, { flex: 1 }]}>Registration Details</Text>
-          <TouchableOpacity onPress={handleCopyDetails} style={styles.copyBtn}>
-            <Ionicons name="copy-outline" size={20} color="#0f3460" />
+          <Text style={[styles.formTitle, { color: colors.text, flex: 1 }]}>Registration Details</Text>
+          <TouchableOpacity onPress={handleCopyDetails} style={[styles.copyBtn, { backgroundColor: colors.accent + '15' }]}>
+            <Ionicons name="copy-outline" size={20} color={colors.accent} />
           </TouchableOpacity>
         </View>
 
-        <View style={styles.detailCard}>
+        <View style={[styles.detailCard, { backgroundColor: colors.surface }]}>
           <DetailRow label="Name" value={selected.name} />
           <DetailRow label="Date of Birth" value={formatDateDisplay(selected.dob)} />
           <DetailRow label="Age" value={computeAge(selected.dob) !== null ? `${computeAge(selected.dob)} years` : '—'} />
@@ -294,16 +305,20 @@ const RegistrationsAdmin = forwardRef<AdminScreenHandle, Props>(({ programId }, 
 
         {!selected.isDeleted ? (
           <>
-            <Text style={styles.formLabel}>Status</Text>
+            <Text style={[styles.formLabel, { color: colors.subtext }]}>Status</Text>
             <View style={styles.segmentRow}>
               {(['registered', 'followup', 'accepted'] as RegistrationStatus[]).map(s => (
                 <TouchableOpacity
                   key={s}
-                  style={[styles.segmentBtn, selected.status === s && styles.segmentBtnActive]}
+                  style={[
+                    styles.segmentBtn,
+                    { backgroundColor: colors.surface, borderColor: colors.divider },
+                    selected.status === s && { backgroundColor: colors.accent, borderColor: colors.accent },
+                  ]}
                   disabled={busy}
                   onPress={() => handleStatusChange(s)}
                 >
-                  <Text style={[styles.segmentBtnText, selected.status === s && styles.segmentBtnTextActive]}>
+                  <Text style={[styles.segmentBtnText, { color: colors.subtext }, selected.status === s && styles.segmentBtnTextActive]}>
                     {STATUS_LABELS[s]}
                   </Text>
                 </TouchableOpacity>
@@ -316,16 +331,16 @@ const RegistrationsAdmin = forwardRef<AdminScreenHandle, Props>(({ programId }, 
           </>
         ) : (
           <>
-            <Text style={styles.formLabel}>Restore As</Text>
+            <Text style={[styles.formLabel, { color: colors.subtext }]}>Restore As</Text>
             <View style={styles.segmentRow}>
               {(['registered', 'followup', 'accepted'] as RegistrationStatus[]).map(s => (
                 <TouchableOpacity
                   key={s}
-                  style={styles.segmentBtn}
+                  style={[styles.segmentBtn, { backgroundColor: colors.surface, borderColor: colors.divider }]}
                   disabled={busy}
                   onPress={() => handleRestore(s)}
                 >
-                  <Text style={styles.segmentBtnText}>{STATUS_LABELS[s]}</Text>
+                  <Text style={[styles.segmentBtnText, { color: colors.subtext }]}>{STATUS_LABELS[s]}</Text>
                 </TouchableOpacity>
               ))}
             </View>
@@ -343,43 +358,47 @@ const RegistrationsAdmin = forwardRef<AdminScreenHandle, Props>(({ programId }, 
 
   return (
     <View style={{ flex: 1 }}>
-      <View style={styles.toggleWrap}>
+      <View style={[styles.toggleWrap, { backgroundColor: colors.bg }]}>
         <View style={styles.exportRow}>
           <TouchableOpacity
-            style={[styles.exportBtn, !!exporting && { opacity: 0.6 }]}
+            style={[styles.exportBtn, { backgroundColor: colors.accent + '15' }, !!exporting && { opacity: 0.6 }]}
             disabled={!!exporting}
             onPress={() => setShowExportMenu(true)}
           >
-            <Ionicons name={exporting ? 'hourglass-outline' : 'download-outline'} size={16} color="#0f3460" />
-            <Text style={styles.exportBtnText}>{exporting ? 'Exporting...' : 'Export'}</Text>
+            <Ionicons name={exporting ? 'hourglass-outline' : 'download-outline'} size={16} color={colors.accent} />
+            <Text style={[styles.exportBtnText, { color: colors.accent }]}>{exporting ? 'Exporting...' : 'Export'}</Text>
           </TouchableOpacity>
         </View>
         <View style={styles.segmentRow}>
           {(['registered', 'accepted', 'deleted'] as FilterMode[]).map(mode => (
             <TouchableOpacity
               key={mode}
-              style={[styles.segmentBtn, filterMode === mode && styles.segmentBtnActive]}
+              style={[
+                styles.segmentBtn,
+                { backgroundColor: colors.surface, borderColor: colors.divider },
+                filterMode === mode && { backgroundColor: colors.accent, borderColor: colors.accent },
+              ]}
               onPress={() => { setFilterMode(mode); setSearch(''); }}
             >
-              <Text style={[styles.segmentBtnText, filterMode === mode && styles.segmentBtnTextActive]}>
+              <Text style={[styles.segmentBtnText, { color: colors.subtext }, filterMode === mode && styles.segmentBtnTextActive]}>
                 {mode === 'registered' ? 'Registered' : mode === 'accepted' ? 'Accepted' : 'Rejected'}
               </Text>
             </TouchableOpacity>
           ))}
         </View>
 
-        <View style={styles.searchBar}>
-          <Ionicons name="search" size={18} color="#666" />
+        <View style={[styles.searchBar, { backgroundColor: colors.surface }]}>
+          <Ionicons name="search" size={18} color={colors.subtext} />
           <TextInput
-            style={styles.searchInput}
+            style={[styles.searchInput, { color: colors.text }]}
             placeholder="Search by name or mobile number..."
-            placeholderTextColor="#999"
+            placeholderTextColor={colors.subtext}
             value={search}
             onChangeText={setSearch}
           />
           {search.length > 0 && (
             <TouchableOpacity onPress={() => setSearch('')}>
-              <Ionicons name="close-circle" size={18} color="#999" />
+              <Ionicons name="close-circle" size={18} color={colors.subtext} />
             </TouchableOpacity>
           )}
         </View>
@@ -387,26 +406,26 @@ const RegistrationsAdmin = forwardRef<AdminScreenHandle, Props>(({ programId }, 
 
       <ScrollView contentContainerStyle={{ padding: 16, paddingTop: 8 }}>
         {loading ? (
-          <Text style={styles.loadingText}>Loading registrations...</Text>
+          <Text style={[styles.loadingText, { color: colors.subtext }]}>Loading registrations...</Text>
         ) : currentList.length === 0 ? (
-          <Text style={styles.emptyText}>No registrations here.</Text>
+          <Text style={[styles.emptyText, { color: colors.subtext }]}>No registrations here.</Text>
         ) : (
           currentList.map(r => (
-            <TouchableOpacity key={r.id} style={styles.card} onPress={() => setSelectedId(r.id)} activeOpacity={0.8}>
+            <TouchableOpacity key={r.id} style={[styles.card, { backgroundColor: colors.surface, borderLeftColor: colors.accent }]} onPress={() => setSelectedId(r.id)} activeOpacity={0.8}>
               <View style={{ flex: 1 }}>
-                <Text style={styles.cardTitle}>{r.name}</Text>
-                <Text style={styles.cardMeta}>
+                <Text style={[styles.cardTitle, { color: colors.text }]}>{r.name}</Text>
+                <Text style={[styles.cardMeta, { color: colors.subtext }]}>
                   {computeAge(r.dob) !== null ? `${computeAge(r.dob)} yrs` : '—'} • 📍 {r.place}
                 </Text>
-                <Text style={styles.cardMeta}>🗓 Registered {formatTimestampIST(r.createdAt)}</Text>
+                <Text style={[styles.cardMeta, { color: colors.subtext }]}>🗓 Registered {formatTimestampIST(r.createdAt)}</Text>
                 {filterMode === 'registered' && (
                   <View style={styles.cardStatusRow}>
-                    <View style={[styles.statusDot, { backgroundColor: r.status === 'followup' ? '#f4a261' : '#0f3460' }]} />
-                    <Text style={styles.cardStatusText}>{STATUS_LABELS[r.status]}</Text>
+                    <View style={[styles.statusDot, { backgroundColor: r.status === 'followup' ? '#f4a261' : colors.accent }]} />
+                    <Text style={[styles.cardStatusText, { color: colors.subtext }]}>{STATUS_LABELS[r.status]}</Text>
                   </View>
                 )}
               </View>
-              <Text style={styles.cardChevron}>›</Text>
+              <Text style={[styles.cardChevron, { color: colors.divider }]}>›</Text>
             </TouchableOpacity>
           ))
         )}
@@ -418,25 +437,25 @@ const RegistrationsAdmin = forwardRef<AdminScreenHandle, Props>(({ programId }, 
           activeOpacity={1}
           onPress={() => setShowExportMenu(false)}
         >
-          <View style={styles.exportMenuCard} onStartShouldSetResponder={() => true}>
-            <Text style={styles.exportMenuTitle}>Export Registrations</Text>
-            <Text style={styles.exportMenuSubtitle}>Choose which registrations to export</Text>
+          <View style={[styles.exportMenuCard, { backgroundColor: colors.surface }]} onStartShouldSetResponder={() => true}>
+            <Text style={[styles.exportMenuTitle, { color: colors.text }]}>Export Registrations</Text>
+            <Text style={[styles.exportMenuSubtitle, { color: colors.subtext }]}>Choose which registrations to export</Text>
             {(['all', 'registered', 'accepted', 'deleted'] as ExportStatusOption[]).map(status => {
               const count = countForStatus(status, exportDataSets);
               return (
                 <TouchableOpacity
                   key={status}
-                  style={[styles.exportMenuOption, count === 0 && { opacity: 0.4 }]}
+                  style={[styles.exportMenuOption, { borderBottomColor: colors.divider }, count === 0 && { opacity: 0.4 }]}
                   disabled={count === 0}
                   onPress={() => chooseFormat(status)}
                 >
-                  <Text style={styles.exportMenuOptionText}>{STATUS_OPTION_LABELS[status]}</Text>
-                  <Text style={styles.exportMenuOptionCount}>{count}</Text>
+                  <Text style={[styles.exportMenuOptionText, { color: colors.accent }]}>{STATUS_OPTION_LABELS[status]}</Text>
+                  <Text style={[styles.exportMenuOptionCount, { color: colors.subtext }]}>{count}</Text>
                 </TouchableOpacity>
               );
             })}
             <TouchableOpacity style={styles.exportMenuCancel} onPress={() => setShowExportMenu(false)}>
-              <Text style={styles.exportMenuCancelText}>Cancel</Text>
+              <Text style={[styles.exportMenuCancelText, { color: colors.subtext }]}>Cancel</Text>
             </TouchableOpacity>
           </View>
         </TouchableOpacity>
@@ -448,11 +467,12 @@ const RegistrationsAdmin = forwardRef<AdminScreenHandle, Props>(({ programId }, 
 });
 
 function DetailRow({ label, value, rightElement }: { label: string; value: string; rightElement?: ReactNode }) {
+  const { colors } = useTheme();
   return (
     <View style={styles.detailRow}>
-      <Text style={styles.detailLabel}>{label}</Text>
+      <Text style={[styles.detailLabel, { color: colors.subtext }]}>{label}</Text>
       <View style={styles.detailValueRow}>
-        <Text style={styles.detailValue}>{value}</Text>
+        <Text style={[styles.detailValue, { color: colors.text }]}>{value}</Text>
         {rightElement}
       </View>
     </View>
@@ -462,22 +482,21 @@ function DetailRow({ label, value, rightElement }: { label: string; value: strin
 export default RegistrationsAdmin;
 
 const styles = StyleSheet.create({
-  toggleWrap: { padding: 16, paddingBottom: 8, backgroundColor: '#f5f5f5' },
+  toggleWrap: { padding: 16, paddingBottom: 8 },
   exportRow: { flexDirection: 'row', justifyContent: 'flex-end', marginBottom: 10 },
   exportBtn: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
-    backgroundColor: '#e8f0fe',
     borderRadius: 10,
     paddingHorizontal: 12,
     paddingVertical: 8,
   },
-  exportBtnText: { color: '#0f3460', fontWeight: '600', fontSize: 12 },
+  exportBtnText: { fontWeight: '600', fontSize: 12 },
   exportMenuBackdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', alignItems: 'center', padding: 24 },
-  exportMenuCard: { backgroundColor: '#fff', borderRadius: 16, padding: 20, width: '100%', maxWidth: 340, elevation: 8 },
-  exportMenuTitle: { fontSize: 17, fontWeight: 'bold', color: '#1a1a2e', marginBottom: 4 },
-  exportMenuSubtitle: { fontSize: 12, color: '#888', marginBottom: 16 },
+  exportMenuCard: { borderRadius: 16, padding: 20, width: '100%', maxWidth: 340, elevation: 8 },
+  exportMenuTitle: { fontSize: 17, fontWeight: 'bold', marginBottom: 4 },
+  exportMenuSubtitle: { fontSize: 12, marginBottom: 16 },
   exportMenuOption: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -485,50 +504,46 @@ const styles = StyleSheet.create({
     paddingVertical: 14,
     paddingHorizontal: 4,
     borderBottomWidth: 1,
-    borderBottomColor: '#eee',
   },
-  exportMenuOptionText: { fontSize: 15, fontWeight: '600', color: '#0f3460' },
-  exportMenuOptionCount: { fontSize: 13, color: '#888', fontWeight: '600' },
+  exportMenuOptionText: { fontSize: 15, fontWeight: '600' },
+  exportMenuOptionCount: { fontSize: 13, fontWeight: '600' },
   exportMenuCancel: { alignItems: 'center', paddingVertical: 14, marginTop: 6 },
-  exportMenuCancelText: { fontSize: 14, color: '#888', fontWeight: '600' },
+  exportMenuCancelText: { fontSize: 14, fontWeight: '600' },
   segmentRow: { flexDirection: 'row', gap: 10, marginBottom: 10 },
-  segmentBtn: { flex: 1, paddingVertical: 12, borderRadius: 10, backgroundColor: '#fff', borderWidth: 1, borderColor: '#eee', alignItems: 'center' },
-  segmentBtnActive: { backgroundColor: '#0f3460', borderColor: '#0f3460' },
-  segmentBtnText: { fontSize: 13, fontWeight: '600', color: '#555' },
+  segmentBtn: { flex: 1, paddingVertical: 12, borderRadius: 10, borderWidth: 1, alignItems: 'center' },
+  segmentBtnText: { fontSize: 13, fontWeight: '600' },
   segmentBtnTextActive: { color: '#fff' },
-  searchBar: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#fff', borderRadius: 12, paddingHorizontal: 12, paddingVertical: 10, elevation: 3, gap: 8 },
-  searchInput: { flex: 1, fontSize: 14, color: '#333' },
-  loadingText: { textAlign: 'center', color: '#888', marginTop: 20 },
-  emptyText: { textAlign: 'center', color: '#aaa', marginTop: 30, fontSize: 14, fontStyle: 'italic' },
+  searchBar: { flexDirection: 'row', alignItems: 'center', borderRadius: 12, paddingHorizontal: 12, paddingVertical: 10, elevation: 3, gap: 8 },
+  searchInput: { flex: 1, fontSize: 14 },
+  loadingText: { textAlign: 'center', marginTop: 20 },
+  emptyText: { textAlign: 'center', marginTop: 30, fontSize: 14, fontStyle: 'italic' },
   card: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#fff',
     borderRadius: 14,
     padding: 16,
     marginBottom: 12,
     elevation: 3,
     borderLeftWidth: 5,
-    borderLeftColor: '#0f3460',
   },
-  cardTitle: { fontSize: 15, fontWeight: 'bold', color: '#1a1a2e', marginBottom: 4 },
-  cardMeta: { fontSize: 12, color: '#666' },
+  cardTitle: { fontSize: 15, fontWeight: 'bold', marginBottom: 4 },
+  cardMeta: { fontSize: 12 },
   cardStatusRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 6 },
   statusDot: { width: 8, height: 8, borderRadius: 4 },
-  cardStatusText: { fontSize: 12, color: '#666' },
-  cardChevron: { fontSize: 26, color: '#ccc', marginLeft: 8, fontWeight: '300' },
+  cardStatusText: { fontSize: 12 },
+  cardChevron: { fontSize: 26, marginLeft: 8, fontWeight: '300' },
   formHeader: { flexDirection: 'row', alignItems: 'center', gap: 16, marginBottom: 20 },
-  copyBtn: { backgroundColor: '#e8f0fe', width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center' },
-  formBackText: { color: '#0f3460', fontWeight: '600', fontSize: 15 },
-  formTitle: { fontSize: 17, fontWeight: 'bold', color: '#1a1a2e' },
-  detailCard: { backgroundColor: '#fff', borderRadius: 14, padding: 16, marginBottom: 20, elevation: 3 },
+  copyBtn: { width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center' },
+  formBackText: { fontWeight: '600', fontSize: 15 },
+  formTitle: { fontSize: 17, fontWeight: 'bold' },
+  detailCard: { borderRadius: 14, padding: 16, marginBottom: 20, elevation: 3 },
   detailRow: { marginBottom: 12 },
-  detailLabel: { fontSize: 11, fontWeight: '600', color: '#888', textTransform: 'uppercase', marginBottom: 2 },
+  detailLabel: { fontSize: 11, fontWeight: '600', textTransform: 'uppercase', marginBottom: 2 },
   detailValueRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  detailValue: { fontSize: 15, color: '#1a1a2e' },
+  detailValue: { fontSize: 15 },
   contactBtnRow: { flexDirection: 'row', gap: 8 },
   contactBtn: { width: 32, height: 32, borderRadius: 16, alignItems: 'center', justifyContent: 'center' },
-  formLabel: { fontSize: 13, fontWeight: '600', color: '#555', marginBottom: 8 },
+  formLabel: { fontSize: 13, fontWeight: '600', marginBottom: 8 },
   deleteBtn: { backgroundColor: '#fdecea', borderRadius: 10, padding: 14, alignItems: 'center', marginTop: 4, marginBottom: 24 },
   deleteBtnText: { color: '#c62828', fontWeight: '600', fontSize: 14 },
 });

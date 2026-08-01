@@ -192,6 +192,7 @@ export default function RootLayout() {
             <Stack.Screen name="song-reader" options={{ headerShown: false }} />
             <Stack.Screen name="other-song-reader" options={{ headerShown: false }} />
             <Stack.Screen name="bible-reader" options={{ headerShown: false }} />
+            <Stack.Screen name="admin" options={{ headerShown: false }} />
           </Stack>
         )}
         {updateStatus === 'mandatory' && updateConfig && (

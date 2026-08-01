@@ -1,5 +1,6 @@
 import { ScrollView, StyleSheet, TouchableOpacity, View } from 'react-native';
 import { Text } from '../AppText';
+import { useTheme } from '../../utils/ThemeContext';
 
 export type AppManagementModule = 'appUpdate' | 'notifications' | 'livePlaylists' | 'apiKeys' | 'siteMaintenance';
 
@@ -50,6 +51,8 @@ interface Props {
 }
 
 export default function AppManagementMenu({ onSelect }: Props) {
+  const { colors } = useTheme();
+
   return (
     <ScrollView contentContainerStyle={styles.container}>
       <View style={styles.warningBanner}>
@@ -59,13 +62,18 @@ export default function AppManagementMenu({ onSelect }: Props) {
       </View>
 
       {MODULES.map(m => (
-        <TouchableOpacity key={m.id} style={styles.card} onPress={() => onSelect(m.id)} activeOpacity={0.8}>
+        <TouchableOpacity
+          key={m.id}
+          style={[styles.card, { backgroundColor: colors.surface, borderLeftColor: colors.accent }]}
+          onPress={() => onSelect(m.id)}
+          activeOpacity={0.8}
+        >
           <Text style={styles.cardIcon}>{m.icon}</Text>
           <View style={styles.cardTextWrap}>
-            <Text style={styles.cardTitle}>{m.title}</Text>
-            <Text style={styles.cardSubtitle}>{m.subtitle}</Text>
+            <Text style={[styles.cardTitle, { color: colors.text }]}>{m.title}</Text>
+            <Text style={[styles.cardSubtitle, { color: colors.subtext }]}>{m.subtitle}</Text>
           </View>
-          <Text style={styles.cardChevron}>›</Text>
+          <Text style={[styles.cardChevron, { color: colors.divider }]}>›</Text>
         </TouchableOpacity>
       ))}
     </ScrollView>
@@ -86,17 +94,15 @@ const styles = StyleSheet.create({
   card: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#fff',
     borderRadius: 16,
     padding: 18,
     marginBottom: 14,
     elevation: 3,
     borderLeftWidth: 5,
-    borderLeftColor: '#0f3460',
   },
   cardIcon: { fontSize: 28, marginRight: 16 },
   cardTextWrap: { flex: 1 },
-  cardTitle: { fontSize: 15, fontWeight: 'bold', color: '#1a1a2e', marginBottom: 4 },
-  cardSubtitle: { fontSize: 12, color: '#777', lineHeight: 17 },
-  cardChevron: { fontSize: 26, color: '#ccc', marginLeft: 8, fontWeight: '300' },
+  cardTitle: { fontSize: 15, fontWeight: 'bold', marginBottom: 4 },
+  cardSubtitle: { fontSize: 12, lineHeight: 17 },
+  cardChevron: { fontSize: 26, marginLeft: 8, fontWeight: '300' },
 });

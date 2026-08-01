@@ -55,20 +55,23 @@ interface YoutubePlayerProps {
   // Native-only props accepted so call sites don't need to branch by platform — no-ops on web.
   forceAndroidAutoplay?: boolean;
   webViewProps?: unknown;
+  useLocalHTML?: boolean;
 }
 
 export interface YoutubePlayerHandle {
   getCurrentTime: () => Promise<number>;
   getDuration: () => Promise<number>;
   seekTo: (seconds: number, allowSeekAhead: boolean) => void;
+  pauseVideo: () => void;
 }
 
 const YoutubePlayer = forwardRef<YoutubePlayerHandle, YoutubePlayerProps>(function YoutubePlayerWeb(
-  { height, width, videoId, play, onReady, onChangeState, onError, initialPlayerParams },
+  { height, width, videoId, play, onReady, onChangeState, onFullScreenChange, onError, initialPlayerParams },
   ref
 ) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const playerInstanceRef = useRef<any>(null);
+  const playerReadyRef = useRef(false);
 
   // Refs so the effect below (keyed only on videoId) always calls the
   // latest callback props without needing them in its dependency array —
@@ -76,15 +79,41 @@ const YoutubePlayer = forwardRef<YoutubePlayerHandle, YoutubePlayerProps>(functi
   // parent re-render.
   const onReadyRef = useRef(onReady);
   const onChangeStateRef = useRef(onChangeState);
+  const onFullScreenChangeRef = useRef(onFullScreenChange);
   const onErrorRef = useRef(onError);
   onReadyRef.current = onReady;
   onChangeStateRef.current = onChangeState;
+  onFullScreenChangeRef.current = onFullScreenChange;
   onErrorRef.current = onError;
+
+  // The YT IFrame API has no onFullScreenChange event of its own — the
+  // player's built-in fullscreen button just calls the browser's native
+  // Fullscreen API directly on the iframe, bypassing our JS entirely. The
+  // only way to observe that is the document-level fullscreenchange event;
+  // this was previously never wired up at all, so callers' onFullScreenChange
+  // (e.g. VideoModal's landscape-lock-on-fullscreen) silently never fired on
+  // web. containerRef.contains(...) (not ===) because the fullscreen target
+  // is the iframe the YT.Player API creates *inside* our container div, not
+  // the div itself.
+  useEffect(() => {
+    const handleFullscreenChange = () => {
+      const fsElement = document.fullscreenElement || (document as any).webkitFullscreenElement || null;
+      const isFs = !!fsElement && !!containerRef.current && containerRef.current.contains(fsElement);
+      onFullScreenChangeRef.current?.(isFs);
+    };
+    document.addEventListener('fullscreenchange', handleFullscreenChange);
+    document.addEventListener('webkitfullscreenchange', handleFullscreenChange);
+    return () => {
+      document.removeEventListener('fullscreenchange', handleFullscreenChange);
+      document.removeEventListener('webkitfullscreenchange', handleFullscreenChange);
+    };
+  }, []);
 
   useImperativeHandle(ref, () => ({
     getCurrentTime: async () => playerInstanceRef.current?.getCurrentTime?.() ?? 0,
     getDuration: async () => playerInstanceRef.current?.getDuration?.() ?? 0,
     seekTo: (seconds: number) => playerInstanceRef.current?.seekTo?.(seconds, true),
+    pauseVideo: () => playerInstanceRef.current?.pauseVideo?.(),
   }), []);
 
   useEffect(() => {
@@ -108,6 +137,7 @@ const YoutubePlayer = forwardRef<YoutubePlayerHandle, YoutubePlayerProps>(functi
         events: {
           onReady: () => {
             playerInstanceRef.current = localPlayer;
+            playerReadyRef.current = true;
             onReadyRef.current?.();
           },
           onStateChange: (event: { data: number }) => {
@@ -122,14 +152,30 @@ const YoutubePlayer = forwardRef<YoutubePlayerHandle, YoutubePlayerProps>(functi
 
     return () => {
       cancelled = true;
+      playerReadyRef.current = false;
       localPlayer?.destroy?.();
       playerInstanceRef.current = null;
     };
-    // Deliberately re-created only when videoId changes; width/height/play
-    // are read once at construction (playerVars.autoplay / initial size) —
-    // matches the native player's own per-videoId mount lifecycle.
+    // Deliberately re-created only when videoId changes; width/height are
+    // read once at construction (initial size) — matches the native
+    // player's own per-videoId mount lifecycle. `play` is intentionally not
+    // a dependency here (see the effect below, which drives it reactively).
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [videoId]);
+
+  // Unlike native's react-native-youtube-iframe, the IFrame Player API only
+  // reads `autoplay` once at construction — it never reacts to a `play` prop
+  // changing on its own. This drives playVideo()/pauseVideo() imperatively
+  // whenever `play` changes after the player is ready, which is what makes
+  // autoplay-after-ready (and pause/resume) actually work on web.
+  useEffect(() => {
+    if (!playerReadyRef.current || !playerInstanceRef.current) return;
+    if (play) {
+      playerInstanceRef.current.playVideo?.();
+    } else {
+      playerInstanceRef.current.pauseVideo?.();
+    }
+  }, [play]);
 
   return <div ref={containerRef} style={{ width, height }} />;
 });

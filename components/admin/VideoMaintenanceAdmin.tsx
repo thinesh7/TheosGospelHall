@@ -7,6 +7,7 @@ import {
   saveVideoMaintenanceConfig,
 } from '../../utils/videoMaintenance';
 import { formatTimestampIST } from '../../utils/registrations';
+import { useTheme } from '../../utils/ThemeContext';
 import { AdminScreenHandle } from './SpecialMeetingsAdmin';
 
 interface FormState {
@@ -25,6 +26,7 @@ const INITIAL_STATE: FormState = {
 
 const VideoMaintenanceAdmin = forwardRef<AdminScreenHandle, {}>((_, ref) => {
   const dialog = useAppDialog();
+  const { colors } = useTheme();
   const [form, setForm] = useState<FormState>(INITIAL_STATE);
 
   useImperativeHandle(ref, () => ({
@@ -82,48 +84,48 @@ const VideoMaintenanceAdmin = forwardRef<AdminScreenHandle, {}>((_, ref) => {
   if (form.loading) {
     return (
       <View style={styles.loadingBox}>
-        <Text style={styles.loadingText}>Loading...</Text>
+        <Text style={[styles.loadingText, { color: colors.subtext }]}>Loading...</Text>
       </View>
     );
   }
 
   return (
     <ScrollView contentContainerStyle={{ padding: 16 }} keyboardShouldPersistTaps="handled">
-      <View style={styles.infoBox}>
-        <Text style={styles.infoText}>
+      <View style={[styles.infoBox, { backgroundColor: colors.accent + '15' }]}>
+        <Text style={[styles.infoText, { color: colors.text }]}>
           When enabled, the Videos tab stays visible but shows a maintenance page to all users instead of its normal
           content. The change only takes effect after you press Save.
         </Text>
       </View>
 
-      <View style={styles.programCard}>
-        <Text style={styles.programTitle}>Video Maintenance Mode</Text>
+      <View style={[styles.programCard, { backgroundColor: colors.surface, borderLeftColor: colors.accent }]}>
+        <Text style={[styles.programTitle, { color: colors.text }]}>Video Maintenance Mode</Text>
 
         {!!form.updatedAt && (
-          <View style={styles.auditBox}>
-            <Text style={styles.auditText}>
-              Last updated by <Text style={styles.auditBold}>{form.updatedBy}</Text> on {formatTimestampIST(form.updatedAt)}
+          <View style={[styles.auditBox, { backgroundColor: colors.raised, borderColor: colors.divider }]}>
+            <Text style={[styles.auditText, { color: colors.subtext }]}>
+              Last updated by <Text style={[styles.auditBold, { color: colors.text }]}>{form.updatedBy}</Text> on {formatTimestampIST(form.updatedAt)}
             </Text>
           </View>
         )}
 
         <View style={styles.segmentRow}>
           <TouchableOpacity
-            style={[styles.segmentBtn, !form.enabled && styles.segmentBtnOffActive]}
+            style={[styles.segmentBtn, { backgroundColor: colors.surfaceAlt, borderColor: colors.divider }, !form.enabled && styles.segmentBtnOffActive]}
             onPress={handleTurnOff}
           >
-            <Text style={[styles.segmentBtnText, !form.enabled && styles.segmentBtnTextActive]}>OFF</Text>
+            <Text style={[styles.segmentBtnText, { color: colors.subtext }, !form.enabled && styles.segmentBtnTextActive]}>OFF</Text>
           </TouchableOpacity>
           <TouchableOpacity
-            style={[styles.segmentBtn, styles.onBtn, form.enabled && styles.segmentBtnOnActive]}
+            style={[styles.segmentBtn, { backgroundColor: colors.surfaceAlt, borderColor: colors.divider }, styles.onBtn, form.enabled && styles.segmentBtnOnActive]}
             onPress={handleTurnOn}
           >
-            <Text style={[styles.segmentBtnText, styles.onBtnText, form.enabled && styles.segmentBtnTextActive]}>ON</Text>
+            <Text style={[styles.segmentBtnText, { color: colors.subtext }, styles.onBtnText, form.enabled && styles.segmentBtnTextActive]}>ON</Text>
           </TouchableOpacity>
         </View>
 
         <TouchableOpacity
-          style={[styles.saveBtn, form.saving && { opacity: 0.6 }]}
+          style={[styles.saveBtn, { backgroundColor: colors.accent }, form.saving && { opacity: 0.6 }]}
           onPress={handleSave}
           disabled={form.saving}
         >
@@ -138,22 +140,22 @@ export default VideoMaintenanceAdmin;
 
 const styles = StyleSheet.create({
   loadingBox: { padding: 40, alignItems: 'center' },
-  loadingText: { color: '#888' },
-  infoBox: { backgroundColor: '#e8f0fe', borderRadius: 12, padding: 14, marginBottom: 20 },
-  infoText: { fontSize: 13, color: '#333', lineHeight: 19 },
-  programCard: { backgroundColor: '#fff', borderRadius: 16, padding: 18, marginBottom: 20, elevation: 3, borderLeftWidth: 5, borderLeftColor: '#0f3460' },
-  programTitle: { fontSize: 16, fontWeight: 'bold', color: '#1a1a2e', marginBottom: 10 },
-  auditBox: { backgroundColor: '#f5f5f5', borderRadius: 10, padding: 12, marginBottom: 16, borderWidth: 1, borderColor: '#eee' },
-  auditText: { fontSize: 12, color: '#666' },
-  auditBold: { fontWeight: '700', color: '#333' },
+  loadingText: {},
+  infoBox: { borderRadius: 12, padding: 14, marginBottom: 20 },
+  infoText: { fontSize: 13, lineHeight: 19 },
+  programCard: { borderRadius: 16, padding: 18, marginBottom: 20, elevation: 3, borderLeftWidth: 5 },
+  programTitle: { fontSize: 16, fontWeight: 'bold', marginBottom: 10 },
+  auditBox: { borderRadius: 10, padding: 12, marginBottom: 16, borderWidth: 1 },
+  auditText: { fontSize: 12 },
+  auditBold: { fontWeight: '700' },
   segmentRow: { flexDirection: 'row', gap: 10, marginBottom: 20 },
-  segmentBtn: { flex: 1, paddingVertical: 14, borderRadius: 10, borderWidth: 1, borderColor: '#eee', backgroundColor: '#fafafa', alignItems: 'center' },
+  segmentBtn: { flex: 1, paddingVertical: 14, borderRadius: 10, borderWidth: 1, alignItems: 'center' },
   segmentBtnOffActive: { backgroundColor: '#2d6a4f', borderColor: '#2d6a4f' },
   segmentBtnOnActive: { backgroundColor: '#c0392b', borderColor: '#c0392b' },
-  segmentBtnText: { fontSize: 14, fontWeight: '700', color: '#555' },
+  segmentBtnText: { fontSize: 14, fontWeight: '700' },
   segmentBtnTextActive: { color: '#fff' },
   onBtn: { borderColor: '#c0392b' },
   onBtnText: { color: '#c0392b' },
-  saveBtn: { backgroundColor: '#0f3460', borderRadius: 14, padding: 16, alignItems: 'center', marginTop: 4, elevation: 4 },
+  saveBtn: { borderRadius: 14, padding: 16, alignItems: 'center', marginTop: 4, elevation: 4 },
   saveBtnText: { color: '#fff', fontWeight: 'bold', fontSize: 15 },
 });

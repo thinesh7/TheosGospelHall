@@ -10,6 +10,7 @@ import { useAppDialog } from '../AppDialog';
 import { Text } from '../AppText';
 import { TextInput } from '../AppTextInput';
 import { SongIndexEntry, getSongById, getSongsIndex, syncSongs, updateGeethangalumSong } from '../../utils/songsSync';
+import { useTheme } from '../../utils/ThemeContext';
 import { AdminScreenHandle } from './SpecialMeetingsAdmin';
 
 interface EditForm {
@@ -22,6 +23,7 @@ interface EditForm {
 
 const GeethangalumAdmin = forwardRef<AdminScreenHandle, {}>((_props, ref) => {
   const dialog = useAppDialog();
+  const { colors } = useTheme();
   const [songsIndex, setSongsIndex] = useState<SongIndexEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [syncing, setSyncing] = useState(false);
@@ -121,11 +123,11 @@ const GeethangalumAdmin = forwardRef<AdminScreenHandle, {}>((_props, ref) => {
   if (editForm) {
     return (
       <View style={styles.formContainer}>
-        <View style={styles.formHeader}>
+        <View style={[styles.formHeader, { backgroundColor: colors.surface }]}>
           <TouchableOpacity onPress={() => setEditForm(null)}>
-            <Text style={styles.formBackText}>← Back</Text>
+            <Text style={[styles.formBackText, { color: colors.accent }]}>← Back</Text>
           </TouchableOpacity>
-          <Text style={styles.formTitle}>Edit Song #{editForm.songNumber}</Text>
+          <Text style={[styles.formTitle, { color: colors.text }]}>Edit Song #{editForm.songNumber}</Text>
         </View>
 
         <FlatList
@@ -133,44 +135,44 @@ const GeethangalumAdmin = forwardRef<AdminScreenHandle, {}>((_props, ref) => {
           keyExtractor={() => 'form'}
           renderItem={() => (
             <View style={{ padding: 16 }}>
-              <Text style={styles.fieldLabel}>Song Number (locked)</Text>
-              <View style={styles.lockedField}>
-                <Text style={styles.lockedFieldText}>{editForm.songNumber}</Text>
+              <Text style={[styles.fieldLabel, { color: colors.subtext }]}>Song Number (locked)</Text>
+              <View style={[styles.lockedField, { backgroundColor: colors.raised }]}>
+                <Text style={[styles.lockedFieldText, { color: colors.subtext }]}>{editForm.songNumber}</Text>
               </View>
 
-              <Text style={styles.fieldLabel}>Title *</Text>
+              <Text style={[styles.fieldLabel, { color: colors.subtext }]}>Title *</Text>
               <TextInput
-                style={styles.input}
+                style={[styles.input, { backgroundColor: colors.surfaceAlt, borderColor: colors.divider, color: colors.text }]}
                 value={editForm.title}
                 onChangeText={v => setEditForm(prev => prev && { ...prev, title: v })}
                 placeholder="Song title (Tamil)"
-                placeholderTextColor="#999"
+                placeholderTextColor={colors.subtext}
               />
 
-              <Text style={styles.fieldLabel}>Lyrics (Tamil) *</Text>
+              <Text style={[styles.fieldLabel, { color: colors.subtext }]}>Lyrics (Tamil) *</Text>
               <TextInput
-                style={[styles.input, styles.textArea]}
+                style={[styles.input, styles.textArea, { backgroundColor: colors.surfaceAlt, borderColor: colors.divider, color: colors.text }]}
                 value={editForm.lyricsTamil}
                 onChangeText={v => setEditForm(prev => prev && { ...prev, lyricsTamil: v })}
                 placeholder="Tamil lyrics"
-                placeholderTextColor="#999"
+                placeholderTextColor={colors.subtext}
                 multiline
                 textAlignVertical="top"
               />
 
-              <Text style={styles.fieldLabel}>Lyrics (English) *</Text>
+              <Text style={[styles.fieldLabel, { color: colors.subtext }]}>Lyrics (English) *</Text>
               <TextInput
-                style={[styles.input, styles.textArea]}
+                style={[styles.input, styles.textArea, { backgroundColor: colors.surfaceAlt, borderColor: colors.divider, color: colors.text }]}
                 value={editForm.lyricsEnglish}
                 onChangeText={v => setEditForm(prev => prev && { ...prev, lyricsEnglish: v })}
                 placeholder="English lyrics"
-                placeholderTextColor="#999"
+                placeholderTextColor={colors.subtext}
                 multiline
                 textAlignVertical="top"
               />
 
               <TouchableOpacity
-                style={[styles.saveBtn, saving && { opacity: 0.6 }]}
+                style={[styles.saveBtn, { backgroundColor: colors.accent }, saving && { opacity: 0.6 }]}
                 onPress={save}
                 disabled={saving}
               >
@@ -188,17 +190,17 @@ const GeethangalumAdmin = forwardRef<AdminScreenHandle, {}>((_props, ref) => {
     <View style={styles.container}>
       <View style={styles.searchBar}>
         <TextInput
-          style={styles.searchInput}
+          style={[styles.searchInput, { backgroundColor: colors.surfaceAlt, borderColor: colors.divider, color: colors.text }]}
           placeholder="Search by song number or title"
-          placeholderTextColor="#999"
+          placeholderTextColor={colors.subtext}
           value={search}
           onChangeText={setSearch}
         />
-        {syncing && <ActivityIndicator size="small" color="#0f3460" style={{ marginLeft: 8 }} />}
+        {syncing && <ActivityIndicator size="small" color={colors.accent} style={{ marginLeft: 8 }} />}
       </View>
 
       {loading ? (
-        <ActivityIndicator size="large" color="#0f3460" style={{ marginTop: 40 }} />
+        <ActivityIndicator size="large" color={colors.accent} style={{ marginTop: 40 }} />
       ) : (
         <FlatList
           data={filtered}
@@ -206,15 +208,15 @@ const GeethangalumAdmin = forwardRef<AdminScreenHandle, {}>((_props, ref) => {
           contentContainerStyle={{ padding: 16, paddingTop: 8 }}
           initialNumToRender={20}
           renderItem={({ item }) => (
-            <TouchableOpacity style={styles.songRow} onPress={() => openEdit(item)} disabled={loadingSong}>
-              <View style={styles.songNumberBadge}>
+            <TouchableOpacity style={[styles.songRow, { backgroundColor: colors.surface }]} onPress={() => openEdit(item)} disabled={loadingSong}>
+              <View style={[styles.songNumberBadge, { backgroundColor: colors.accent }]}>
                 <Text style={styles.songNumberText}>{item.songNumber}</Text>
               </View>
-              <Text style={styles.songTitle} numberOfLines={2}>{item.title}</Text>
-              {loadingSong && <ActivityIndicator size="small" color="#0f3460" />}
+              <Text style={[styles.songTitle, { color: colors.text }]} numberOfLines={2}>{item.title}</Text>
+              {loadingSong && <ActivityIndicator size="small" color={colors.accent} />}
             </TouchableOpacity>
           )}
-          ListEmptyComponent={<Text style={styles.emptyText}>No songs found</Text>}
+          ListEmptyComponent={<Text style={[styles.emptyText, { color: colors.subtext }]}>No songs found</Text>}
         />
       )}
     </View>
@@ -228,19 +230,15 @@ const styles = StyleSheet.create({
   searchBar: { paddingHorizontal: 16, paddingTop: 12, flexDirection: 'row', alignItems: 'center' },
   searchInput: {
     flex: 1,
-    backgroundColor: '#fff',
     borderRadius: 12,
     paddingHorizontal: 14,
     paddingVertical: 12,
     fontSize: 15,
     borderWidth: 1,
-    borderColor: '#eee',
-    color: '#1a1a2e',
   },
   songRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#fff',
     borderRadius: 12,
     padding: 14,
     marginBottom: 10,
@@ -251,45 +249,40 @@ const styles = StyleSheet.create({
     width: 36,
     height: 36,
     borderRadius: 18,
-    backgroundColor: '#0f3460',
     alignItems: 'center',
     justifyContent: 'center',
   },
   songNumberText: { color: '#fff', fontWeight: '700', fontSize: 12 },
-  songTitle: { flex: 1, fontSize: 14, color: '#1a1a2e', lineHeight: 19 },
-  emptyText: { textAlign: 'center', color: '#999', marginTop: 40 },
+  songTitle: { flex: 1, fontSize: 14, lineHeight: 19 },
+  emptyText: { textAlign: 'center', marginTop: 40 },
   formContainer: { flex: 1 },
   formHeader: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 16,
     padding: 16,
-    backgroundColor: '#fff',
     elevation: 2,
   },
-  formBackText: { color: '#0f3460', fontWeight: '600', fontSize: 15 },
-  formTitle: { fontSize: 16, fontWeight: 'bold', color: '#1a1a2e' },
-  fieldLabel: { fontSize: 13, fontWeight: '600', color: '#555', marginBottom: 6, marginTop: 14 },
+  formBackText: { fontWeight: '600', fontSize: 15 },
+  formTitle: { fontSize: 16, fontWeight: 'bold' },
+  fieldLabel: { fontSize: 13, fontWeight: '600', marginBottom: 6, marginTop: 14 },
   fieldHint: { fontSize: 11, color: '#999', marginBottom: 6, fontStyle: 'italic' },
   input: {
-    backgroundColor: '#fff',
     borderRadius: 10,
     padding: 12,
     fontSize: 15,
     elevation: 2,
     borderWidth: 1,
-    borderColor: '#eee',
-    color: '#1a1a2e',
   },
-  textArea: { minHeight: 140 },
+  // Tamil and English lyrics fields both use this one style, so they stay
+  // the same height as each other on every screen size by construction.
+  textArea: { minHeight: 340 },
   lockedField: {
-    backgroundColor: '#eee',
     borderRadius: 10,
     padding: 12,
   },
-  lockedFieldText: { fontSize: 15, color: '#888', fontWeight: '600' },
+  lockedFieldText: { fontSize: 15, fontWeight: '600' },
   saveBtn: {
-    backgroundColor: '#0f3460',
     borderRadius: 14,
     padding: 16,
     alignItems: 'center',

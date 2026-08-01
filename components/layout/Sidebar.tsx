@@ -50,7 +50,7 @@ export function Sidebar({ items, activeKey, onSelect, header, footer, width = 24
               )}
               <Text
                 style={[styles.itemLabel, { color: active ? colors.accent : colors.text }, active && styles.itemLabelActive]}
-                numberOfLines={1}
+                numberOfLines={3}
               >
                 {item.label}
               </Text>
@@ -68,12 +68,12 @@ const styles = StyleSheet.create({
   items: { flex: 1, paddingHorizontal: spacing.md, gap: spacing.xs },
   item: {
     flexDirection: 'row',
-    alignItems: 'center',
+    alignItems: 'flex-start',
     paddingVertical: spacing.md,
     paddingHorizontal: spacing.md,
     borderRadius: radii.md,
   },
-  itemIcon: { marginRight: spacing.sm },
-  itemLabel: { fontSize: typography.subtitle.fontSize, lineHeight: typography.subtitle.lineHeight, fontWeight: typography.subtitle.fontWeight },
+  itemIcon: { marginRight: spacing.sm, marginTop: 2 },
+  itemLabel: { flex: 1, fontSize: typography.subtitle.fontSize, lineHeight: typography.subtitle.lineHeight, fontWeight: typography.subtitle.fontWeight },
   itemLabelActive: { fontWeight: '700' },
 });

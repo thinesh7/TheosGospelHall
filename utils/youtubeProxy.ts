@@ -94,7 +94,31 @@ async function fetchWithKey(endpoint: string, params: Record<string, string>, ke
   return res.json();
 }
 
-export async function ytFetch(endpoint: string, params: Record<string, string>): Promise<any> {
+// Every list-type endpoint we call (playlistItems/videos/playlists/search) is
+// re-requested with identical params far more often than the underlying data
+// actually changes (tab remounts, enrichDates re-checking already-seen video
+// IDs, the live-now check and the Live tab independently asking the same
+// question). A short in-memory cache in front of the network call, keyed by
+// endpoint+params, eliminates those without touching what any call site asks
+// for or how it's shaped. Not persisted to AsyncStorage — session-only, so
+// there's no cross-launch staleness risk.
+const CACHEABLE_ENDPOINTS = new Set(['playlistItems', 'videos', 'playlists', 'search']);
+const DEFAULT_CACHE_TTL_MS = 5 * 60 * 1000;
+
+interface CacheEntry {
+  data: any;
+  expiresAt: number;
+}
+
+const responseCache = new Map<string, CacheEntry>();
+const pendingRequests = new Map<string, Promise<any>>();
+
+function buildCacheKey(endpoint: string, params: Record<string, string>): string {
+  const sorted = Object.keys(params).sort().map(k => `${k}=${params[k]}`);
+  return `${endpoint}?${sorted.join('&')}`;
+}
+
+async function performYtFetch(endpoint: string, params: Record<string, string>): Promise<any> {
   const isSearch = endpoint === 'search';
   const state = await loadExhaustionState();
   const backups = await getBackupKeys();
@@ -112,6 +136,35 @@ export async function ytFetch(endpoint: string, params: Record<string, string>):
   }
 
   throw new QuotaExhaustedError();
+}
+
+// `ttlMs` lets time-sensitive callers (live-status checks) opt into a much
+// shorter cache window than the default; pass 0 to bypass caching entirely.
+export async function ytFetch(
+  endpoint: string,
+  params: Record<string, string>,
+  ttlMs: number = DEFAULT_CACHE_TTL_MS
+): Promise<any> {
+  const cacheable = ttlMs > 0 && CACHEABLE_ENDPOINTS.has(endpoint);
+  const cacheKey = cacheable ? buildCacheKey(endpoint, params) : '';
+
+  if (cacheable) {
+    const cached = responseCache.get(cacheKey);
+    if (cached && cached.expiresAt > Date.now()) return cached.data;
+    const pending = pendingRequests.get(cacheKey);
+    if (pending) return pending;
+  }
+
+  const request = performYtFetch(endpoint, params);
+  if (cacheable) pendingRequests.set(cacheKey, request);
+
+  try {
+    const data = await request;
+    if (cacheable) responseCache.set(cacheKey, { data, expiresAt: Date.now() + ttlMs });
+    return data;
+  } finally {
+    if (cacheable) pendingRequests.delete(cacheKey);
+  }
 }
 
 export type ApiKeyStatus = 'ok' | 'quotaExceeded' | 'invalid' | 'error';

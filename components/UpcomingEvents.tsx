@@ -5,6 +5,7 @@ import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from 're
 import { ActivityIndicator, Animated, Linking, StyleSheet, TouchableOpacity, View } from 'react-native';
 import { useAppDialog } from './AppDialog';
 import { Text } from './AppText';
+import { ResponsiveGrid } from './layout/ResponsiveGrid';
 import RegistrationFormModal from './RegistrationFormModal';
 import { db } from '../firebaseConfig';
 import {
@@ -188,6 +189,7 @@ const UpcomingEvents = forwardRef((props: {}, ref) => {
             </View>
           )}
 
+          <ResponsiveGrid columns={{ mobile: 1, tablet: 2, desktop: 2 }} gap="md">
           {meetings.map((meeting, index) => {
             const isMultiDay = meeting.numberOfDays === 'multiple' && !!meeting.endDate;
             return (
@@ -296,6 +298,7 @@ const UpcomingEvents = forwardRef((props: {}, ref) => {
               </View>
             );
           })}
+          </ResponsiveGrid>
 
           {!loading && meetings.length === 0 && (
             <View style={styles.emptyBox}>
@@ -306,6 +309,8 @@ const UpcomingEvents = forwardRef((props: {}, ref) => {
         </View>
       )}
 
+      <View style={styles.panelsWrap}>
+      <ResponsiveGrid columns={{ mobile: 1, tablet: 1, desktop: 3 }} gap="lg">
       <View style={[styles.card, { backgroundColor: colors.surface }]}>
         <Text style={[styles.cardTitle, { color: colors.text }]}>
           <Ionicons name="calendar-outline" size={18} color={colors.accent} /> Events & Programs
@@ -422,6 +427,8 @@ const UpcomingEvents = forwardRef((props: {}, ref) => {
         </TouchableOpacity>
       </View>
       )}
+      </ResponsiveGrid>
+      </View>
 
       <RegistrationFormModal
         visible={regProgram !== null}
@@ -444,7 +451,10 @@ const styles = StyleSheet.create({
   countText: { color: '#c0392b', fontWeight: 'bold', fontSize: 15 },
   loadingBox: { padding: 24, alignItems: 'center', gap: 10 },
   loadingText: { color: '#c0392b', fontSize: 13, fontStyle: 'italic' },
-  meetingCard: { borderRadius: 16, marginBottom: 12, overflow: 'hidden', elevation: 4, borderWidth: 1 },
+  // maxWidth + alignSelf keep a lone card (or the last odd-one-out in a
+  // 2-column row) from stretching edge-to-edge and looking as sparse as the
+  // empty-column gap it replaces — centered instead of full-bleed.
+  meetingCard: { borderRadius: 16, overflow: 'hidden', elevation: 4, borderWidth: 1, width: '100%', maxWidth: 620, alignSelf: 'center' },
   cardTopBar: { backgroundColor: '#c0392b', paddingHorizontal: 14, paddingVertical: 8, flexDirection: 'row', alignItems: 'center', gap: 10 },
   eventNumBadge: { backgroundColor: 'rgba(255,255,255,0.25)', borderRadius: 10, paddingHorizontal: 8, paddingVertical: 2 },
   eventNumText: { color: '#fff', fontWeight: 'bold', fontSize: 12 },
@@ -473,7 +483,11 @@ const styles = StyleSheet.create({
   mapBtnText: { color: '#fff', fontWeight: '700', fontSize: 14 },
   emptyBox: { alignItems: 'center', padding: 24, gap: 8 },
   emptyText: { color: '#c0392b', fontSize: 13, fontStyle: 'italic' },
-  card: { margin: 16, marginBottom: 0, borderRadius: 16, padding: 20, elevation: 4 },
+  // Events & Programs / Youth / Academy sit inside panelsWrap+ResponsiveGrid
+  // now — margin comes from there (single column on mobile/tablet, 3-across
+  // on desktop instead of each stretching the full capped page width).
+  panelsWrap: { marginHorizontal: 16, marginTop: 16 },
+  card: { borderRadius: 16, padding: 20, elevation: 4 },
   cardTitle: { fontSize: 16, fontWeight: 'bold', marginBottom: 16 },
   eventRow: { flexDirection: 'row', marginBottom: 18, alignItems: 'flex-start' },
   iconBox: { width: 56, borderRadius: 10, alignItems: 'center', justifyContent: 'center', marginRight: 12, paddingVertical: 9 },
@@ -482,7 +496,7 @@ const styles = StyleSheet.create({
   eventTitle: { fontSize: 16, fontWeight: 'bold', marginBottom: 6 },
   row: { flexDirection: 'row', alignItems: 'flex-start', marginBottom: 4 },
   eventMeta: { fontSize: 14, flex: 1, lineHeight: 19 },
-  youthCard: { backgroundColor: '#e63946', margin: 16, marginBottom: 0, borderRadius: 16, padding: 20, elevation: 6, borderWidth: 2, borderColor: '#ff6b35' },
+  youthCard: { backgroundColor: '#e63946', borderRadius: 16, padding: 20, elevation: 6, borderWidth: 2, borderColor: '#ff6b35' },
   youthHeader: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 4 },
   youthHeaderText: { fontSize: 18, fontWeight: 'bold', color: '#fff', flexShrink: 1 },
   youthSubtitle: { fontSize: 12, color: '#ffe0d6', marginBottom: 12, fontStyle: 'italic' },
@@ -495,7 +509,7 @@ const styles = StyleSheet.create({
   youthRegisterBtn: { backgroundColor: '#fff', borderRadius: 10, padding: 14, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 },
   youthRegisterBtnText: { color: '#e63946', fontWeight: 'bold', fontSize: 15 },
   registerBtnClosed: { opacity: 0.5 },
-  academyCard: { backgroundColor: '#2d6a4f', margin: 16, marginBottom: 0, borderRadius: 16, padding: 20, elevation: 6, borderWidth: 2, borderColor: '#52b788' },
+  academyCard: { backgroundColor: '#2d6a4f', borderRadius: 16, padding: 20, elevation: 6, borderWidth: 2, borderColor: '#52b788' },
   academyHeader: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 6 },
   academyHeaderText: { fontSize: 20, fontWeight: 'bold', color: '#fff', flexShrink: 1 },
   academySubtitle: { fontSize: 13, color: '#d8f3dc', fontStyle: 'italic', marginBottom: 12 },

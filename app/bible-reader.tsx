@@ -1,7 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import * as Clipboard from 'expo-clipboard';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
-import { MutableRefObject, useEffect, useRef, useState } from 'react';
+import { MutableRefObject, useCallback, useEffect, useRef, useState } from 'react';
 import {
   BackHandler,
   FlatList,
@@ -16,6 +16,8 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Text } from '../components/AppText';
 import ThemeToggleIcon from '../components/ThemeToggleIcon';
 import { Toast, useToast } from '../components/Toast';
+import { READING_CONTENT_MAX_WIDTH } from '../constants/layout';
+import { useBreakpoint } from '../hooks/use-breakpoint';
 import { BIBLE_ASSETS, BIBLE_VERSIONS, BOOKS, cleanText } from '../utils/bibleData';
 import { getMemBibleSettings, saveBibleSettings } from '../utils/bibleSettings';
 import { useTheme } from '../utils/ThemeContext';
@@ -49,10 +51,11 @@ function SettingsModal({
   version, setVersion, versionRef,
   selectedBook, selectedChapter, setSecondaryVerses, setPrimaryVerses, isEnglish,
 }: SettingsModalProps) {
+  const { isTabletUp } = useBreakpoint();
   return (
     <Modal visible={visible} transparent animationType="slide">
-      <View style={styles.modalOverlay}>
-        <View style={[styles.modalCard, { backgroundColor: c.surface }]}>
+      <View style={[styles.modalOverlay, isTabletUp && styles.modalOverlayDesktop]}>
+        <View style={[styles.modalCard, { backgroundColor: c.surface }, isTabletUp && styles.modalCardDesktop]}>
           <Text style={[styles.modalTitle, { color: c.text }]}>⚙️ Reading Settings</Text>
           <Text style={[styles.settingLabel, { color: c.subtext }]}>Font Size</Text>
           <View style={styles.fontSizeRow}>
@@ -161,10 +164,11 @@ function BookSelectorModal({
   visible, onClose, c, bookModalTestament, setBookModalTestament,
   isEnglish, isBilingual, OTBooks, NTBooks, onSelectBook,
 }: BookSelectorModalProps) {
+  const { isTabletUp } = useBreakpoint();
   return (
     <Modal visible={visible} transparent animationType="slide">
-      <View style={styles.modalOverlay}>
-        <View style={[styles.bookModalCard, { backgroundColor: c.surface }]}>
+      <View style={[styles.modalOverlay, isTabletUp && styles.modalOverlayDesktop]}>
+        <View style={[styles.bookModalCard, { backgroundColor: c.surface }, isTabletUp && styles.bookModalCardDesktop]}>
           <View style={[styles.bookModalHeader, { backgroundColor: c.headerBg }]}>
             <Text style={[styles.bookModalTitle, { color: c.text }]}>Select Book</Text>
             <TouchableOpacity onPress={onClose}>
@@ -218,6 +222,7 @@ export default function BibleReaderScreen() {
     secondaryVersion: string;
   }>();
   const { colors: c, theme, cycleTheme } = useTheme();
+  const { isTabletUp } = useBreakpoint();
   const insets = useSafeAreaInsets();
   const { message: toastMessage, opacity: toastOpacity, showToast } = useToast();
 
@@ -326,10 +331,23 @@ export default function BibleReaderScreen() {
     loadChapterData(newBook, newChapter, versionRef.current, isBilingual, secondaryVersionRef.current);
   };
 
-  const syncVerseBar = (idx: number) => {
+  const syncVerseBar = useCallback((idx: number) => {
     const barX = idx * VERSE_BTN_WIDTH - 120;
     verseBarRef.current?.scrollTo({ x: Math.max(0, barX), animated: false });
-  };
+  }, []);
+
+  // react-native-web's vendored FlatList throws if onViewableItemsChanged
+  // changes identity between renders (native RN has no such restriction) —
+  // must be referentially stable, hence useCallback with empty deps here
+  // (setActiveVerse/syncVerseBar are themselves stable).
+  const handleViewableItemsChanged = useCallback(({ viewableItems }: { viewableItems: { index: number | null }[] }) => {
+    if (viewableItems.length > 0) {
+      const idx = viewableItems[0].index ?? 0;
+      setActiveVerse(idx);
+      syncVerseBar(idx);
+    }
+  }, [syncVerseBar]);
+  const viewabilityConfigRef = useRef({ itemVisiblePercentThreshold: 50 });
 
   const jumpToVerse = (verseIdx: number) => {
     setActiveVerse(verseIdx);
@@ -494,15 +512,9 @@ export default function BibleReaderScreen() {
           data={Array.from({ length: maxVerses }, (_, i) => i)}
           key="bilingual"
           keyExtractor={i => i.toString()}
-          contentContainerStyle={{ padding: 16, paddingBottom: 100 }}
-          onViewableItemsChanged={({ viewableItems }) => {
-            if (viewableItems.length > 0) {
-              const idx = viewableItems[0].index ?? 0;
-              setActiveVerse(idx);
-              syncVerseBar(idx);
-            }
-          }}
-          viewabilityConfig={{ itemVisiblePercentThreshold: 50 }}
+          contentContainerStyle={[{ padding: 16, paddingBottom: 100 }, isTabletUp && styles.readingContentDesktop]}
+          onViewableItemsChanged={handleViewableItemsChanged}
+          viewabilityConfig={viewabilityConfigRef.current}
           onScrollToIndexFailed={handleScrollToIndexFailed}
           renderItem={({ item: i }) => {
             const verseNum = i + 1;
@@ -512,6 +524,7 @@ export default function BibleReaderScreen() {
                 activeOpacity={0.7}
                 onPress={() => toggleVerseSelection(verseNum)}
                 onLongPress={() => toggleVerseSelection(verseNum)}
+                style={isTabletUp && styles.readingRow}
               >
                 <View style={[
                   styles.bilingualVerseBlock,
@@ -545,15 +558,9 @@ export default function BibleReaderScreen() {
           data={primaryVerses}
           key="single"
           keyExtractor={(_, i) => i.toString()}
-          contentContainerStyle={{ padding: 16, paddingBottom: 100 }}
-          onViewableItemsChanged={({ viewableItems }) => {
-            if (viewableItems.length > 0) {
-              const idx = viewableItems[0].index ?? 0;
-              setActiveVerse(idx);
-              syncVerseBar(idx);
-            }
-          }}
-          viewabilityConfig={{ itemVisiblePercentThreshold: 50 }}
+          contentContainerStyle={[{ padding: 16, paddingBottom: 100 }, isTabletUp && styles.readingContentDesktop]}
+          onViewableItemsChanged={handleViewableItemsChanged}
+          viewabilityConfig={viewabilityConfigRef.current}
           onScrollToIndexFailed={handleScrollToIndexFailed}
           renderItem={({ item }) => {
             const isSelected = selectedVerses.has(item.verse);
@@ -562,6 +569,7 @@ export default function BibleReaderScreen() {
                 activeOpacity={0.7}
                 onPress={() => toggleVerseSelection(item.verse)}
                 onLongPress={() => toggleVerseSelection(item.verse)}
+                style={isTabletUp && styles.readingRow}
               >
                 {isSelected ? (
                   <View style={{
@@ -665,6 +673,12 @@ export default function BibleReaderScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
+  // Comfortable reading-column width on tablet-up instead of verse text
+  // running the full browser-window width — READING_CONTENT_MAX_WIDTH is
+  // narrower than the app's general CONTENT_MAX_WIDTH (dashboards/grids),
+  // sized for long-form reading specifically.
+  readingContentDesktop: { alignItems: 'center' },
+  readingRow: { width: '100%', maxWidth: READING_CONTENT_MAX_WIDTH },
   header: { padding: 16, paddingTop: 50, flexDirection: 'row', alignItems: 'center', gap: 8 },
   headerTitle: { fontSize: 16, fontWeight: 'bold' },
   headerSubtitle: { fontSize: 11, marginTop: 2 },
@@ -700,7 +714,12 @@ const styles = StyleSheet.create({
   navChapterInfo: { flex: 1, alignItems: 'center' },
   navChapterText: { fontSize: 14, fontWeight: 'bold' },
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' },
+  // On tablet-up these become centered floating dialogs (fully rounded,
+  // width/height-capped) instead of full-bleed bottom sheets, which look
+  // out of place once the window is much wider than a phone screen.
+  modalOverlayDesktop: { justifyContent: 'center', alignItems: 'center' },
   modalCard: { borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 24, paddingBottom: 40 },
+  modalCardDesktop: { width: '100%', maxWidth: 440, borderRadius: 24 },
   modalTitle: { fontSize: 18, fontWeight: 'bold', marginBottom: 20, textAlign: 'center' },
   settingLabel: { fontSize: 13, fontWeight: '600', marginBottom: 10, marginTop: 16 },
   fontSizeRow: { flexDirection: 'row', alignItems: 'center', gap: 16, justifyContent: 'center' },
@@ -714,6 +733,7 @@ const styles = StyleSheet.create({
   closeBtn: { borderRadius: 12, padding: 16, alignItems: 'center', marginTop: 20 },
   closeBtnText: { color: '#fff', fontWeight: 'bold', fontSize: 16 },
   bookModalCard: { flex: 1, marginTop: 60, borderTopLeftRadius: 24, borderTopRightRadius: 24, overflow: 'hidden' },
+  bookModalCardDesktop: { flex: 0, width: '100%', maxWidth: 560, maxHeight: '80%', marginTop: 0, borderRadius: 24 },
   bookModalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 16, paddingTop: 20 },
   bookModalTitle: { fontSize: 18, fontWeight: 'bold' },
   testamentRow: { flexDirection: 'row', padding: 8, gap: 8 },

@@ -13,6 +13,7 @@ import { useAppDialog } from '../AppDialog';
 import { Text } from '../AppText';
 import { TextInput } from '../AppTextInput';
 import { db } from '../../firebaseConfig';
+import { useTheme } from '../../utils/ThemeContext';
 
 type NumberOfDays = '' | '1' | 'multiple';
 
@@ -62,6 +63,7 @@ interface Props {
 
 const SpecialMeetingsAdmin = forwardRef<AdminScreenHandle, Props>(({ onEventsUpdated }, ref) => {
   const dialog = useAppDialog();
+  const { colors } = useTheme();
   const [adminMeetings, setAdminMeetings] = useState<SpecialMeeting[]>([]);
   const [loadingAdmin, setLoadingAdmin] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -78,17 +80,20 @@ const SpecialMeetingsAdmin = forwardRef<AdminScreenHandle, Props>(({ onEventsUpd
 
   useEffect(() => { loadMeetings(); }, []);
 
+  const fetchMeetingsFromFirestore = async (): Promise<SpecialMeeting[]> => {
+    const q = query(collection(db, 'events'), orderBy('order', 'asc'));
+    const snap = await getDocs(q);
+    return snap.docs.map(d => ({
+      id: d.id,
+      ...(EMPTY_MEETING as any),
+      ...(d.data() as any),
+    }));
+  };
+
   const loadMeetings = async () => {
     setLoadingAdmin(true);
     try {
-      const q = query(collection(db, 'events'), orderBy('order', 'asc'));
-      const snap = await getDocs(q);
-      const list: SpecialMeeting[] = snap.docs.map(d => ({
-        id: d.id,
-        ...(EMPTY_MEETING as any),
-        ...(d.data() as any),
-      }));
-      setAdminMeetings(list);
+      setAdminMeetings(await fetchMeetingsFromFirestore());
     } catch (e) {
       dialog.alert('Error', 'Could not load meetings. Check internet.');
     }
@@ -97,13 +102,7 @@ const SpecialMeetingsAdmin = forwardRef<AdminScreenHandle, Props>(({ onEventsUpd
 
   const refreshCache = async () => {
     try {
-      const q = query(collection(db, 'events'), orderBy('order', 'asc'));
-      const snap = await getDocs(q);
-      const list: SpecialMeeting[] = snap.docs.map(d => ({
-        id: d.id,
-        ...(EMPTY_MEETING as any),
-        ...(d.data() as any),
-      }));
+      const list = await fetchMeetingsFromFirestore();
       setAdminMeetings(list);
       const active = list.filter(m => m.isActive);
       await AsyncStorage.setItem('tgh_special_meetings', JSON.stringify(active));
@@ -332,40 +331,40 @@ const SpecialMeetingsAdmin = forwardRef<AdminScreenHandle, Props>(({ onEventsUpd
     <ScrollView contentContainerStyle={{ padding: 16 }} keyboardShouldPersistTaps="handled">
       {!showForm ? (
         <>
-          <TouchableOpacity style={styles.addBtn} onPress={openAddForm}>
+          <TouchableOpacity style={[styles.addBtn, { backgroundColor: colors.accent }]} onPress={openAddForm}>
             <Text style={styles.addBtnText}>＋ Add New Meeting</Text>
           </TouchableOpacity>
           {loadingAdmin ? (
-            <Text style={styles.loadingText}>Loading meetings...</Text>
+            <Text style={[styles.loadingText, { color: colors.subtext }]}>Loading meetings...</Text>
           ) : adminMeetings.length === 0 ? (
-            <Text style={styles.emptyText}>No meetings yet. Tap above to add one.</Text>
+            <Text style={[styles.emptyText, { color: colors.subtext }]}>No meetings yet. Tap above to add one.</Text>
           ) : (
             adminMeetings.map(meeting => (
-              <View key={meeting.id} style={styles.adminMeetingCard}>
+              <View key={meeting.id} style={[styles.adminMeetingCard, { backgroundColor: colors.surface, borderLeftColor: colors.accent }]}>
                 <View style={styles.adminCardTop}>
                   <View style={{ flex: 1 }}>
-                    <Text style={styles.adminMeetingTitle}>{meeting.title}</Text>
-                    <Text style={styles.adminMeetingMeta}>
+                    <Text style={[styles.adminMeetingTitle, { color: colors.text }]}>{meeting.title}</Text>
+                    <Text style={[styles.adminMeetingMeta, { color: colors.subtext }]}>
                       {meeting.date}
                       {meeting.numberOfDays === 'multiple' && meeting.endDate ? ` → ${meeting.endDate}` : ''}
                       {meeting.time ? ` • ${meeting.time}` : ''}
                     </Text>
-                    {meeting.location ? <Text style={styles.adminMeetingMeta}>📍 {meeting.location}</Text> : null}
-                    {meeting.youtubeLink ? <Text style={styles.adminMeetingMeta}>▶ YouTube link added</Text> : null}
+                    {meeting.location ? <Text style={[styles.adminMeetingMeta, { color: colors.subtext }]}>📍 {meeting.location}</Text> : null}
+                    {meeting.youtubeLink ? <Text style={[styles.adminMeetingMeta, { color: colors.subtext }]}>▶ YouTube link added</Text> : null}
                   </View>
                   <Switch
                     value={meeting.isActive}
                     onValueChange={() => toggleActive(meeting)}
-                    trackColor={{ true: '#0f3460', false: '#ccc' }}
+                    trackColor={{ true: colors.accent, false: colors.divider }}
                   />
                 </View>
                 <View style={styles.adminCardStatus}>
-                  <View style={[styles.statusDot, { backgroundColor: meeting.isActive ? '#25d366' : '#ccc' }]} />
-                  <Text style={styles.statusText}>{meeting.isActive ? 'Visible to users' : 'Hidden'}</Text>
+                  <View style={[styles.statusDot, { backgroundColor: meeting.isActive ? '#25d366' : colors.divider }]} />
+                  <Text style={[styles.statusText, { color: colors.subtext }]}>{meeting.isActive ? 'Visible to users' : 'Hidden'}</Text>
                 </View>
                 <View style={styles.adminCardActions}>
-                  <TouchableOpacity style={styles.editBtn} onPress={() => openEditForm(meeting)}>
-                    <Text style={styles.editBtnText}>✏️ Edit</Text>
+                  <TouchableOpacity style={[styles.editBtn, { backgroundColor: colors.accent + '15' }]} onPress={() => openEditForm(meeting)}>
+                    <Text style={[styles.editBtnText, { color: colors.accent }]}>✏️ Edit</Text>
                   </TouchableOpacity>
                   <TouchableOpacity
                     style={[styles.notifBtn, !meeting.isActive && { opacity: 0.4 }]}
@@ -397,85 +396,99 @@ const SpecialMeetingsAdmin = forwardRef<AdminScreenHandle, Props>(({ onEventsUpd
         <>
           <View style={styles.formHeader}>
             <TouchableOpacity onPress={() => setShowForm(false)}>
-              <Text style={styles.formBackText}>← Back</Text>
+              <Text style={[styles.formBackText, { color: colors.accent }]}>← Back</Text>
             </TouchableOpacity>
-            <Text style={styles.formTitle}>{editingId ? 'Edit Meeting' : 'New Meeting'}</Text>
+            <Text style={[styles.formTitle, { color: colors.text }]}>{editingId ? 'Edit Meeting' : 'New Meeting'}</Text>
           </View>
 
           <View style={styles.formField}>
-            <Text style={styles.formLabel}>Title *</Text>
-            <TextInput style={styles.formInput} placeholder="e.g. TGH Special Meeting" placeholderTextColor="#999" value={form.title} onChangeText={v => F('title', v)} />
+            <Text style={[styles.formLabel, { color: colors.subtext }]}>Title *</Text>
+            <TextInput style={[styles.formInput, { backgroundColor: colors.surfaceAlt, borderColor: colors.divider, color: colors.text }]} placeholder="e.g. TGH Special Meeting" placeholderTextColor={colors.subtext} value={form.title} onChangeText={v => F('title', v)} />
           </View>
 
           <View style={styles.formField}>
-            <Text style={styles.formLabel}>Description</Text>
-            <TextInput style={[styles.formInput, styles.formInputMulti]} placeholder="Brief description" placeholderTextColor="#999" value={form.description} onChangeText={v => F('description', v)} multiline />
+            <Text style={[styles.formLabel, { color: colors.subtext }]}>Description</Text>
+            <TextInput style={[styles.formInput, styles.formInputMulti, { backgroundColor: colors.surfaceAlt, borderColor: colors.divider, color: colors.text }]} placeholder="Brief description" placeholderTextColor={colors.subtext} value={form.description} onChangeText={v => F('description', v)} multiline />
           </View>
 
           <View style={styles.formField}>
-            <Text style={styles.formLabel}>Start Date *</Text>
-            <TextInput style={styles.formInput} placeholder="e.g. August 15, 2026" placeholderTextColor="#999" value={form.date} onChangeText={v => F('date', v)} />
+            <Text style={[styles.formLabel, { color: colors.subtext }]}>Start Date *</Text>
+            <TextInput style={[styles.formInput, { backgroundColor: colors.surfaceAlt, borderColor: colors.divider, color: colors.text }]} placeholder="e.g. August 15, 2026" placeholderTextColor={colors.subtext} value={form.date} onChangeText={v => F('date', v)} />
           </View>
 
           <View style={styles.formField}>
-            <Text style={styles.formLabel}>Number of Days</Text>
+            <Text style={[styles.formLabel, { color: colors.subtext }]}>Number of Days</Text>
             <View style={styles.segmentRow}>
-              <TouchableOpacity style={[styles.segmentBtn, form.numberOfDays === '1' && styles.segmentBtnActive]} onPress={() => F('numberOfDays', '1')}>
-                <Text style={[styles.segmentBtnText, form.numberOfDays === '1' && styles.segmentBtnTextActive]}>1 Day</Text>
+              <TouchableOpacity
+                style={[
+                  styles.segmentBtn,
+                  { backgroundColor: colors.surfaceAlt, borderColor: colors.divider },
+                  form.numberOfDays === '1' && { backgroundColor: colors.accent, borderColor: colors.accent },
+                ]}
+                onPress={() => F('numberOfDays', '1')}
+              >
+                <Text style={[styles.segmentBtnText, { color: colors.subtext }, form.numberOfDays === '1' && styles.segmentBtnTextActive]}>1 Day</Text>
               </TouchableOpacity>
-              <TouchableOpacity style={[styles.segmentBtn, form.numberOfDays === 'multiple' && styles.segmentBtnActive]} onPress={() => F('numberOfDays', 'multiple')}>
-                <Text style={[styles.segmentBtnText, form.numberOfDays === 'multiple' && styles.segmentBtnTextActive]}>More Than One Day</Text>
+              <TouchableOpacity
+                style={[
+                  styles.segmentBtn,
+                  { backgroundColor: colors.surfaceAlt, borderColor: colors.divider },
+                  form.numberOfDays === 'multiple' && { backgroundColor: colors.accent, borderColor: colors.accent },
+                ]}
+                onPress={() => F('numberOfDays', 'multiple')}
+              >
+                <Text style={[styles.segmentBtnText, { color: colors.subtext }, form.numberOfDays === 'multiple' && styles.segmentBtnTextActive]}>More Than One Day</Text>
               </TouchableOpacity>
             </View>
           </View>
 
           {form.numberOfDays === 'multiple' && (
             <View style={styles.formField}>
-              <Text style={styles.formLabel}>End Date *</Text>
-              <TextInput style={styles.formInput} placeholder="e.g. August 17, 2026" placeholderTextColor="#999" value={form.endDate} onChangeText={v => F('endDate', v)} />
+              <Text style={[styles.formLabel, { color: colors.subtext }]}>End Date *</Text>
+              <TextInput style={[styles.formInput, { backgroundColor: colors.surfaceAlt, borderColor: colors.divider, color: colors.text }]} placeholder="e.g. August 17, 2026" placeholderTextColor={colors.subtext} value={form.endDate} onChangeText={v => F('endDate', v)} />
             </View>
           )}
 
           <View style={styles.formField}>
-            <Text style={styles.formLabel}>Time</Text>
-            <TextInput style={styles.formInput} placeholder="e.g. 6:30 PM" placeholderTextColor="#999" value={form.time} onChangeText={v => F('time', v)} />
+            <Text style={[styles.formLabel, { color: colors.subtext }]}>Time</Text>
+            <TextInput style={[styles.formInput, { backgroundColor: colors.surfaceAlt, borderColor: colors.divider, color: colors.text }]} placeholder="e.g. 6:30 PM" placeholderTextColor={colors.subtext} value={form.time} onChangeText={v => F('time', v)} />
           </View>
 
           <View style={styles.formField}>
-            <Text style={styles.formLabel}>Location</Text>
-            <TextInput style={styles.formInput} placeholder="Venue name & city" placeholderTextColor="#999" value={form.location} onChangeText={v => F('location', v)} />
+            <Text style={[styles.formLabel, { color: colors.subtext }]}>Location</Text>
+            <TextInput style={[styles.formInput, { backgroundColor: colors.surfaceAlt, borderColor: colors.divider, color: colors.text }]} placeholder="Venue name & city" placeholderTextColor={colors.subtext} value={form.location} onChangeText={v => F('location', v)} />
           </View>
 
           <View style={styles.formField}>
-            <Text style={styles.formLabel}>Google Maps Link</Text>
-            <TextInput style={styles.formInput} placeholder="https://maps.app.goo.gl/..." placeholderTextColor="#999" value={form.mapLink} onChangeText={v => F('mapLink', v)} autoCapitalize="none" />
+            <Text style={[styles.formLabel, { color: colors.subtext }]}>Google Maps Link</Text>
+            <TextInput style={[styles.formInput, { backgroundColor: colors.surfaceAlt, borderColor: colors.divider, color: colors.text }]} placeholder="https://maps.app.goo.gl/..." placeholderTextColor={colors.subtext} value={form.mapLink} onChangeText={v => F('mapLink', v)} autoCapitalize="none" />
           </View>
 
           <View style={styles.formField}>
-            <Text style={styles.formLabel}>YouTube Link</Text>
-            <TextInput style={styles.formInput} placeholder="https://youtube.com/watch?v=..." placeholderTextColor="#999" value={form.youtubeLink} onChangeText={v => F('youtubeLink', v)} autoCapitalize="none" />
+            <Text style={[styles.formLabel, { color: colors.subtext }]}>YouTube Link</Text>
+            <TextInput style={[styles.formInput, { backgroundColor: colors.surfaceAlt, borderColor: colors.divider, color: colors.text }]} placeholder="https://youtube.com/watch?v=..." placeholderTextColor={colors.subtext} value={form.youtubeLink} onChangeText={v => F('youtubeLink', v)} autoCapitalize="none" />
           </View>
 
           <View style={styles.formField}>
-            <Text style={styles.formLabel}>Additional Info</Text>
-            <TextInput style={[styles.formInput, styles.formInputMulti]} placeholder="Any extra details" placeholderTextColor="#999" value={form.additionalInfo} onChangeText={v => F('additionalInfo', v)} multiline />
+            <Text style={[styles.formLabel, { color: colors.subtext }]}>Additional Info</Text>
+            <TextInput style={[styles.formInput, styles.formInputMulti, { backgroundColor: colors.surfaceAlt, borderColor: colors.divider, color: colors.text }]} placeholder="Any extra details" placeholderTextColor={colors.subtext} value={form.additionalInfo} onChangeText={v => F('additionalInfo', v)} multiline />
           </View>
 
           <View style={styles.formField}>
-            <Text style={styles.formLabel}>Order (display sequence)</Text>
-            <TextInput style={styles.formInput} placeholder="1" placeholderTextColor="#999" value={String(form.order)} onChangeText={v => F('order', parseInt(v) || 1)} keyboardType="number-pad" />
+            <Text style={[styles.formLabel, { color: colors.subtext }]}>Order (display sequence)</Text>
+            <TextInput style={[styles.formInput, { backgroundColor: colors.surfaceAlt, borderColor: colors.divider, color: colors.text }]} placeholder="1" placeholderTextColor={colors.subtext} value={String(form.order)} onChangeText={v => F('order', parseInt(v) || 1)} keyboardType="number-pad" />
           </View>
 
-          <View style={styles.toggleRow}>
-            <Text style={styles.formLabel}>Show to users</Text>
-            <Switch value={form.isActive} onValueChange={v => F('isActive', v)} trackColor={{ true: '#0f3460', false: '#ccc' }} />
+          <View style={[styles.toggleRow, { backgroundColor: colors.surface }]}>
+            <Text style={[styles.formLabel, { color: colors.subtext }]}>Show to users</Text>
+            <Switch value={form.isActive} onValueChange={v => F('isActive', v)} trackColor={{ true: colors.accent, false: colors.divider }} />
           </View>
 
-          <TouchableOpacity style={[styles.saveBtn, saving && { opacity: 0.6 }]} onPress={saveMeeting} disabled={saving}>
+          <TouchableOpacity style={[styles.saveBtn, { backgroundColor: colors.accent }, saving && { opacity: 0.6 }]} onPress={saveMeeting} disabled={saving}>
             <Text style={styles.saveBtnText}>{saving ? 'Saving...' : editingId ? '💾 Update Meeting' : '💾 Add Meeting'}</Text>
           </TouchableOpacity>
           <TouchableOpacity onPress={() => setShowForm(false)} style={styles.cancelBtn}>
-            <Text style={styles.cancelBtnText}>Cancel</Text>
+            <Text style={[styles.cancelBtnText, { color: colors.subtext }]}>Cancel</Text>
           </TouchableOpacity>
         </>
       )}
@@ -486,39 +499,38 @@ const SpecialMeetingsAdmin = forwardRef<AdminScreenHandle, Props>(({ onEventsUpd
 export default SpecialMeetingsAdmin;
 
 const styles = StyleSheet.create({
-  addBtn: { backgroundColor: '#0f3460', borderRadius: 14, padding: 16, alignItems: 'center', marginBottom: 16, elevation: 4 },
+  addBtn: { borderRadius: 14, padding: 16, alignItems: 'center', marginBottom: 16, elevation: 4 },
   addBtnText: { color: '#fff', fontWeight: 'bold', fontSize: 16 },
-  loadingText: { textAlign: 'center', color: '#888', marginTop: 20 },
-  emptyText: { textAlign: 'center', color: '#aaa', marginTop: 30, fontSize: 14, fontStyle: 'italic' },
-  adminMeetingCard: { backgroundColor: '#fff', borderRadius: 14, padding: 16, marginBottom: 12, elevation: 3, borderLeftWidth: 5, borderLeftColor: '#0f3460' },
+  loadingText: { textAlign: 'center', marginTop: 20 },
+  emptyText: { textAlign: 'center', marginTop: 30, fontSize: 14, fontStyle: 'italic' },
+  adminMeetingCard: { borderRadius: 14, padding: 16, marginBottom: 12, elevation: 3, borderLeftWidth: 5 },
   adminCardTop: { flexDirection: 'row', alignItems: 'flex-start', marginBottom: 8 },
-  adminMeetingTitle: { fontSize: 15, fontWeight: 'bold', color: '#1a1a2e', marginBottom: 4 },
-  adminMeetingMeta: { fontSize: 12, color: '#666', marginBottom: 2 },
+  adminMeetingTitle: { fontSize: 15, fontWeight: 'bold', marginBottom: 4 },
+  adminMeetingMeta: { fontSize: 12, marginBottom: 2 },
   adminCardStatus: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 8 },
   statusDot: { width: 8, height: 8, borderRadius: 4 },
-  statusText: { fontSize: 12, color: '#666' },
+  statusText: { fontSize: 12 },
   adminCardActions: { flexDirection: 'row', gap: 8 },
-  editBtn: { flex: 1, backgroundColor: '#e8f0fe', borderRadius: 10, padding: 10, alignItems: 'center' },
-  editBtnText: { color: '#0f3460', fontWeight: '600', fontSize: 13 },
+  editBtn: { flex: 1, borderRadius: 10, padding: 10, alignItems: 'center' },
+  editBtnText: { fontWeight: '600', fontSize: 13 },
   notifBtn: { flex: 1, backgroundColor: '#fff3e0', borderRadius: 10, padding: 10, alignItems: 'center' },
   notifBtnText: { color: '#e65100', fontWeight: '600', fontSize: 13 },
   deleteBtn: { backgroundColor: '#fdecea', borderRadius: 10, padding: 10, alignItems: 'center', width: 44 },
   deleteBtnText: { color: '#c62828', fontWeight: '600', fontSize: 13 },
   formHeader: { flexDirection: 'row', alignItems: 'center', gap: 16, marginBottom: 20 },
-  formBackText: { color: '#0f3460', fontWeight: '600', fontSize: 15 },
-  formTitle: { fontSize: 17, fontWeight: 'bold', color: '#1a1a2e' },
+  formBackText: { fontWeight: '600', fontSize: 15 },
+  formTitle: { fontSize: 17, fontWeight: 'bold' },
   formField: { marginBottom: 14 },
-  formLabel: { fontSize: 13, fontWeight: '600', color: '#555', marginBottom: 6 },
-  formInput: { backgroundColor: '#fff', borderRadius: 10, padding: 12, fontSize: 15, elevation: 2, borderWidth: 1, borderColor: '#eee', color: '#1a1a2e' },
+  formLabel: { fontSize: 13, fontWeight: '600', marginBottom: 6 },
+  formInput: { borderRadius: 10, padding: 12, fontSize: 15, elevation: 2, borderWidth: 1 },
   formInputMulti: { minHeight: 80, textAlignVertical: 'top' },
   segmentRow: { flexDirection: 'row', gap: 10 },
-  segmentBtn: { flex: 1, paddingVertical: 12, borderRadius: 10, backgroundColor: '#fff', borderWidth: 1, borderColor: '#eee', alignItems: 'center' },
-  segmentBtnActive: { backgroundColor: '#0f3460', borderColor: '#0f3460' },
-  segmentBtnText: { fontSize: 13, fontWeight: '600', color: '#555' },
+  segmentBtn: { flex: 1, paddingVertical: 12, borderRadius: 10, borderWidth: 1, alignItems: 'center' },
+  segmentBtnText: { fontSize: 13, fontWeight: '600' },
   segmentBtnTextActive: { color: '#fff' },
-  toggleRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', backgroundColor: '#fff', padding: 14, borderRadius: 12, marginBottom: 20, elevation: 2 },
-  saveBtn: { backgroundColor: '#0f3460', borderRadius: 14, padding: 16, alignItems: 'center', marginBottom: 12, elevation: 4 },
+  toggleRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 14, borderRadius: 12, marginBottom: 20, elevation: 2 },
+  saveBtn: { borderRadius: 14, padding: 16, alignItems: 'center', marginBottom: 12, elevation: 4 },
   saveBtnText: { color: '#fff', fontWeight: 'bold', fontSize: 16 },
   cancelBtn: { alignItems: 'center', padding: 12, marginBottom: 20 },
-  cancelBtnText: { color: '#888', fontSize: 14 },
+  cancelBtnText: { fontSize: 14 },
 });

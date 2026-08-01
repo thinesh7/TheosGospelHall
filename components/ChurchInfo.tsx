@@ -4,7 +4,9 @@ import { Linking, StyleSheet, TouchableOpacity, View } from 'react-native';
 import { Text } from './AppText';
 import { useTheme } from '../utils/ThemeContext';
 
-const BRANCHES = [
+// Exported so Footer.tsx can list the same branches (city + map link only)
+// without a second, driftable copy of this data.
+export const BRANCHES = [
   {
     city: 'Tirupur',
     time: '7:00 AM – 9:30 AM',
@@ -35,16 +37,25 @@ const BRANCHES = [
   },
 ];
 
-export default function ChurchInfo() {
+interface Props {
+  // Owned by the screen (not this component) so the toast can be anchored
+  // to the actual viewport rather than this component's scrollable content
+  // height — see app/(tabs)/contact.tsx.
+  showToast: (message: string) => void;
+}
+
+export default function ChurchInfo({ showToast }: Props) {
   const { colors } = useTheme();
 
   const copyAddress = async (branch: (typeof BRANCHES)[number]) => {
     await Clipboard.setStringAsync(`Theos Gospel Hall\n\n${branch.address}\n\nGoogle Maps Location: ${branch.mapLink}`);
+    showToast('📋 Address copied');
   };
 
   const copyAllAddresses = async () => {
     const text = `Theos Gospel Hall\n\n${BRANCHES.map(b => `${b.city}:\n${b.address}`).join('\n\n')}`;
     await Clipboard.setStringAsync(text);
+    showToast('📋 All addresses copied');
   };
 
   return (

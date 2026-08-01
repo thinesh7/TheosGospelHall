@@ -16,6 +16,7 @@ import { Text } from '../../components/AppText';
 import { useResponsiveColumns } from '../../components/layout/ResponsiveGrid';
 import ThemeToggleIcon from '../../components/ThemeToggleIcon';
 import { CONTENT_MAX_WIDTH } from '../../constants/layout';
+import { useBreakpoint } from '../../hooks/use-breakpoint';
 import { BIBLE_VERSIONS, BOOKS } from '../../utils/bibleData';
 import { getMemBibleSettings, saveBibleSettings } from '../../utils/bibleSettings';
 import { useTheme } from '../../utils/ThemeContext';
@@ -29,10 +30,11 @@ interface SettingsModalProps {
 }
 
 function SettingsModal({ visible, onClose, c, fontSize, setFontSize }: SettingsModalProps) {
+  const { isTabletUp } = useBreakpoint();
   return (
     <Modal visible={visible} transparent animationType="slide">
-      <View style={styles.modalOverlay}>
-        <View style={[styles.modalCard, { backgroundColor: c.surface }]}>
+      <View style={[styles.modalOverlay, isTabletUp && styles.modalOverlayDesktop]}>
+        <View style={[styles.modalCard, { backgroundColor: c.surface }, isTabletUp && styles.modalCardDesktop]}>
           <Text style={[styles.modalTitle, { color: c.text }]}>⚙️ Reading Settings</Text>
           <Text style={[styles.settingLabel, { color: c.subtext }]}>Font Size</Text>
           <View style={styles.fontSizeRow}>
@@ -285,7 +287,11 @@ const styles = StyleSheet.create({
   chapterBtn: { flex: 1, margin: 6, borderRadius: 10, padding: 14, alignItems: 'center', elevation: 2 },
   chapterText: { fontSize: 16, fontWeight: 'bold' },
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' },
+  // On tablet-up this becomes a centered floating dialog instead of a
+  // full-bleed bottom sheet, matching the same pattern used in bible-reader.tsx.
+  modalOverlayDesktop: { justifyContent: 'center', alignItems: 'center' },
   modalCard: { borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 24, paddingBottom: 40 },
+  modalCardDesktop: { width: '100%', maxWidth: 440, borderRadius: 24 },
   modalTitle: { fontSize: 18, fontWeight: 'bold', marginBottom: 20, textAlign: 'center' },
   settingLabel: { fontSize: 13, fontWeight: '600', marginBottom: 10, marginTop: 16 },
   fontSizeRow: { flexDirection: 'row', alignItems: 'center', gap: 16, justifyContent: 'center' },

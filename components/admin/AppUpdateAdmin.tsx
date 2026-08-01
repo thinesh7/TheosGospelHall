@@ -14,6 +14,7 @@ import {
 } from '../../utils/appUpdate';
 import { sendPushNotificationToAll } from '../../utils/pushNotify';
 import { formatTimestampIST } from '../../utils/registrations';
+import { useTheme } from '../../utils/ThemeContext';
 import { AdminScreenHandle } from './SpecialMeetingsAdmin';
 
 // Reads the version from app.json via the Expo config (not expo-application's
@@ -30,6 +31,7 @@ const DEFAULT_NOTIFY_MESSAGE =
 
 const AppUpdateAdmin = forwardRef<AdminScreenHandle, {}>((_, ref) => {
   const dialog = useAppDialog();
+  const { colors } = useTheme();
   const [latestVersion, setLatestVersion] = useState('');
   const [minimumRequiredVersion, setMinimumRequiredVersion] = useState('');
   // Tracks the version actually saved in Firestore (separate from the
@@ -148,7 +150,7 @@ const AppUpdateAdmin = forwardRef<AdminScreenHandle, {}>((_, ref) => {
   if (loading) {
     return (
       <View style={styles.loadingBox}>
-        <Text style={styles.loadingText}>Loading...</Text>
+        <Text style={[styles.loadingText, { color: colors.subtext }]}>Loading...</Text>
       </View>
     );
   }
@@ -159,11 +161,11 @@ const AppUpdateAdmin = forwardRef<AdminScreenHandle, {}>((_, ref) => {
 
   return (
     <ScrollView contentContainerStyle={{ padding: 16 }} keyboardShouldPersistTaps="handled">
-      <View style={styles.infoBox}>
-        <Text style={styles.infoText}>
-          Current Latest Version configured: <Text style={styles.infoBold}>{configuredLatestVersion}</Text>
+      <View style={[styles.infoBox, { backgroundColor: colors.accent + '15' }]}>
+        <Text style={[styles.infoText, { color: colors.text }]}>
+          Current Latest Version configured: <Text style={[styles.infoBold, { color: colors.accent }]}>{configuredLatestVersion}</Text>
         </Text>
-        <Text style={styles.infoText}>
+        <Text style={[styles.infoText, { color: colors.text }]}>
           Devices on a version below &quot;Minimum Required Version&quot; are forced to update before they can use the app.
           Devices below &quot;Latest Version&quot; (but at or above the minimum) see a dismissible update prompt.
         </Text>
@@ -174,19 +176,23 @@ const AppUpdateAdmin = forwardRef<AdminScreenHandle, {}>((_, ref) => {
       </TouchableOpacity>
 
       {!!auditInfo.updatedAt && (
-        <View style={styles.auditBox}>
-          <Text style={styles.auditText}>
-            Last updated by <Text style={styles.auditBold}>{auditInfo.updatedBy}</Text> on {formatTimestampIST(auditInfo.updatedAt)}
+        <View style={[styles.auditBox, { backgroundColor: colors.surface, borderColor: colors.divider }]}>
+          <Text style={[styles.auditText, { color: colors.subtext }]}>
+            Last updated by <Text style={[styles.auditBold, { color: colors.text }]}>{auditInfo.updatedBy}</Text> on {formatTimestampIST(auditInfo.updatedAt)}
           </Text>
         </View>
       )}
 
       <View style={styles.formField}>
-        <Text style={styles.formLabel}>Latest Version *</Text>
+        <Text style={[styles.formLabel, { color: colors.subtext }]}>Latest Version *</Text>
         <TextInput
-          style={[styles.formInput, latestVersionInvalid && styles.formInputError]}
+          style={[
+            styles.formInput,
+            { backgroundColor: colors.surfaceAlt, borderColor: colors.divider, color: colors.text },
+            latestVersionInvalid && styles.formInputError,
+          ]}
           placeholder="e.g. 1.4.0"
-          placeholderTextColor="#999"
+          placeholderTextColor={colors.subtext}
           value={latestVersion}
           onChangeText={setLatestVersion}
           autoCapitalize="none"
@@ -195,11 +201,15 @@ const AppUpdateAdmin = forwardRef<AdminScreenHandle, {}>((_, ref) => {
       </View>
 
       <View style={styles.formField}>
-        <Text style={styles.formLabel}>Minimum Required Version *</Text>
+        <Text style={[styles.formLabel, { color: colors.subtext }]}>Minimum Required Version *</Text>
         <TextInput
-          style={[styles.formInput, minimumVersionInvalid && styles.formInputError]}
+          style={[
+            styles.formInput,
+            { backgroundColor: colors.surfaceAlt, borderColor: colors.divider, color: colors.text },
+            minimumVersionInvalid && styles.formInputError,
+          ]}
           placeholder="e.g. 1.2.0"
-          placeholderTextColor="#999"
+          placeholderTextColor={colors.subtext}
           value={minimumRequiredVersion}
           onChangeText={setMinimumRequiredVersion}
           autoCapitalize="none"
@@ -208,11 +218,11 @@ const AppUpdateAdmin = forwardRef<AdminScreenHandle, {}>((_, ref) => {
       </View>
 
       <View style={styles.formField}>
-        <Text style={styles.formLabel}>Update Message</Text>
+        <Text style={[styles.formLabel, { color: colors.subtext }]}>Update Message</Text>
         <TextInput
-          style={[styles.formInput, styles.formInputMulti]}
+          style={[styles.formInput, styles.formInputMulti, { backgroundColor: colors.surfaceAlt, borderColor: colors.divider, color: colors.text }]}
           placeholder="New features and bug fixes!"
-          placeholderTextColor="#999"
+          placeholderTextColor={colors.subtext}
           value={updateMessage}
           onChangeText={setUpdateMessage}
           multiline
@@ -220,43 +230,43 @@ const AppUpdateAdmin = forwardRef<AdminScreenHandle, {}>((_, ref) => {
       </View>
 
       <View style={styles.formField}>
-        <Text style={styles.formLabel}>Play Store URL *</Text>
+        <Text style={[styles.formLabel, { color: colors.subtext }]}>Play Store URL *</Text>
         <TextInput
-          style={styles.formInput}
+          style={[styles.formInput, { backgroundColor: colors.surfaceAlt, borderColor: colors.divider, color: colors.text }]}
           placeholder="https://play.google.com/store/apps/details?id=..."
-          placeholderTextColor="#999"
+          placeholderTextColor={colors.subtext}
           value={androidStoreUrl}
           onChangeText={setAndroidStoreUrl}
           autoCapitalize="none"
         />
       </View>
 
-      <TouchableOpacity style={[styles.saveBtn, saving && { opacity: 0.6 }]} onPress={handleSave} disabled={saving}>
+      <TouchableOpacity style={[styles.saveBtn, { backgroundColor: colors.accent }, saving && { opacity: 0.6 }]} onPress={handleSave} disabled={saving}>
         <Text style={styles.saveBtnText}>{saving ? 'Saving...' : '💾 Save Settings'}</Text>
       </TouchableOpacity>
 
       <Modal visible={showNotifyModal} transparent animationType="fade" onRequestClose={() => setShowNotifyModal(false)}>
         <View style={styles.notifyBackdrop}>
-          <View style={styles.notifyCard}>
-            <Text style={styles.notifyTitle}>Notify Users About Update</Text>
-            <Text style={styles.notifyHint}>This message will be sent as a push notification to every app user. Edit it below before sending.</Text>
+          <View style={[styles.notifyCard, { backgroundColor: colors.surface }]}>
+            <Text style={[styles.notifyTitle, { color: colors.text }]}>Notify Users About Update</Text>
+            <Text style={[styles.notifyHint, { color: colors.subtext }]}>This message will be sent as a push notification to every app user. Edit it below before sending.</Text>
             <TextInput
-              style={[styles.formInput, styles.notifyInput]}
-              placeholderTextColor="#999"
+              style={[styles.formInput, styles.notifyInput, { backgroundColor: colors.surfaceAlt, borderColor: colors.divider, color: colors.text }]}
+              placeholderTextColor={colors.subtext}
               value={notifyMessage}
               onChangeText={setNotifyMessage}
               multiline
               editable={!sendingNotify}
             />
             <TouchableOpacity
-              style={[styles.saveBtn, (sendingNotify || !notifyMessage.trim()) && { opacity: 0.6 }]}
+              style={[styles.saveBtn, { backgroundColor: colors.accent }, (sendingNotify || !notifyMessage.trim()) && { opacity: 0.6 }]}
               onPress={handleSendNotify}
               disabled={sendingNotify || !notifyMessage.trim()}
             >
               <Text style={styles.saveBtnText}>{sendingNotify ? 'Sending...' : '📢 Send to All Users'}</Text>
             </TouchableOpacity>
             <TouchableOpacity style={styles.notifyCancelBtn} onPress={() => setShowNotifyModal(false)} disabled={sendingNotify}>
-              <Text style={styles.notifyCancelText}>Cancel</Text>
+              <Text style={[styles.notifyCancelText, { color: colors.subtext }]}>Cancel</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -269,28 +279,28 @@ export default AppUpdateAdmin;
 
 const styles = StyleSheet.create({
   loadingBox: { padding: 40, alignItems: 'center' },
-  loadingText: { color: '#888' },
-  infoBox: { backgroundColor: '#e8f0fe', borderRadius: 12, padding: 14, marginBottom: 20 },
-  infoText: { fontSize: 13, color: '#333', marginBottom: 8, lineHeight: 19 },
-  infoBold: { fontWeight: 'bold', color: '#0f3460' },
-  auditBox: { backgroundColor: '#fff', borderRadius: 10, padding: 12, marginBottom: 20, borderWidth: 1, borderColor: '#eee' },
-  auditText: { fontSize: 12, color: '#666', marginBottom: 4 },
-  auditBold: { fontWeight: '700', color: '#333' },
+  loadingText: {},
+  infoBox: { borderRadius: 12, padding: 14, marginBottom: 20 },
+  infoText: { fontSize: 13, marginBottom: 8, lineHeight: 19 },
+  infoBold: { fontWeight: 'bold' },
+  auditBox: { borderRadius: 10, padding: 12, marginBottom: 20, borderWidth: 1 },
+  auditText: { fontSize: 12, marginBottom: 4 },
+  auditBold: { fontWeight: '700' },
   notifyBtn: { backgroundColor: '#fff3e0', borderRadius: 12, padding: 14, alignItems: 'center', marginBottom: 20 },
   notifyBtnText: { color: '#e65100', fontWeight: '700', fontSize: 14 },
   notifyBackdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', alignItems: 'center', padding: 24 },
-  notifyCard: { backgroundColor: '#fff', borderRadius: 16, padding: 20, width: '100%', maxWidth: 380, elevation: 8 },
-  notifyTitle: { fontSize: 17, fontWeight: 'bold', color: '#1a1a2e', marginBottom: 6 },
-  notifyHint: { fontSize: 12, color: '#888', marginBottom: 14, lineHeight: 17 },
+  notifyCard: { borderRadius: 16, padding: 20, width: '100%', maxWidth: 380, elevation: 8 },
+  notifyTitle: { fontSize: 17, fontWeight: 'bold', marginBottom: 6 },
+  notifyHint: { fontSize: 12, marginBottom: 14, lineHeight: 17 },
   notifyInput: { minHeight: 110, marginBottom: 16 },
   notifyCancelBtn: { alignItems: 'center', padding: 12 },
-  notifyCancelText: { color: '#888', fontSize: 14, fontWeight: '600' },
+  notifyCancelText: { fontSize: 14, fontWeight: '600' },
   formField: { marginBottom: 16 },
-  formLabel: { fontSize: 13, fontWeight: '600', color: '#555', marginBottom: 6 },
-  formInput: { backgroundColor: '#fff', borderRadius: 10, padding: 12, fontSize: 15, elevation: 2, borderWidth: 1, borderColor: '#eee', color: '#1a1a2e' },
+  formLabel: { fontSize: 13, fontWeight: '600', marginBottom: 6 },
+  formInput: { borderRadius: 10, padding: 12, fontSize: 15, elevation: 2, borderWidth: 1 },
   formInputError: { borderColor: '#d32f2f' },
   formErrorText: { color: '#d32f2f', fontSize: 12, marginTop: 6 },
   formInputMulti: { minHeight: 80, textAlignVertical: 'top' },
-  saveBtn: { backgroundColor: '#0f3460', borderRadius: 14, padding: 16, alignItems: 'center', marginTop: 8, marginBottom: 24, elevation: 4 },
+  saveBtn: { borderRadius: 14, padding: 16, alignItems: 'center', marginTop: 8, marginBottom: 24, elevation: 4 },
   saveBtnText: { color: '#fff', fontWeight: 'bold', fontSize: 16 },
 });

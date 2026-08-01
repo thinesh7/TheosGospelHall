@@ -20,6 +20,7 @@ import {
   syncOtherSongs,
   updateOtherSong,
 } from '../../utils/otherSongsSync';
+import { useTheme } from '../../utils/ThemeContext';
 import { AdminScreenHandle } from './SpecialMeetingsAdmin';
 
 interface EditForm {
@@ -44,6 +45,7 @@ const EMPTY_FORM: EditForm = {
 
 const OtherSongsAdmin = forwardRef<AdminScreenHandle, {}>((_props, ref) => {
   const dialog = useAppDialog();
+  const { colors } = useTheme();
   const [songsIndex, setSongsIndex] = useState<OtherSongIndexEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [syncing, setSyncing] = useState(false);
@@ -143,10 +145,8 @@ const OtherSongsAdmin = forwardRef<AdminScreenHandle, {}>((_props, ref) => {
           title: form.title,
           lyrics: { tamil: form.lyricsTamil, english: form.lyricsEnglish },
           titleEnglish: finalTitleEnglish,
+          ...(form.isVisible !== undefined ? { isVisible: form.isVisible } : {}),
         });
-        if (form.isVisible !== undefined) {
-          await setOtherSongVisibility(form.songId, form.isVisible);
-        }
       } else {
         await addOtherSong({
           title: form.title,
@@ -182,11 +182,11 @@ const OtherSongsAdmin = forwardRef<AdminScreenHandle, {}>((_props, ref) => {
   if (showForm) {
     return (
       <View style={styles.formContainer}>
-        <View style={styles.formHeader}>
+        <View style={[styles.formHeader, { backgroundColor: colors.surface }]}>
           <TouchableOpacity onPress={() => setShowForm(false)}>
-            <Text style={styles.formBackText}>← Back</Text>
+            <Text style={[styles.formBackText, { color: colors.accent }]}>← Back</Text>
           </TouchableOpacity>
-          <Text style={styles.formTitle}>
+          <Text style={[styles.formTitle, { color: colors.text }]}>
             {form.songId ? `Edit Special Song #${form.songNumber}` : 'New Special Song'}
           </Text>
         </View>
@@ -196,57 +196,57 @@ const OtherSongsAdmin = forwardRef<AdminScreenHandle, {}>((_props, ref) => {
           keyExtractor={() => 'form'}
           renderItem={() => (
             <View style={{ padding: 16 }}>
-              <Text style={styles.fieldLabel}>Title (Tamil) *</Text>
+              <Text style={[styles.fieldLabel, { color: colors.subtext }]}>Title (Tamil) *</Text>
               <TextInput
-                style={styles.input}
+                style={[styles.input, { backgroundColor: colors.surfaceAlt, borderColor: colors.divider, color: colors.text }]}
                 value={form.title}
                 onChangeText={v => setForm(prev => ({ ...prev, title: v }))}
                 placeholder="e.g. உமது முகம் நோக்கிப் பார்த்தவர்கள்"
-                placeholderTextColor="#999"
+                placeholderTextColor={colors.subtext}
               />
 
-              <Text style={styles.fieldLabel}>Title (English) *</Text>
+              <Text style={[styles.fieldLabel, { color: colors.subtext }]}>Title (English) *</Text>
               <TextInput
-                style={styles.input}
+                style={[styles.input, { backgroundColor: colors.surfaceAlt, borderColor: colors.divider, color: colors.text }]}
                 value={form.titleEnglish}
                 onChangeText={v => setForm(prev => ({ ...prev, titleEnglish: v }))}
                 placeholder="e.g. Umathu mukam Nnokkip paarththavarkal"
-                placeholderTextColor="#999"
+                placeholderTextColor={colors.subtext}
               />
 
-              <Text style={styles.fieldLabel}>Lyrics (Tamil) *</Text>
+              <Text style={[styles.fieldLabel, { color: colors.subtext }]}>Lyrics (Tamil) *</Text>
               <TextInput
-                style={[styles.input, styles.textArea]}
+                style={[styles.input, styles.textArea, { backgroundColor: colors.surfaceAlt, borderColor: colors.divider, color: colors.text }]}
                 value={form.lyricsTamil}
                 onChangeText={v => setForm(prev => ({ ...prev, lyricsTamil: v }))}
                 placeholder="Tamil lyrics"
-                placeholderTextColor="#999"
+                placeholderTextColor={colors.subtext}
                 multiline
                 textAlignVertical="top"
               />
 
-              <Text style={styles.fieldLabel}>Lyrics (English) *</Text>
+              <Text style={[styles.fieldLabel, { color: colors.subtext }]}>Lyrics (English) *</Text>
               <TextInput
-                style={[styles.input, styles.textArea]}
+                style={[styles.input, styles.textArea, { backgroundColor: colors.surfaceAlt, borderColor: colors.divider, color: colors.text }]}
                 value={form.lyricsEnglish}
                 onChangeText={v => setForm(prev => ({ ...prev, lyricsEnglish: v }))}
                 placeholder="English transliteration of lyrics"
-                placeholderTextColor="#999"
+                placeholderTextColor={colors.subtext}
                 multiline
                 textAlignVertical="top"
               />
 
-              <View style={styles.toggleRow}>
-                <Text style={styles.fieldLabel}>Show to users</Text>
+              <View style={[styles.toggleRow, { backgroundColor: colors.surface }]}>
+                <Text style={[styles.fieldLabel, { color: colors.subtext }]}>Show to users</Text>
                 <Switch
                   value={form.isVisible}
                   onValueChange={v => setForm(prev => ({ ...prev, isVisible: v }))}
-                  trackColor={{ true: '#0f3460', false: '#ccc' }}
+                  trackColor={{ true: colors.accent, false: colors.divider }}
                 />
               </View>
 
               <TouchableOpacity
-                style={[styles.saveBtn, saving && { opacity: 0.6 }]}
+                style={[styles.saveBtn, { backgroundColor: colors.accent }, saving && { opacity: 0.6 }]}
                 onPress={save}
                 disabled={saving}
               >
@@ -266,18 +266,18 @@ const OtherSongsAdmin = forwardRef<AdminScreenHandle, {}>((_props, ref) => {
     <View style={styles.container}>
       <View style={{ paddingHorizontal: 16, paddingTop: 12 }}>
         <View style={styles.addRow}>
-          <TouchableOpacity style={styles.addBtn} onPress={openAddForm}>
+          <TouchableOpacity style={[styles.addBtn, { backgroundColor: colors.accent }]} onPress={openAddForm}>
             <Text style={styles.addBtnText}>＋ Add New Song</Text>
           </TouchableOpacity>
           <View style={styles.syncSlot}>
-            {syncing && <ActivityIndicator size="small" color="#0f3460" />}
+            {syncing && <ActivityIndicator size="small" color={colors.accent} />}
           </View>
         </View>
         <View style={styles.searchBar}>
           <TextInput
-            style={styles.searchInput}
+            style={[styles.searchInput, { backgroundColor: colors.surfaceAlt, borderColor: colors.divider, color: colors.text }]}
             placeholder="Search by song number or title"
-            placeholderTextColor="#999"
+            placeholderTextColor={colors.subtext}
             value={search}
             onChangeText={setSearch}
           />
@@ -285,7 +285,7 @@ const OtherSongsAdmin = forwardRef<AdminScreenHandle, {}>((_props, ref) => {
       </View>
 
       {loading ? (
-        <ActivityIndicator size="large" color="#0f3460" style={{ marginTop: 40 }} />
+        <ActivityIndicator size="large" color={colors.accent} style={{ marginTop: 40 }} />
       ) : (
         <FlatList
           data={filtered}
@@ -295,18 +295,18 @@ const OtherSongsAdmin = forwardRef<AdminScreenHandle, {}>((_props, ref) => {
           renderItem={({ item }) => {
             const isVisible = item.isVisible !== false;
             return (
-              <View style={styles.songRow}>
+              <View style={[styles.songRow, { backgroundColor: colors.surface }]}>
                 <TouchableOpacity
                   style={styles.songRowMain}
                   onPress={() => openEditForm(item)}
                   disabled={loadingSong}
                 >
-                  <View style={[styles.songNumberBadge, !isVisible && { backgroundColor: '#ccc' }]}>
+                  <View style={[styles.songNumberBadge, { backgroundColor: isVisible ? colors.accent : colors.divider }]}>
                     <Text style={styles.songNumberText}>{item.songNumber}</Text>
                   </View>
                   <View style={{ flex: 1 }}>
-                    <Text style={styles.songTitle} numberOfLines={2}>{item.title}</Text>
-                    <Text style={[styles.visibilityText, { color: isVisible ? '#25d366' : '#999' }]}>
+                    <Text style={[styles.songTitle, { color: colors.text }]} numberOfLines={2}>{item.title}</Text>
+                    <Text style={[styles.visibilityText, { color: isVisible ? '#25d366' : colors.subtext }]}>
                       {isVisible ? '● Visible to users' : '● Hidden'}
                     </Text>
                   </View>
@@ -314,12 +314,12 @@ const OtherSongsAdmin = forwardRef<AdminScreenHandle, {}>((_props, ref) => {
                 <Switch
                   value={isVisible}
                   onValueChange={() => toggleVisibility(item)}
-                  trackColor={{ true: '#0f3460', false: '#ccc' }}
+                  trackColor={{ true: colors.accent, false: colors.divider }}
                 />
               </View>
             );
           }}
-          ListEmptyComponent={<Text style={styles.emptyText}>No songs yet. Tap above to add one.</Text>}
+          ListEmptyComponent={<Text style={[styles.emptyText, { color: colors.subtext }]}>No songs yet. Tap above to add one.</Text>}
         />
       )}
     </View>
@@ -333,7 +333,6 @@ const styles = StyleSheet.create({
   addRow: { flexDirection: 'row', alignItems: 'center' },
   syncSlot: { width: 36, alignItems: 'center', justifyContent: 'center' },
   addBtn: {
-    backgroundColor: '#0f3460',
     borderRadius: 14,
     padding: 16,
     alignItems: 'center',
@@ -343,19 +342,15 @@ const styles = StyleSheet.create({
   addBtnText: { color: '#fff', fontWeight: 'bold', fontSize: 16 },
   searchBar: { marginTop: 12 },
   searchInput: {
-    backgroundColor: '#fff',
     borderRadius: 12,
     paddingHorizontal: 14,
     paddingVertical: 12,
     fontSize: 15,
     borderWidth: 1,
-    borderColor: '#eee',
-    color: '#1a1a2e',
   },
   songRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#fff',
     borderRadius: 12,
     padding: 14,
     marginBottom: 10,
@@ -367,50 +362,45 @@ const styles = StyleSheet.create({
     width: 36,
     height: 36,
     borderRadius: 18,
-    backgroundColor: '#0f3460',
     alignItems: 'center',
     justifyContent: 'center',
   },
   songNumberText: { color: '#fff', fontWeight: '700', fontSize: 12 },
-  songTitle: { fontSize: 14, color: '#1a1a2e', lineHeight: 19, marginBottom: 4 },
+  songTitle: { fontSize: 14, lineHeight: 19, marginBottom: 4 },
   visibilityText: { fontSize: 11, fontWeight: '600' },
-  emptyText: { textAlign: 'center', color: '#999', marginTop: 40, fontStyle: 'italic' },
+  emptyText: { textAlign: 'center', marginTop: 40, fontStyle: 'italic' },
   formContainer: { flex: 1 },
   formHeader: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 16,
     padding: 16,
-    backgroundColor: '#fff',
     elevation: 2,
   },
-  formBackText: { color: '#0f3460', fontWeight: '600', fontSize: 15 },
-  formTitle: { fontSize: 16, fontWeight: 'bold', color: '#1a1a2e' },
-  fieldLabel: { fontSize: 13, fontWeight: '600', color: '#555', marginBottom: 6, marginTop: 14 },
+  formBackText: { fontWeight: '600', fontSize: 15 },
+  formTitle: { fontSize: 16, fontWeight: 'bold' },
+  fieldLabel: { fontSize: 13, fontWeight: '600', marginBottom: 6, marginTop: 14 },
   fieldHint: { fontSize: 11, color: '#999', marginBottom: 6, fontStyle: 'italic' },
   input: {
-    backgroundColor: '#fff',
     borderRadius: 10,
     padding: 12,
     fontSize: 15,
     elevation: 2,
     borderWidth: 1,
-    borderColor: '#eee',
-    color: '#1a1a2e',
   },
-  textArea: { minHeight: 140 },
+  // Tamil and English lyrics fields both use this one style, so they stay
+  // the same height as each other on every screen size by construction.
+  textArea: { minHeight: 340 },
   toggleRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    backgroundColor: '#fff',
     padding: 14,
     borderRadius: 12,
     marginTop: 16,
     elevation: 2,
   },
   saveBtn: {
-    backgroundColor: '#0f3460',
     borderRadius: 14,
     padding: 16,
     alignItems: 'center',

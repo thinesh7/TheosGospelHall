@@ -67,3 +67,8 @@ export const CONTENT_MAX_WIDTH = 1120;
 // from more horizontal room than a text-reading column, so they get their
 // own, larger max-width rather than sharing CONTENT_MAX_WIDTH.
 export const WIDE_CONTENT_MAX_WIDTH = 1600;
+
+// Narrower cap for long-form reading columns (Bible/song lyrics text) —
+// ~60-75 characters per line is the typographic sweet spot for comfortable
+// reading, well under CONTENT_MAX_WIDTH which is sized for forms/dashboards.
+export const READING_CONTENT_MAX_WIDTH = 720;

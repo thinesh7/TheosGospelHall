@@ -1,11 +1,13 @@
 import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import * as Clipboard from 'expo-clipboard';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   FlatList,
   Modal,
+  Platform,
   Share,
   StyleSheet,
   TouchableOpacity,
@@ -18,6 +20,9 @@ import { useTheme } from '../utils/ThemeContext';
 import { Text } from '../components/AppText';
 import { TextInput } from '../components/AppTextInput';
 import ThemeToggleIcon from '../components/ThemeToggleIcon';
+import { Toast, useToast } from '../components/Toast';
+import { READING_CONTENT_MAX_WIDTH } from '../constants/layout';
+import { useBreakpoint } from '../hooks/use-breakpoint';
 
 const FAVORITES_KEY = 'tgh_other_song_favorites';
 
@@ -70,6 +75,8 @@ export default function OtherSongReaderScreen() {
   const router = useRouter();
   const { songNumber } = useLocalSearchParams<{ songNumber: string }>();
   const { colors: c, theme, cycleTheme } = useTheme();
+  const { isTabletUp } = useBreakpoint();
+  const { message: toastMessage, opacity: toastOpacity, showToast } = useToast();
   // Reactive (not Dimensions.get() frozen at module scope) so page sizing
   // and horizontal-paging math stay correct across resize/rotation on any
   // platform, not just whatever the screen happened to be at first mount.
@@ -162,6 +169,13 @@ export default function OtherSongReaderScreen() {
     const strippedTitle = rawTitle.replace(/^\d+\.\s*/, '').trim();
     const title = strippedTitle.charAt(0).toUpperCase() + strippedTitle.slice(1);
     const message = `TGH Special Songs\n\nSong Number: ${song.songNumber}\n\nTitle: ${title}\n\n${body}`;
+    // Share.share() has no web implementation — copy the same text that
+    // would have been shared instead, with a toast confirmation.
+    if (Platform.OS === 'web') {
+      await Clipboard.setStringAsync(message);
+      showToast('📋 Lyrics copied');
+      return;
+    }
     try {
       await Share.share({ message });
     } catch (e) {}
@@ -210,8 +224,12 @@ export default function OtherSongReaderScreen() {
         <FlatList
           data={[text]}
           keyExtractor={() => item.songId}
+          contentContainerStyle={isTabletUp ? styles.lyricsContentDesktop : undefined}
           renderItem={() => (
-            <View style={{ paddingHorizontal: 20, paddingTop: 10, paddingBottom: lyricsPaddingBottom }}>
+            <View style={[
+              { paddingHorizontal: 20, paddingTop: 10, paddingBottom: lyricsPaddingBottom },
+              isTabletUp && styles.lyricsColumnDesktop,
+            ]}>
               <Text style={[styles.title, { color: c.accent, fontSize: fontSize + 4, fontWeight: thickness >= 600 ? 'bold' : '600' }]}>
                 {item.title}
               </Text>
@@ -259,7 +277,7 @@ export default function OtherSongReaderScreen() {
             />
           </TouchableOpacity>
           <TouchableOpacity onPress={() => shareSong(currentSong)} style={styles.iconBtn}>
-            <Ionicons name="share-social-outline" size={22} color={c.text} />
+            <Ionicons name={Platform.OS === 'web' ? 'copy-outline' : 'share-social-outline'} size={22} color={c.text} />
           </TouchableOpacity>
           <TouchableOpacity onPress={cycleTheme} style={styles.iconBtn}>
             <ThemeToggleIcon theme={theme} size={22} color={c.text} />
@@ -308,8 +326,8 @@ export default function OtherSongReaderScreen() {
       </View>
 
       <Modal visible={showSettings} transparent animationType="slide" onRequestClose={() => setShowSettings(false)}>
-        <TouchableOpacity style={styles.modalOverlay} activeOpacity={1} onPress={() => setShowSettings(false)}>
-          <TouchableOpacity activeOpacity={1} style={[styles.sheet, { backgroundColor: c.headerBg }]}>
+        <TouchableOpacity style={[styles.modalOverlay, isTabletUp && styles.modalOverlayDesktop]} activeOpacity={1} onPress={() => setShowSettings(false)}>
+          <TouchableOpacity activeOpacity={1} style={[styles.sheet, { backgroundColor: c.headerBg }, isTabletUp && styles.sheetDesktop]}>
             <View style={styles.sheetHandle} />
 
             <View style={styles.settingRow}>
@@ -381,8 +399,8 @@ export default function OtherSongReaderScreen() {
       </Modal>
 
       <Modal visible={showSearch} transparent animationType="slide" onRequestClose={() => setShowSearch(false)}>
-        <TouchableOpacity style={styles.modalOverlay} activeOpacity={1} onPress={() => setShowSearch(false)}>
-          <TouchableOpacity activeOpacity={1} style={[styles.searchSheet, { backgroundColor: c.headerBg }]}>
+        <TouchableOpacity style={[styles.modalOverlay, isTabletUp && styles.modalOverlayDesktop]} activeOpacity={1} onPress={() => setShowSearch(false)}>
+          <TouchableOpacity activeOpacity={1} style={[styles.searchSheet, { backgroundColor: c.headerBg }, isTabletUp && styles.searchSheetDesktop]}>
             <View style={styles.sheetHandle} />
 
             <View style={[styles.searchInputRow, { backgroundColor: c.surfaceAlt, borderColor: c.accent }]}>
@@ -435,6 +453,8 @@ export default function OtherSongReaderScreen() {
           </TouchableOpacity>
         </TouchableOpacity>
       </Modal>
+
+      <Toast message={toastMessage} opacity={toastOpacity} />
     </View>
   );
 }
@@ -473,8 +493,16 @@ const styles = StyleSheet.create({
   },
   navBtn: { padding: 4 },
   pageIndicator: { fontSize: 14, fontWeight: '600' },
+  // Comfortable reading-column width on tablet-up instead of lyrics running
+  // the full browser-window width.
+  lyricsContentDesktop: { alignItems: 'center' },
+  lyricsColumnDesktop: { width: '100%', maxWidth: READING_CONTENT_MAX_WIDTH },
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' },
+  // On tablet-up these become centered floating dialogs instead of
+  // full-bleed bottom sheets.
+  modalOverlayDesktop: { justifyContent: 'center', alignItems: 'center' },
   sheet: { borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 20 },
+  sheetDesktop: { width: '100%', maxWidth: 440, borderRadius: 24 },
   sheetHandle: { width: 40, height: 4, backgroundColor: '#999', borderRadius: 2, alignSelf: 'center', marginBottom: 16 },
   settingRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 16, marginBottom: 8 },
   settingLabel: { fontSize: 15, fontWeight: '600' },
@@ -493,6 +521,7 @@ const styles = StyleSheet.create({
   stepperBtnDisabled: { opacity: 0.4 },
   stepperValue: { fontSize: 18, fontWeight: '700', minWidth: 50, textAlign: 'center' },
   searchSheet: { borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 20, height: '70%' },
+  searchSheetDesktop: { width: '100%', maxWidth: 480, height: '70%', maxHeight: 560, borderRadius: 24 },
   searchInputRow: {
     flexDirection: 'row',
     alignItems: 'center',

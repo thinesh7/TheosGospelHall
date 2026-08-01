@@ -1,5 +1,5 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { addDoc, collection, doc, getDocs, updateDoc } from 'firebase/firestore';
+import { addDoc, collection, doc, getDocs, serverTimestamp, updateDoc } from 'firebase/firestore';
 import { db } from '../firebaseConfig';
 
 const CACHE_KEY = 'tgh_backup_api_keys_cache';
@@ -43,13 +43,20 @@ export async function syncApiKeys(): Promise<BackupApiKey[]> {
   }
 }
 
-export async function addApiKey(data: { key: string; label: string; isActive: boolean; order: number }): Promise<string> {
+export async function addApiKey(data: {
+  key: string;
+  label: string;
+  isActive: boolean;
+  order: number;
+  createdBy?: string;
+}): Promise<string> {
   const ref = await addDoc(collection(db, FIRESTORE_COLLECTION), {
     key: data.key.trim(),
     label: data.label.trim(),
     isActive: data.isActive,
     order: data.order,
     createdAt: Date.now(),
+    ...(data.createdBy ? { createdBy: data.createdBy, modifiedBy: data.createdBy, modifiedAt: serverTimestamp() } : {}),
   });
   await syncApiKeys();
   return ref.id;
@@ -57,10 +64,11 @@ export async function addApiKey(data: { key: string; label: string; isActive: bo
 
 export async function updateApiKey(
   id: string,
-  updates: { key?: string; label?: string; isActive?: boolean; order?: number }
+  updates: { key?: string; label?: string; isActive?: boolean; order?: number; modifiedBy?: string }
 ): Promise<void> {
+  const { modifiedBy, ...fields } = updates;
   const ref = doc(db, FIRESTORE_COLLECTION, id);
-  await updateDoc(ref, { ...updates });
+  await updateDoc(ref, { ...fields, ...(modifiedBy ? { modifiedBy, modifiedAt: serverTimestamp() } : {}) });
   await syncApiKeys();
 }
 

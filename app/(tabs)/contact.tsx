@@ -7,6 +7,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Linking, ScrollView, StyleSheet, TouchableOpacity, View } from 'react-native';
 import Paragraphs from '../../components/Paragraphs';
 import { Text } from '../../components/AppText';
+import { Toast, useToast } from '../../components/Toast';
 import { CONTENT_MAX_WIDTH } from '../../constants/layout';
 import { useTheme } from '../../utils/ThemeContext';
 import { getCachedHomeContent, getMemoryCachedHomeContent, HomeContent, subscribeHomeContent } from '../../utils/homeContentSync';
@@ -16,6 +17,7 @@ const APP_VERSION = Constants.expoConfig?.version ?? '1.0.0';
 export default function AboutScreen() {
   const { colors } = useTheme();
   const router = useRouter();
+  const { message, opacity, showToast } = useToast();
 
   const tapCountRef = useRef(0);
   const tapTimerRef = useRef<any>(null);
@@ -45,6 +47,7 @@ export default function AboutScreen() {
   };
 
   return (
+    <View style={{ flex: 1 }}>
     <ScrollView style={[styles.container, { backgroundColor: colors.bg }]}>
       {/* Hero banner stays full-bleed edge-to-edge even on desktop — only
           the content below is capped/centered, matching the Home screen. */}
@@ -54,7 +57,7 @@ export default function AboutScreen() {
       </LinearGradient>
 
       <View style={styles.contentWrap}>
-        <ChurchInfo />
+        <ChurchInfo showToast={showToast} />
 
         <View style={[styles.card, { backgroundColor: colors.surface }]}>
           <Text style={[styles.cardTitle, { color: colors.text }]}>
@@ -100,6 +103,8 @@ export default function AboutScreen() {
         </TouchableOpacity>
       </View>
     </ScrollView>
+    <Toast message={message} opacity={opacity} />
+    </View>
   );
 }
 

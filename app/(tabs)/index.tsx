@@ -1,3 +1,4 @@
+import Footer from '@/components/Footer';
 import Paragraphs from '@/components/Paragraphs';
 import UpcomingEvents from '@/components/UpcomingEvents';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -5,6 +6,7 @@ import { useEffect, useRef, useState } from 'react';
 import {
   AppState,
   Image,
+  Platform,
   ScrollView,
   StyleSheet,
   View,
@@ -78,8 +80,12 @@ export default function HomeScreen() {
         </View>
 
         <UpcomingEvents ref={upcomingEventsRef} />
-        <View style={{ height: 40 }} />
+        {Platform.OS !== 'web' && <View style={{ height: 40 }} />}
       </View>
+      {/* Web only — a marketing-style footer reads as unusual UX inside the
+          native app's Home tab, and Footer itself is full-bleed like the
+          hero header above, so it sits outside contentWrap's capped width. */}
+      {Platform.OS === 'web' && <Footer />}
     </ScrollView>
   );
 }

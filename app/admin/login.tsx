@@ -31,8 +31,11 @@ export default function AdminLoginScreen() {
     }
     setLoggingIn(true);
     try {
+      // No router.replace() here — app/admin/_layout.tsx's onAuthStateChanged
+      // listener already redirects to /admin once auth state flips, and a
+      // second manual navigation racing it is what caused the Android
+      // "REPLACE ... was not handled by any navigator" crash.
       await signInWithEmailAndPassword(auth, email.trim(), password);
-      router.replace('/admin' as never);
     } catch {
       dialog.alert('Sign In Failed', 'Invalid email or password.');
       setPassword('');
