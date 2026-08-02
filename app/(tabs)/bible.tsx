@@ -1,10 +1,11 @@
 import { Ionicons } from '@expo/vector-icons';
-import { useRouter } from 'expo-router';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useEffect, useState } from 'react';
 import {
   BackHandler,
   FlatList,
   Modal,
+  Platform,
   ScrollView,
   StatusBar,
   StyleSheet,
@@ -38,11 +39,11 @@ function SettingsModal({ visible, onClose, c, fontSize, setFontSize }: SettingsM
           <Text style={[styles.modalTitle, { color: c.text }]}>⚙️ Reading Settings</Text>
           <Text style={[styles.settingLabel, { color: c.subtext }]}>Font Size</Text>
           <View style={styles.fontSizeRow}>
-            <TouchableOpacity style={[styles.fontBtn, { borderColor: c.accent }]} onPress={() => setFontSize(f => Math.max(12, f - 2))}>
+            <TouchableOpacity style={[styles.fontBtn, { borderColor: c.accent }]} onPress={() => { const v = Math.max(12, fontSize - 2); setFontSize(() => v); saveBibleSettings({ fontSize: v }); }}>
               <Text style={[styles.fontBtnText, { color: c.accent }]}>A-</Text>
             </TouchableOpacity>
             <Text style={[styles.fontSizeValue, { color: c.text }]}>{fontSize}px</Text>
-            <TouchableOpacity style={[styles.fontBtn, { borderColor: c.accent }]} onPress={() => setFontSize(f => Math.min(30, f + 2))}>
+            <TouchableOpacity style={[styles.fontBtn, { borderColor: c.accent }]} onPress={() => { const v = Math.min(30, fontSize + 2); setFontSize(() => v); saveBibleSettings({ fontSize: v }); }}>
               <Text style={[styles.fontBtnText, { color: c.accent }]}>A+</Text>
             </TouchableOpacity>
           </View>
@@ -57,14 +58,28 @@ function SettingsModal({ visible, onClose, c, fontSize, setFontSize }: SettingsM
 
 export default function BibleScreen() {
   const router = useRouter();
+  // Version/Book/Chapter selection lives in the URL (?view=books&version=...
+  // &testament=...&bookId=...) instead of local useState, and every forward
+  // step uses router.push (a real, distinct history entry) rather than a
+  // setState call. That makes the browser/hardware back button work like
+  // ordinary navigation — the same proven mechanism bible-reader.tsx's own
+  // back button already relies on — instead of needing this screen to
+  // separately shadow browser history itself to make its own internal
+  // steps back-button-aware. It also means a page refresh or deep link
+  // lands on the right screen instead of always resetting to 'home'.
+  const params = useLocalSearchParams<{ view?: string; version?: string; bilingual?: string; testament?: string; bookId?: string }>();
   const { colors: c, theme, cycleTheme } = useTheme();
   const insets = useSafeAreaInsets();
-  const [version, setVersion] = useState(() => getMemBibleSettings().version);
-  const [selectedBook, setSelectedBook] = useState<any>(null);
-  const [view, setView] = useState<'home' | 'books' | 'chapters'>('home');
-  const [testament, setTestament] = useState<'OT' | 'NT'>('OT');
+  const view: 'home' | 'books' | 'chapters' = params.view === 'books' || params.view === 'chapters' ? params.view : 'home';
+  const isBilingual = params.bilingual === '1';
+  const testament: 'OT' | 'NT' = params.testament === 'NT' ? 'NT' : 'OT';
+  // Only meaningful once the user has actually picked a version (books/
+  // chapters views, where it's always present in the URL) — 'home' falls
+  // back to the persisted last choice, which selectVersion below keeps
+  // updated for next time regardless of in-page navigation.
+  const version = params.version || getMemBibleSettings().version;
+  const selectedBook = params.bookId ? BOOKS.find(b => b.id === Number(params.bookId)) : null;
   const [fontSize, setFontSize] = useState(() => getMemBibleSettings().fontSize);
-  const [isBilingual, setIsBilingual] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   // Fixed 2/5-column grids only ever suited a phone-width screen — scale up
   // on tablet/desktop instead of leaving a phone-narrow grid stranded in a
@@ -74,20 +89,40 @@ export default function BibleScreen() {
 
   const isEnglish = BIBLE_VERSIONS.find(v => v.code === version)?.lang === 'English';
 
-  const selectVersion = (v: string) => {
-    setVersion(v);
-    saveBibleSettings({ version: v });
-  };
-
   useEffect(() => {
+    // Web has no hardware back key — the browser's own back button already
+    // works correctly here since every forward step is a real history
+    // entry (see the params/router.push comment above). Native still needs
+    // this: router.back() at the tab's own root screen ('home') would pop
+    // *out* of the tab, so it's deliberately left unhandled there (return
+    // false) to fall through to the OS's default behavior instead.
+    if (Platform.OS === 'web') return;
     const backAction = () => {
-      if (view === 'chapters') { setView('books'); return true; }
-      if (view === 'books') { setView('home'); setIsBilingual(false); return true; }
-      return false;
+      if (view === 'home') return false;
+      router.back();
+      return true;
     };
     const handler = BackHandler.addEventListener('hardwareBackPress', backAction);
     return () => handler.remove();
-  }, [view]);
+  }, [view, router]);
+
+  const goToBooks = (v: string, bilingual: boolean) => {
+    if (!bilingual) saveBibleSettings({ version: v });
+    router.push({ pathname: '/bible', params: { view: 'books', version: v, bilingual: bilingual ? '1' : '0', testament: 'OT' } });
+  };
+
+  const setTestament = (t: 'OT' | 'NT') => {
+    // In place — switching OT/NT is a filter, not a navigation step, so it
+    // shouldn't add its own back-button stop.
+    router.setParams({ testament: t });
+  };
+
+  const goToChapters = (book: any) => {
+    router.push({
+      pathname: '/bible',
+      params: { view: 'chapters', version, bilingual: isBilingual ? '1' : '0', testament, bookId: String(book.id) },
+    });
+  };
 
   const openChapter = (book: any, chapter: number) => {
     router.push({
@@ -105,15 +140,13 @@ export default function BibleScreen() {
   const OTBooks = BOOKS.filter(b => b.id <= 39);
   const NTBooks = BOOKS.filter(b => b.id >= 40);
 
-
-
   if (view === 'home') {
     const tamilVersions = BIBLE_VERSIONS.filter(v => v.lang === 'Tamil');
     const englishVersions = BIBLE_VERSIONS.filter(v => v.lang === 'English');
     return (
       <View style={[styles.container, { backgroundColor: c.bg }]}>
         <StatusBar barStyle={theme === 'light' ? 'dark-content' : 'light-content'} />
-        <View style={[styles.header, { backgroundColor: c.headerBg, paddingRight: 16 + insets.right }]}>
+        <View style={[styles.header, { backgroundColor: c.headerBg, paddingRight: 16 + insets.right, paddingTop: insets.top + 12 }]}>
           <View style={{ flex: 1 }}>
             <Text style={[styles.headerTitle, { color: c.text }]}>📖 Bible</Text>
             <Text style={[styles.headerSubtitle, { color: c.subtext }]}>5 versions available</Text>
@@ -126,10 +159,10 @@ export default function BibleScreen() {
           </TouchableOpacity>
         </View>
         <ScrollView contentContainerStyle={{ padding: 16, width: '100%', maxWidth: CONTENT_MAX_WIDTH, alignSelf: 'center' }}>
-          <TouchableOpacity style={[styles.bilingualCard, { backgroundColor: c.accent }]} onPress={() => {
-            setIsBilingual(true); setVersion(getMemBibleSettings().primaryVersion);
-            setView('books'); setTestament('OT');
-          }}>
+          <TouchableOpacity
+            style={[styles.bilingualCard, { backgroundColor: c.accent }]}
+            onPress={() => goToBooks(getMemBibleSettings().primaryVersion, true)}
+          >
             <View style={{ flex: 1 }}>
               <View style={styles.bilingualTitleRow}>
                 <View style={styles.bilingualMark}>
@@ -144,7 +177,7 @@ export default function BibleScreen() {
           <Text style={[styles.sectionLabel, { color: c.subtext }]}>Tamil Versions</Text>
           {tamilVersions.map(v => (
             <TouchableOpacity key={v.code} style={[styles.versionCard, { backgroundColor: c.surface }]}
-              onPress={() => { setIsBilingual(false); selectVersion(v.code); setView('books'); setTestament('OT'); }}>
+              onPress={() => goToBooks(v.code, false)}>
               <View style={[styles.versionIcon, { backgroundColor: c.accent }]}><Text style={styles.versionIconText}>த</Text></View>
               <View style={{ flex: 1 }}>
                 <Text style={[styles.versionName, { color: c.text }]}>{v.name}</Text>
@@ -156,7 +189,7 @@ export default function BibleScreen() {
           <Text style={[styles.sectionLabel, { color: c.subtext, marginTop: 16 }]}>English Versions</Text>
           {englishVersions.map(v => (
             <TouchableOpacity key={v.code} style={[styles.versionCard, { backgroundColor: c.surface }]}
-              onPress={() => { setIsBilingual(false); selectVersion(v.code); setView('books'); setTestament('OT'); }}>
+              onPress={() => goToBooks(v.code, false)}>
               <View style={[styles.versionIcon, { backgroundColor: '#1a6b3a' }]}><Text style={styles.versionIconText}>E</Text></View>
               <View style={{ flex: 1 }}>
                 <Text style={[styles.versionName, { color: c.text }]}>{v.name}</Text>
@@ -179,8 +212,8 @@ export default function BibleScreen() {
     const selectLabel = isEnglish ? 'Select a book' : 'புத்தகம் தேர்வு செய்யுங்கள்';
     return (
       <View style={[styles.container, { backgroundColor: c.bg }]}>
-        <View style={[styles.header, { backgroundColor: c.headerBg, paddingRight: 16 + insets.right }]}>
-          <TouchableOpacity onPress={() => { setView('home'); setIsBilingual(false); }} style={styles.backBtn}>
+        <View style={[styles.header, { backgroundColor: c.headerBg, paddingRight: 16 + insets.right, paddingTop: insets.top + 12 }]}>
+          <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
             <Ionicons name="arrow-back" size={22} color={c.text} />
           </TouchableOpacity>
           <View style={{ flex: 1 }}>
@@ -202,10 +235,16 @@ export default function BibleScreen() {
         <FlatList
           data={books} key={`books-${testament}-${bookColumns}`}
           keyExtractor={item => item.id.toString()} numColumns={bookColumns}
+          // Bounded list (max 39 books per testament) — render it in full
+          // rather than rely on FlatList's default initialNumToRender of 10,
+          // which combined with a multi-column grid meant only the first
+          // couple of rows appeared until scrolled (most noticeable on web,
+          // same underlying issue as the Bible reader's verse list).
+          initialNumToRender={books.length}
           contentContainerStyle={{ padding: 12, width: '100%', maxWidth: CONTENT_MAX_WIDTH, alignSelf: 'center' }}
           renderItem={({ item }) => (
             <TouchableOpacity style={[styles.bookCard, { backgroundColor: c.surface }]}
-              onPress={() => { setSelectedBook(item); setView('chapters'); }}>
+              onPress={() => goToChapters(item)}>
               <Text style={[styles.bookName, { color: c.text }]}>{isBilingual ? item.name : isEnglish ? item.name : item.tamil}</Text>
               {isBilingual && <Text style={[styles.bookTamil, { color: c.subtext }]}>{item.tamil}</Text>}
               <Text style={[styles.bookChapters, { color: c.accent }]}>{item.chapters} chapters</Text>
@@ -221,8 +260,8 @@ export default function BibleScreen() {
     const chapterTitle = isBilingual ? `${selectedBook.name} | ${selectedBook.tamil}` : isEnglish ? selectedBook.name : selectedBook.tamil;
     return (
       <View style={[styles.container, { backgroundColor: c.bg }]}>
-        <View style={[styles.header, { backgroundColor: c.headerBg, paddingRight: 16 + insets.right }]}>
-          <TouchableOpacity onPress={() => setView('books')} style={styles.backBtn}>
+        <View style={[styles.header, { backgroundColor: c.headerBg, paddingRight: 16 + insets.right, paddingTop: insets.top + 12 }]}>
+          <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
             <Ionicons name="arrow-back" size={22} color={c.text} />
           </TouchableOpacity>
           <View style={{ flex: 1 }}>
@@ -236,6 +275,10 @@ export default function BibleScreen() {
         <FlatList
           data={chapters} key={`chapters-${selectedBook.id}-${chapterColumns}`}
           keyExtractor={item => item.toString()} numColumns={chapterColumns}
+          // Bounded list (max 150 chapters, Psalms) — same reasoning as the
+          // books grid above: render it in full instead of leaving it to
+          // FlatList's default initialNumToRender of 10.
+          initialNumToRender={chapters.length}
           contentContainerStyle={{ padding: 12, width: '100%', maxWidth: CONTENT_MAX_WIDTH, alignSelf: 'center' }}
           renderItem={({ item }) => (
             <TouchableOpacity style={[styles.chapterBtn, { backgroundColor: c.surface }]} onPress={() => openChapter(selectedBook, item)}>
@@ -252,7 +295,11 @@ export default function BibleScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
-  header: { padding: 16, paddingTop: 50, flexDirection: 'row', alignItems: 'center', gap: 8 },
+  // paddingTop is overridden inline at every usage (insets.top + 12) —
+  // insets.top is the real device safe-area/status-bar height (~0 on web,
+  // where the hardcoded 50 this used to be left a large dead gap at the
+  // top of the screen), rather than a guessed constant.
+  header: { padding: 16, flexDirection: 'row', alignItems: 'center', gap: 8 },
   headerTitle: { fontSize: 16, fontWeight: 'bold' },
   headerSubtitle: { fontSize: 11, marginTop: 2 },
   backBtn: { padding: 4 },

@@ -18,6 +18,8 @@ import { Text } from './AppText';
 import { TextInput } from './AppTextInput';
 import ThemeToggleIcon from './ThemeToggleIcon';
 import { Toast, useToast } from './Toast';
+import { CONTENT_MAX_WIDTH } from '../constants/layout';
+import { useBreakpoint } from '../hooks/use-breakpoint';
 import { useTheme } from '../utils/ThemeContext';
 
 // Shared by app/(tabs)/songs.tsx (Geethangalum Keerthanaigalum) and
@@ -64,6 +66,7 @@ export default function SongListScreen<T extends SongListItem>({
 }: SongListScreenProps<T>) {
   const { colors: c, theme, cycleTheme } = useTheme();
   const insets = useSafeAreaInsets();
+  const { isTabletUp } = useBreakpoint();
   const flatListRef = useRef<FlatList>(null);
   const [activeTab, setActiveTab] = useState<Tab>('numbers');
   const [search, setSearch] = useState('');
@@ -173,7 +176,7 @@ export default function SongListScreen<T extends SongListItem>({
     <View style={[styles.container, { backgroundColor: c.bg }]}>
       <StatusBar barStyle={theme === 'light' ? 'dark-content' : 'light-content'} />
 
-      <View style={[styles.headerRow, { marginRight: 16 + insets.right }]}>
+      <View style={[styles.headerRow, { marginRight: 16 + insets.right, marginTop: insets.top + 16 }, isTabletUp && styles.desktopCapped]}>
         {headerTitle ? headerTitle : <Text style={[styles.headerTitle, { color: c.accent }]}>{defaultHeaderText}</Text>}
         <View style={styles.headerActions}>
           <TouchableOpacity onPress={cycleTheme} style={styles.themeBtn}>
@@ -182,7 +185,7 @@ export default function SongListScreen<T extends SongListItem>({
         </View>
       </View>
 
-      <View style={[styles.searchBar, { backgroundColor: c.surfaceAlt }]}>
+      <View style={[styles.searchBar, { backgroundColor: c.surfaceAlt }, isTabletUp && styles.desktopCapped]}>
         <Ionicons name="search" size={20} color={c.subtext} />
         <TextInput
           style={[styles.searchInput, { color: c.text }]}
@@ -198,7 +201,7 @@ export default function SongListScreen<T extends SongListItem>({
         )}
       </View>
 
-      <View style={[styles.tabsRow, { backgroundColor: c.surfaceAlt }]}>
+      <View style={[styles.tabsRow, { backgroundColor: c.surfaceAlt }, isTabletUp && styles.desktopCapped]}>
         <TouchableOpacity style={[styles.tab, activeTab === 'numbers' && { backgroundColor: c.accent }]} onPress={() => selectTab('numbers')}>
           <Text style={[styles.tabText, { color: activeTab === 'numbers' ? '#fff' : c.accent }]}>{numbersTabLabel(songs.length)}</Text>
         </TouchableOpacity>
@@ -218,11 +221,17 @@ export default function SongListScreen<T extends SongListItem>({
           data={filteredSongs}
           keyExtractor={item => item.songId}
           renderItem={SongCard}
-          contentContainerStyle={{ padding: 12, paddingBottom: 100 }}
-          initialNumToRender={20}
-          maxToRenderPerBatch={20}
-          windowSize={10}
-          removeClippedSubviews
+          contentContainerStyle={[{ padding: 12, paddingBottom: 100 }, isTabletUp && styles.desktopCapped]}
+          // Was 20/20/10 with removeClippedSubviews — the latter is a
+          // native-only optimization known to cause blank/unmeasured cells
+          // on react-native-web (unused everywhere else in this codebase
+          // for that reason). Dropped it and gave the render window a bit
+          // more headroom as a safety margin; not rendering all 720 items
+          // upfront like the Bible reader does for its much smaller
+          // (max ~176) chapter lists, since that would be a real cost here.
+          initialNumToRender={30}
+          maxToRenderPerBatch={30}
+          windowSize={15}
           keyboardShouldPersistTaps="handled"
           refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onPullToRefresh} colors={[c.accent]} tintColor={c.accent} />}
           ListEmptyComponent={
@@ -254,7 +263,14 @@ function FirstTimeSetup({ c }: { c: any }) {
         ])
       );
 
-    Animated.parallel([animateDot(dot1, 0), animateDot(dot2, 150), animateDot(dot3, 300)]).start();
+    // Animated.loop().start() with no stored handle keeps recursing forever
+    // (a real JS-driven requestAnimationFrame loop on web) even after this
+    // component unmounts — which it does the moment the song index finishes
+    // loading, so left unfixed every first-time-setup visit permanently
+    // leaked 3 running loops.
+    const anim = Animated.parallel([animateDot(dot1, 0), animateDot(dot2, 150), animateDot(dot3, 300)]);
+    anim.start();
+    return () => anim.stop();
   }, []);
 
   return (
@@ -291,10 +307,19 @@ const setupStyles = StyleSheet.create({
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
-  headerRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 54, marginLeft: 16, marginBottom: 14 },
+  // marginTop is overridden inline (insets.top + 16) — insets.top is the
+  // real device safe-area/status-bar height (~0 on web, where the
+  // hardcoded 54 this used to be left a large dead gap at the top of the
+  // screen), rather than a guessed constant.
+  headerRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginLeft: 16, marginBottom: 14 },
   headerTitle: { fontSize: 20, fontWeight: 'bold', flex: 1 },
   headerActions: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   themeBtn: { padding: 4 },
+  // Desktop/tablet: caps and centers each of the header/search/tabs rows to
+  // the same reading-friendly width, instead of stretching edge-to-edge
+  // across a wide browser window — matches the pattern used for the Bible
+  // tab's own lists (constants/layout.ts's CONTENT_MAX_WIDTH).
+  desktopCapped: { width: '100%', maxWidth: CONTENT_MAX_WIDTH, alignSelf: 'center' },
   searchBar: { flexDirection: 'row', alignItems: 'center', marginHorizontal: 16, borderRadius: 30, paddingHorizontal: 16, paddingVertical: 12, elevation: 2 },
   searchInput: { flex: 1, marginLeft: 10, fontSize: 16 },
   tabsRow: { flexDirection: 'row', marginHorizontal: 16, marginTop: 16, marginBottom: 4, borderRadius: 30, padding: 4, elevation: 1 },

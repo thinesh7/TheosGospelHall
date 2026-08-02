@@ -116,6 +116,11 @@ const YoutubePlayer = forwardRef<YoutubePlayerHandle, YoutubePlayerProps>(functi
     pauseVideo: () => playerInstanceRef.current?.pauseVideo?.(),
   }), []);
 
+  // Tracks whatever videoId the player was last told to show — read by the
+  // construction effect below (as the *initial* video) and kept current by
+  // the switch effect further down (for every video after that one).
+  const lastVideoIdRef = useRef(videoId);
+
   useEffect(() => {
     let cancelled = false;
     let localPlayer: any = null;
@@ -123,7 +128,7 @@ const YoutubePlayer = forwardRef<YoutubePlayerHandle, YoutubePlayerProps>(functi
     loadYouTubeIframeAPI().then(() => {
       if (cancelled || !containerRef.current) return;
       localPlayer = new (window as any).YT.Player(containerRef.current, {
-        videoId,
+        videoId: lastVideoIdRef.current,
         width,
         height,
         playerVars: {
@@ -156,12 +161,51 @@ const YoutubePlayer = forwardRef<YoutubePlayerHandle, YoutubePlayerProps>(functi
       localPlayer?.destroy?.();
       playerInstanceRef.current = null;
     };
-    // Deliberately re-created only when videoId changes; width/height are
-    // read once at construction (initial size) — matches the native
-    // player's own per-videoId mount lifecycle. `play` is intentionally not
-    // a dependency here (see the effect below, which drives it reactively).
+    // Mount-only — deliberately NOT keyed on videoId (width/height are also
+    // still read only once here, matching the native player's per-mount
+    // lifecycle). A later videoId change (e.g. Songs auto-advance) is
+    // handled by the switch effect below instead, which reuses this same
+    // player/iframe rather than destroying and recreating it here.
+    //
+    // That matters specifically for fullscreen: destroying the iframe
+    // removes it from the DOM, and if it happened to be the browser's
+    // active fullscreen element (playing fullscreen when a video ends and
+    // auto-advance fires), the browser force-exits fullscreen the instant
+    // the element is removed — and if that removal raced the browser's own
+    // fullscreen-exit teardown, the page crashed outright with a DOM/React
+    // desync (the same class of bug already fixed for Shorts' close crash
+    // elsewhere in this codebase). Reusing the existing iframe for the next
+    // video sidesteps that race entirely, and — as a bonus — means
+    // auto-advance now stays in fullscreen instead of involuntarily
+    // kicking the user out of it.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [videoId]);
+  }, []);
+
+  // Switches the already-constructed player to a new video in place, in
+  // response to videoId changing after the initial mount — see the
+  // construction effect above for why this doesn't touch the iframe DOM
+  // element at all. loadVideoById/cueVideoById are the YouTube IFrame API's
+  // own documented way to change what's loaded without recreating the
+  // player; the choice between them mirrors the construction effect's own
+  // `autoplay: play ? 1 : 0`.
+  useEffect(() => {
+    if (lastVideoIdRef.current === videoId) return; // already what construction just used, above
+    lastVideoIdRef.current = videoId;
+    // Not ready yet (still constructing) — nothing to switch; the
+    // construction effect reads lastVideoIdRef.current fresh once it does
+    // become ready, so this update won't be lost.
+    if (!playerReadyRef.current || !playerInstanceRef.current) return;
+    try {
+      if (play) {
+        playerInstanceRef.current.loadVideoById(videoId);
+      } else {
+        playerInstanceRef.current.cueVideoById(videoId);
+      }
+    } catch {
+      // Never let a YouTube IFrame API quirk on some edge-case player state
+      // crash the page — worst case the video just doesn't switch.
+    }
+  }, [videoId, play]);
 
   // Unlike native's react-native-youtube-iframe, the IFrame Player API only
   // reads `autoplay` once at construction — it never reacts to a `play` prop

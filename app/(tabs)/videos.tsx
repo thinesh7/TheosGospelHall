@@ -700,6 +700,19 @@ function VideoModal({ visible, videoId, title, isLive, onClose, onPrev, onNext, 
   const progressIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const durationRef = useRef<number>(0);
   const loadTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Set whenever videoId changes to something other than what was already
+  // showing (Prev/Next or auto-advance), so the 'paused' handling in
+  // onChangeState below can ignore it — loadVideoById() reliably fires a
+  // transient 'paused' state of its own on web while the new video is still
+  // buffering, before the real 'playing' state arrives. Left unguarded, that
+  // transient event was read as a genuine user pause, which then actively
+  // called pauseVideo() (see YoutubePlayer.web.tsx's play-prop effect) and
+  // stopped the next song from ever starting. Cleared on the first real
+  // 'playing' event, with a timeout backstop in case autoplay is genuinely
+  // blocked and 'playing' never comes, so a real pause tap isn't ignored forever.
+  const prevVideoIdRef = useRef<string | null>(null);
+  const switchingVideoRef = useRef(false);
+  const switchGuardTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const fsOverlayOpacity = useRef(new Animated.Value(0)).current;
   // Horizontal slide-in for song-to-song navigation only (see the
   // hasSongNav-gated effect below) — set right before calling the real
@@ -767,6 +780,9 @@ function VideoModal({ visible, videoId, title, isLive, onClose, onPrev, onNext, 
       durationRef.current = 0;
       if (progressIntervalRef.current) clearInterval(progressIntervalRef.current);
       if (loadTimeoutRef.current) clearTimeout(loadTimeoutRef.current);
+      if (switchGuardTimeoutRef.current) clearTimeout(switchGuardTimeoutRef.current);
+      switchingVideoRef.current = false;
+      prevVideoIdRef.current = null;
       fsOverlayOpacity.setValue(0);
       safeLockOrientation(ScreenOrientation.OrientationLock.PORTRAIT_UP);
       return;
@@ -775,6 +791,12 @@ function VideoModal({ visible, videoId, title, isLive, onClose, onPrev, onNext, 
     setProgressLoaded(false);
     setLoadError(false);
     resumePositionRef.current = 0;
+    if (prevVideoIdRef.current !== null && prevVideoIdRef.current !== videoId) {
+      switchingVideoRef.current = true;
+      if (switchGuardTimeoutRef.current) clearTimeout(switchGuardTimeoutRef.current);
+      switchGuardTimeoutRef.current = setTimeout(() => { switchingVideoRef.current = false; }, 4000);
+    }
+    prevVideoIdRef.current = videoId;
     const armLoadTimeout = () => {
       if (loadTimeoutRef.current) clearTimeout(loadTimeoutRef.current);
       loadTimeoutRef.current = setTimeout(() => {
@@ -872,6 +894,8 @@ function VideoModal({ visible, videoId, title, isLive, onClose, onPrev, onNext, 
         setPlayerReady(true);
       }
       fsTransitionRef.current = false;
+      if (switchGuardTimeoutRef.current) clearTimeout(switchGuardTimeoutRef.current);
+      switchingVideoRef.current = false;
       // Not while showResume is up — handleReady's seekTo() (done to
       // position the player before the "Continue Watching?" prompt shows)
       // makes the underlying YouTube player emit a transient 'playing'
@@ -887,14 +911,30 @@ function VideoModal({ visible, videoId, title, isLive, onClose, onPrev, onNext, 
         setPlaying(true);
       }
     }
-    // Songs auto-advance to the next one when playback naturally ends —
-    // skipped mid fullscreen-exit transition (matches the paused-seek guard
-    // just below) and a no-op for the plain Videos tab, which never passes
-    // onEnded/hasNext.
-    if (state === 'ended' && !isInFullscreen && hasNextRef.current) {
-      onEndedRef.current?.();
+    // Songs auto-advance to the next one when playback naturally ends — a
+    // no-op for the plain Videos tab, which never passes onEnded/hasNext.
+    // Used to also require !isInFullscreen — auto-advance while fullscreen
+    // was skipped outright, because changing videoId used to destroy and
+    // recreate the underlying web iframe (see the matching comment in
+    // YoutubePlayer.web.tsx), which forcibly exits fullscreen the instant
+    // the fullscreen element leaves the DOM, and could crash outright if
+    // that removal raced the browser's own fullscreen-exit teardown. Now
+    // that a videoId change reuses the same iframe instead, auto-advance is
+    // safe to fire unconditionally — and correctly keeps the next video
+    // playing in fullscreen instead of always dropping out of it. The
+    // try/catch is a last-resort net: nothing here is expected to throw,
+    // but nothing in the auto-advance chain should ever be able to crash
+    // the page regardless.
+    if (state === 'ended' && hasNextRef.current) {
+      try {
+        onEndedRef.current?.();
+      } catch {}
     }
     if (fsTransitionRef.current) return;
+    // Ignore transient 'paused' events fired while switching to a new song
+    // (see switchingVideoRef's declaration above) — only a 'paused' that
+    // arrives once the switch has settled reflects a real user pause.
+    if (switchingVideoRef.current) return;
     if (state === 'paused') setPlaying(false);
     if (state === 'paused' && playerReady && !showResume) {
       setTimeout(async () => {
@@ -903,7 +943,7 @@ function VideoModal({ visible, videoId, title, isLive, onClose, onPrev, onNext, 
         if (currentTime !== undefined) playerRef.current?.seekTo(currentTime, true);
       }, 300);
     }
-  }, [playerReady, showResume, isInFullscreen]);
+  }, [playerReady, showResume]);
 
   const onFullScreenChange = useCallback((isFs: boolean) => {
     if (!mountedRef.current) return;
@@ -1034,7 +1074,36 @@ function VideoModal({ visible, videoId, title, isLive, onClose, onPrev, onNext, 
                   {!isLandscape && <Text style={styles.videoModalTitle} numberOfLines={3}>{title}</Text>}
                 </View>
                 {!isLandscape && (
-                  <VideoActions videoId={videoId || ''} title={title} direction={isTabletUp ? 'column' : 'row'} />
+                  // On mobile web the Prev/Next buttons live inside this
+                  // same wrapper (position:'relative', sized to fit exactly
+                  // around VideoActions) instead of over the whole video —
+                  // videoModalNavBtn's top:'50%'/marginTop:-22 then centers
+                  // them against *this* row's own height, aligning them
+                  // with the YouTube/Copy icons regardless of video or
+                  // title height, with no measuring needed. Desktop's
+                  // buttons are unaffected — they stay in their original
+                  // position over the video, below.
+                  <View style={!isTabletUp ? styles.mobileActionsRowWrap : undefined}>
+                    <VideoActions videoId={videoId || ''} title={title} direction={isTabletUp ? 'column' : 'row'} />
+                    {hasSongNav && !isTabletUp && Platform.OS === 'web' && (
+                      <>
+                        <TouchableOpacity
+                          style={[styles.videoModalNavBtn, styles.videoModalNavBtnLeft]}
+                          disabled={!hasPrev}
+                          onPress={handleSongPrev}
+                        >
+                          <Ionicons name="chevron-back" size={22} color={hasPrev ? '#fff' : 'rgba(255,255,255,0.3)'} />
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                          style={[styles.videoModalNavBtn, styles.videoModalNavBtnRight]}
+                          disabled={!hasNext}
+                          onPress={handleSongNext}
+                        >
+                          <Ionicons name="chevron-forward" size={22} color={hasNext ? '#fff' : 'rgba(255,255,255,0.3)'} />
+                        </TouchableOpacity>
+                      </>
+                    )}
+                  </View>
                 )}
               </View>
             );
@@ -1058,6 +1127,9 @@ function VideoModal({ visible, videoId, title, isLive, onClose, onPrev, onNext, 
         </View>
         {hasSongNav && !isLandscape && (
           isTabletUp ? (
+            // Desktop: unchanged, buttons over the video (rail layout
+            // means the icons are beside it, not below, so there's no
+            // "align with the icons" row to match here).
             <>
               <TouchableOpacity
                 style={[styles.videoModalNavBtn, styles.videoModalNavBtnLeft]}
@@ -1074,7 +1146,13 @@ function VideoModal({ visible, videoId, title, isLive, onClose, onPrev, onNext, 
                 <Ionicons name="chevron-forward" size={22} color={hasNext ? '#fff' : 'rgba(255,255,255,0.3)'} />
               </TouchableOpacity>
             </>
+          ) : Platform.OS === 'web' ? (
+            // Mobile web: buttons render inline next to VideoActions
+            // instead (see the mobileActionsRowWrap block above) — nothing
+            // here.
+            null
           ) : (
+            // Native mobile: unchanged, swipe gesture still works there.
             <View style={[styles.songsSwipeHint, { bottom: insets.bottom + 16 }]}>
               <Ionicons name="chevron-back" size={16} color="rgba(255,255,255,0.5)" />
               <Text style={styles.songsSwipeHintText}>Swipe to navigate</Text>
@@ -1106,13 +1184,19 @@ function useStagePlayerSize() {
     const h = Math.max(width, height);
     return { containerW: w, containerH: h, videoW: w, videoH: w * 9 / 16 };
   }
-  const maxVideoH = height - 140; // leaves room for the title/actions below
-  const videoW = Math.min(420, width * 0.9, (maxVideoH * 9) / 16);
+  // Reserves the same horizontal budget as Songs' desktop rail
+  // (ACTIONS_RAIL_WIDTH in VideoModal) so the action icons sit in a column
+  // beside the video instead of overflowing the viewport, matching that
+  // layout exactly.
+  const ACTIONS_RAIL_WIDTH = 110;
+  const maxVideoH = height - 140; // leaves room for the title below
+  const maxVideoW = width - ACTIONS_RAIL_WIDTH - 24;
+  const videoW = Math.min(420, maxVideoW * 0.9, (maxVideoH * 9) / 16);
   const videoH = (videoW * 16) / 9;
   return { containerW: width, containerH: height, videoW, videoH };
 }
 
-function ShortsPlayerItemInner({ item, index, isActive, onEnd, onClose, total, onScrollLockChange }: any) {
+function ShortsPlayerItemInner({ item, index, isActive, onEnd, onClose, total, onScrollLockChange, hasPrev, hasNext, onPrev, onNext }: any) {
   const [shortReady, setShortReady] = useState(false);
   const [progressLoaded, setProgressLoaded] = useState(false);
   const [loadError, setLoadError] = useState(false);
@@ -1230,68 +1314,104 @@ function ShortsPlayerItemInner({ item, index, isActive, onEnd, onClose, total, o
           }
         </View>
       )}
-      {isActive && progressLoaded ? (
-        <YoutubePlayer
-          ref={playerRef}
-          height={videoH}
-          width={videoW}
-          videoId={videoId}
-          play
-          forceAndroidAutoplay={true}
-          onReady={handleReady}
-          onFullScreenChange={onFullScreenChange}
-          onError={() => { if (mountedRef.current) { if (loadTimeoutRef.current) clearTimeout(loadTimeoutRef.current); setLoadError(true); } }}
-          onChangeState={async (s: string) => {
-            if (s === 'playing') {
-              // shortReady normally flips on the player's onReady event —
-              // but if we're already seeing a 'playing' state change, the
-              // player is unambiguously ready regardless of whether that
-              // separate onReady event fired/arrived. Without this, a
-              // slow/dropped onReady (seen on web, e.g. under a browser
-              // profile that blocks third-party cookies) left the loading
-              // overlay stuck on screen indefinitely even though the video
-              // was audibly/visibly already playing underneath it.
-              if (mountedRef.current) {
-                if (loadTimeoutRef.current) clearTimeout(loadTimeoutRef.current);
-                setShortReady(true);
-              }
-              fsTransitionRef.current = false;
-              onScrollLockChange(false);
-            }
-            if (s === 'ended' && isFullscreenRef.current) {
-              return;
-            }
-            if (fsTransitionRef.current) return;
-            if (s === 'paused') onScrollLockChange(true);
-            if (s === 'ended') {
-              onScrollLockChange(false);
-              if (videoId) clearVideoProgress(videoId);
-              setTimeout(() => onEnd(index), 300);
-            }
-            if (s === 'paused' && shortReady) {
-              setTimeout(async () => {
-                if (!mountedRef.current) return;
-                const currentTime = await playerRef.current?.getCurrentTime();
-                if (currentTime !== undefined) playerRef.current?.seekTo(currentTime, true);
-              }, 300);
-            }
-          }}
-          webViewProps={{ allowsInlineMediaPlayback: true, mediaPlaybackRequiresUserAction: false, allowsFullscreenVideo: true }}
-          initialPlayerParams={{ rel: 0, modestbranding: 1, controls: 1, playsinline: 1 }}
-        />
-      ) : (
-        <View style={{ width: videoW, height: videoH, backgroundColor: '#000' }} />
-      )}
-      {shortReady && (
-        <>
-          <Text style={styles.videoModalTitle} numberOfLines={3}>{title}</Text>
-          <VideoActions videoId={videoId || ''} title={title} />
-        </>
-      )}
+      {/* Same unified-tree approach as VideoModal's Songs layout (see its
+          own comment on why): the wrapping row/column Views are always
+          present, only styles/props vary by isTabletUp — never swapping to
+          a structurally different subtree, which avoids a remount (and the
+          player restarting) if isTabletUp flips transiently. */}
+      <View style={isTabletUp ? styles.desktopPlayerRow : undefined}>
+        <View>
+          {isActive && progressLoaded ? (
+            <YoutubePlayer
+              ref={playerRef}
+              height={videoH}
+              width={videoW}
+              videoId={videoId}
+              play
+              forceAndroidAutoplay={true}
+              onReady={handleReady}
+              onFullScreenChange={onFullScreenChange}
+              onError={() => { if (mountedRef.current) { if (loadTimeoutRef.current) clearTimeout(loadTimeoutRef.current); setLoadError(true); } }}
+              onChangeState={async (s: string) => {
+                if (s === 'playing') {
+                  // shortReady normally flips on the player's onReady event —
+                  // but if we're already seeing a 'playing' state change, the
+                  // player is unambiguously ready regardless of whether that
+                  // separate onReady event fired/arrived. Without this, a
+                  // slow/dropped onReady (seen on web, e.g. under a browser
+                  // profile that blocks third-party cookies) left the loading
+                  // overlay stuck on screen indefinitely even though the video
+                  // was audibly/visibly already playing underneath it.
+                  if (mountedRef.current) {
+                    if (loadTimeoutRef.current) clearTimeout(loadTimeoutRef.current);
+                    setShortReady(true);
+                  }
+                  fsTransitionRef.current = false;
+                  onScrollLockChange(false);
+                }
+                if (s === 'ended' && isFullscreenRef.current) {
+                  return;
+                }
+                if (fsTransitionRef.current) return;
+                if (s === 'paused') onScrollLockChange(true);
+                if (s === 'ended') {
+                  onScrollLockChange(false);
+                  if (videoId) clearVideoProgress(videoId);
+                  setTimeout(() => onEnd(index), 300);
+                }
+                if (s === 'paused' && shortReady) {
+                  setTimeout(async () => {
+                    if (!mountedRef.current) return;
+                    const currentTime = await playerRef.current?.getCurrentTime();
+                    if (currentTime !== undefined) playerRef.current?.seekTo(currentTime, true);
+                  }, 300);
+                }
+              }}
+              webViewProps={{ allowsInlineMediaPlayback: true, mediaPlaybackRequiresUserAction: false, allowsFullscreenVideo: true }}
+              initialPlayerParams={{ rel: 0, modestbranding: 1, controls: 1, playsinline: 1 }}
+            />
+          ) : (
+            <View style={{ width: videoW, height: videoH, backgroundColor: '#000' }} />
+          )}
+          {shortReady && <Text style={styles.videoModalTitle} numberOfLines={3}>{title}</Text>}
+        </View>
+        {shortReady && (
+          // Same treatment as Songs' VideoModal: on mobile web the Prev/Next
+          // buttons render inline here, wrapped around VideoActions so
+          // videoModalNavBtn's top:'50%' centers them against this row's
+          // own height (aligned with the YouTube/Copy icons) instead of the
+          // whole video. Desktop keeps its buttons in their original
+          // position (rendered by the parent, over the video) — unaffected.
+          <View style={!isTabletUp ? styles.mobileActionsRowWrap : undefined}>
+            <VideoActions videoId={videoId || ''} title={title} direction={isTabletUp ? 'column' : 'row'} />
+            {!isTabletUp && Platform.OS === 'web' && (onPrev || onNext) && (
+              <>
+                <TouchableOpacity
+                  style={[styles.videoModalNavBtn, styles.videoModalNavBtnLeft]}
+                  disabled={!hasPrev}
+                  onPress={onPrev}
+                >
+                  <Ionicons name="chevron-back" size={22} color={hasPrev ? '#fff' : 'rgba(255,255,255,0.3)'} />
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.videoModalNavBtn, styles.videoModalNavBtnRight]}
+                  disabled={!hasNext}
+                  onPress={onNext}
+                >
+                  <Ionicons name="chevron-forward" size={22} color={hasNext ? '#fff' : 'rgba(255,255,255,0.3)'} />
+                </TouchableOpacity>
+              </>
+            )}
+          </View>
+        )}
+      </View>
       <TouchableOpacity style={styles.modalClose} onPress={onClose}>
         <Ionicons name="close" size={26} color="#fff" />
       </TouchableOpacity>
-      {shortReady && !isTabletUp && (
+      {/* Native mobile only — mobile web gets the inline buttons above
+          instead, since there's no swipe/scroll gesture happening there
+          anymore for this hint to describe. */}
+      {shortReady && !isTabletUp && Platform.OS !== 'web' && (
         <View style={[styles.songsSwipeHint, { bottom: insets.bottom + 16 }]}>
           <Ionicons name="chevron-up" size={16} color="rgba(255,255,255,0.5)" />
           <Text style={styles.songsSwipeHintText}>Swipe to navigate</Text>
@@ -1420,6 +1540,17 @@ function VideosScreenContent({ autoPlayLive, onAutoPlayLiveConsumed, isActive }:
   const loadingMoreShortsRef = useRef(false);
   const shortsDataRef = useRef<any[]>([]);
   const shortItemSizeRef = useRef(Dimensions.get('screen').height);
+  // Desktop-only horizontal slide, matching VideoModal's songSlideX/
+  // songNavDirectionRef exactly (same values, same easing/duration) — see
+  // the isTabletUp branch in the Shorts Modal below. direction is a ref
+  // (not state) so setting it doesn't itself trigger a re-render; it's set
+  // right before an explicit Prev/Next action and consumed once by the
+  // effect below when playingShortId actually changes. Natural end-of-clip
+  // auto-advance (handleShortEnd, called directly from onEnd — not through
+  // handleShortNextClick) never sets it, so auto-advance doesn't slide,
+  // exactly mirroring Songs' onEnded-vs-explicit-nav distinction.
+  const shortSlideX = useRef(new Animated.Value(0)).current;
+  const shortNavDirectionRef = useRef<'next' | 'prev' | null>(null);
 
   useEffect(() => { shortsNextRef.current = shortsNextToken; }, [shortsNextToken]);
   useEffect(() => { loadingMoreShortsRef.current = loadingMoreShorts; }, [loadingMoreShorts]);
@@ -1824,11 +1955,28 @@ function VideosScreenContent({ autoPlayLive, onAutoPlayLiveConsumed, isActive }:
   const shortHasPrev = currentShortIndex > 0;
   const shortHasNext = currentShortIndex < shorts.length - 1 || !!shortsNextToken;
   const handleShortPrevClick = useCallback(() => {
-    if (currentShortIndex > 0) goToShortIndex(currentShortIndex - 1);
+    if (currentShortIndex > 0) {
+      shortNavDirectionRef.current = 'prev';
+      goToShortIndex(currentShortIndex - 1);
+    }
   }, [currentShortIndex, goToShortIndex]);
   const handleShortNextClick = useCallback(() => {
+    shortNavDirectionRef.current = 'next';
     handleShortEnd(currentShortIndex);
   }, [handleShortEnd, currentShortIndex]);
+
+  // Mirrors VideoModal's identical songSlideX effect exactly (same 48px
+  // offset, same 260ms Easing.out(Easing.cubic)) — any web (desktop or
+  // mobile-width), since native mobile keeps its native FlatList
+  // paging/scroll-snap untouched (see the isTabletUp || web branch below).
+  useEffect(() => {
+    if (!(isTabletUp || Platform.OS === 'web')) return;
+    const direction = shortNavDirectionRef.current;
+    shortNavDirectionRef.current = null;
+    if (!direction) return;
+    shortSlideX.setValue(direction === 'next' ? 48 : -48);
+    Animated.timing(shortSlideX, { toValue: 0, duration: 260, easing: Easing.out(Easing.cubic), useNativeDriver: true }).start();
+  }, [playingShortId, isTabletUp, shortSlideX]);
 
   const onShortsViewable = useRef(({ viewableItems }: any) => {
     if (!viewableItems.length) return;
@@ -2051,26 +2199,63 @@ function VideosScreenContent({ autoPlayLive, onAutoPlayLiveConsumed, isActive }:
 
       <Modal visible={shortsPlayerVisible} animationType="slide" statusBarTranslucent supportedOrientations={["portrait"]} onRequestClose={() => { setShortsPlayerVisible(false); setPlayingShortId(null); setShortsScrollEnabled(true); }}>
         <View style={{ flex: 1, backgroundColor: '#000' }}>
-          <FlatList
-            ref={shortsListRef}
-            data={shorts}
-            keyExtractor={item => item.snippet.resourceId.videoId}
-            renderItem={({ item, index }) => <ShortsPlayerItem item={item} index={index} />}
-            pagingEnabled
-            showsVerticalScrollIndicator={false}
-            snapToInterval={shortItemSizeRef.current}
-            snapToAlignment="start"
-            decelerationRate="fast"
-            onViewableItemsChanged={onShortsViewable}
-            viewabilityConfig={shortsViewConfig}
-            getItemLayout={(_, index) => ({ length: shortItemSizeRef.current, offset: shortItemSizeRef.current * index, index })}
-            initialScrollIndex={currentShortIndex}
-            onScrollToIndexFailed={() => {}}
-            scrollEnabled={shortsScrollEnabled}
-          />
-          {/* Desktop only — mobile already has its own vertical swipe-up hint
-              rendered inside ShortsPlayerItemInner (chevron-up/down, matching
-              that gesture's actual direction), so nothing extra goes here. */}
+          {isTabletUp || Platform.OS === 'web' ? (
+            // Desktop and mobile web: a single active short with Songs-style
+            // horizontal Prev/Next + slide transition, instead of the
+            // FlatList paging — matches VideoModal's Songs-nav UX exactly
+            // (same nav-button styles/positions/alignment, same slide
+            // animation). Native mobile keeps the FlatList/swipe-scroll
+            // experience below, since it works reliably there.
+            // Gated on shortsPlayerVisible too (not just shorts[index]) —
+            // onClose sets that AND playingShortId(null) in the same
+            // update; without this the isActive flip (which swaps
+            // YoutubePlayer's iframe for a placeholder View) landed in the
+            // same commit as the surrounding Modal tearing down, and the
+            // two overlapping DOM mutations crashed with "Failed to
+            // execute 'removeChild' on 'Node'". Gating on visibility here
+            // means both changes collapse into a single clean unmount of
+            // this whole subtree instead.
+            shortsPlayerVisible && shorts[currentShortIndex] && (
+              <Animated.View style={{ flex: 1, transform: [{ translateX: shortSlideX }] }}>
+                <ShortsPlayerItemInner
+                  item={shorts[currentShortIndex]}
+                  index={currentShortIndex}
+                  isActive={playingShortId === shorts[currentShortIndex]?.snippet?.resourceId?.videoId}
+                  onEnd={handleShortEnd}
+                  onClose={() => { setShortsPlayerVisible(false); setPlayingShortId(null); }}
+                  onScrollLockChange={(locked: boolean) => setShortsScrollEnabled(!locked)}
+                  total={shorts.length}
+                  hasPrev={shortHasPrev}
+                  hasNext={shortHasNext}
+                  onPrev={handleShortPrevClick}
+                  onNext={handleShortNextClick}
+                />
+              </Animated.View>
+            )
+          ) : (
+            <FlatList
+              ref={shortsListRef}
+              data={shorts}
+              keyExtractor={item => item.snippet.resourceId.videoId}
+              renderItem={({ item, index }) => <ShortsPlayerItem item={item} index={index} />}
+              pagingEnabled
+              showsVerticalScrollIndicator={false}
+              snapToInterval={shortItemSizeRef.current}
+              snapToAlignment="start"
+              decelerationRate="fast"
+              onViewableItemsChanged={onShortsViewable}
+              viewabilityConfig={shortsViewConfig}
+              getItemLayout={(_, index) => ({ length: shortItemSizeRef.current, offset: shortItemSizeRef.current * index, index })}
+              initialScrollIndex={currentShortIndex}
+              onScrollToIndexFailed={() => {}}
+              scrollEnabled={shortsScrollEnabled}
+            />
+          )}
+          {/* Desktop (isTabletUp) only — these stay over the video, in their
+              original position. Mobile web gets its own Prev/Next buttons
+              instead, rendered inline inside ShortsPlayerItemInner (aligned
+              with the YouTube/Copy icon row, same as Songs); native mobile
+              gets the vertical swipe-up hint rendered there too. */}
           {isTabletUp && (
             <>
               <TouchableOpacity
@@ -2298,6 +2483,12 @@ const styles = StyleSheet.create({
   videoModalNavBtn: { position: 'absolute', top: '50%', marginTop: -22, backgroundColor: 'rgba(255,255,255,0.15)', borderRadius: 22, width: 44, height: 44, alignItems: 'center', justifyContent: 'center', cursor: 'pointer' } as any,
   videoModalNavBtnLeft: { left: 12 },
   videoModalNavBtnRight: { right: 12 },
+  // Mobile web only — wraps VideoActions so its Prev/Next buttons
+  // (videoModalNavBtn's top:'50%' above) center against this row's own
+  // height instead of the whole video, aligning them with the YouTube/Copy
+  // icons. position:'relative' is the only thing this needs; it otherwise
+  // sizes itself to fit VideoActions exactly, so it doesn't affect layout.
+  mobileActionsRowWrap: { position: 'relative' },
 });
 
 const resumeStyles = StyleSheet.create({

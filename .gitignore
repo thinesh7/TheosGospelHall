@@ -36,6 +36,9 @@ yarn-error.*
 # typescript
 *.tsbuildinfo
 
+# Firebase CLI local cache (not deployable config — that's firebase.json/.firebaserc)
+.firebase/
+
 app-example
 
 # generated native folders

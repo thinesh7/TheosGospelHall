@@ -14,6 +14,7 @@ import {
   useWindowDimensions,
   View,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { OtherSongIndexEntry, getOtherSongById, getOtherSongsIndex } from '../utils/otherSongsSync';
 import { getReaderSettings, ReaderLanguage, saveReaderSettings } from '../utils/songReaderSettings';
 import { useTheme } from '../utils/ThemeContext';
@@ -76,6 +77,7 @@ export default function OtherSongReaderScreen() {
   const { songNumber } = useLocalSearchParams<{ songNumber: string }>();
   const { colors: c, theme, cycleTheme } = useTheme();
   const { isTabletUp } = useBreakpoint();
+  const insets = useSafeAreaInsets();
   const { message: toastMessage, opacity: toastOpacity, showToast } = useToast();
   // Reactive (not Dimensions.get() frozen at module scope) so page sizing
   // and horizontal-paging math stay correct across resize/rotation on any
@@ -204,6 +206,32 @@ export default function OtherSongReaderScreen() {
     setSearchQuery('');
   };
 
+  // See the matching, more detailed comment in app/song-reader.tsx —
+  // onMomentumScrollEnd never fires on react-native-web, so Prev/Next must
+  // set currentIndex directly rather than relying on it to report the new
+  // position after scrolling.
+  const goToIndex = (index: number) => {
+    if (index < 0 || index >= songsIndex.length) return;
+    setCurrentIndex(index);
+    flatListRef.current?.scrollToIndex({ index, animated: true });
+  };
+
+  // Web-only fallback for manual swipes, which have the same gap as the
+  // buttons above but no discrete target index to set directly — debounces
+  // onScroll (which does fire on web) into a single update once scrolling
+  // settles, approximating onMomentumScrollEnd.
+  const scrollSettleRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const onScroll = Platform.OS === 'web'
+    ? (e: { nativeEvent: { contentOffset: { x: number } } }) => {
+        const x = e.nativeEvent.contentOffset.x;
+        if (scrollSettleRef.current) clearTimeout(scrollSettleRef.current);
+        scrollSettleRef.current = setTimeout(() => {
+          const index = Math.round(x / width);
+          setCurrentIndex(prev => (prev === index ? prev : index));
+        }, 120);
+      }
+    : undefined;
+
   const SongPage = ({ item }: { item: OtherSongIndexEntry }) => {
     const lyrics = lyricsMap[item.songId];
 
@@ -261,9 +289,10 @@ export default function OtherSongReaderScreen() {
     <View style={[styles.container, { backgroundColor: c.bg }]}>
       <Stack.Screen options={{ headerShown: false }} />
 
-      <View style={[styles.topBar, { backgroundColor: c.headerBg }]}>
+      <View style={[styles.topBar, { backgroundColor: c.headerBg, paddingTop: insets.top + 12 }]}>
         <TouchableOpacity onPress={() => router.back()}>
-          <Ionicons name="chevron-back" size={26} color={c.text} />
+          {/* See the matching comment in app/song-reader.tsx. */}
+          <Ionicons name={Platform.OS === 'web' && !isTabletUp ? 'close' : 'chevron-back'} size={26} color={c.text} />
         </TouchableOpacity>
         <View style={styles.topBarActions}>
           <TouchableOpacity onPress={() => setShowSearch(true)} style={styles.iconBtn}>
@@ -303,12 +332,14 @@ export default function OtherSongReaderScreen() {
           const index = Math.round(e.nativeEvent.contentOffset.x / width);
           setCurrentIndex(index);
         }}
+        onScroll={onScroll}
+        scrollEventThrottle={Platform.OS === 'web' ? 16 : undefined}
       />
 
       <View style={[styles.bottomBar, { backgroundColor: c.headerBg }]}>
         <TouchableOpacity
           disabled={currentIndex === 0}
-          onPress={() => flatListRef.current?.scrollToIndex({ index: currentIndex - 1, animated: true })}
+          onPress={() => goToIndex(currentIndex - 1)}
           style={styles.navBtn}
         >
           <Ionicons name="chevron-back-circle" size={30} color={currentIndex === 0 ? '#555' : c.accent} />
@@ -318,7 +349,7 @@ export default function OtherSongReaderScreen() {
         </Text>
         <TouchableOpacity
           disabled={currentIndex === songsIndex.length - 1}
-          onPress={() => flatListRef.current?.scrollToIndex({ index: currentIndex + 1, animated: true })}
+          onPress={() => goToIndex(currentIndex + 1)}
           style={styles.navBtn}
         >
           <Ionicons name="chevron-forward-circle" size={30} color={currentIndex === songsIndex.length - 1 ? '#555' : c.accent} />
@@ -462,11 +493,12 @@ export default function OtherSongReaderScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1 },
   page: {},
+  // paddingTop is overridden inline (insets.top + 12) — see the matching
+  // comment in app/(tabs)/bible.tsx.
   topBar: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingTop: 50,
     paddingBottom: 12,
     paddingHorizontal: 16,
   },

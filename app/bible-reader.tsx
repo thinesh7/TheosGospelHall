@@ -7,6 +7,7 @@ import {
   FlatList,
   Modal,
   PanResponder,
+  Platform,
   ScrollView,
   StyleSheet,
   TouchableOpacity,
@@ -192,6 +193,9 @@ function BookSelectorModal({
             key={`modal-books-${bookModalTestament}`}
             keyExtractor={item => item.id.toString()}
             numColumns={2}
+            // Bounded list (max 39 books) — same reasoning as the Bible
+            // tab's own book/chapter grids.
+            initialNumToRender={bookModalTestament === 'OT' ? OTBooks.length : NTBooks.length}
             contentContainerStyle={{ padding: 12 }}
             renderItem={({ item }) => (
               <TouchableOpacity
@@ -272,6 +276,12 @@ export default function BibleReaderScreen() {
   }, [version, selectedChapter, selectedBook?.id, isBilingual]);
 
   useEffect(() => {
+    // BackHandler doesn't exist on web — react-native-web's stub logs a
+    // console.error on every addEventListener call and its remove() is a
+    // no-op, so this never actually intercepted the browser back button
+    // there anyway (the book modal just stayed open while the page
+    // navigated away underneath it).
+    if (Platform.OS === 'web') return;
     const handler = BackHandler.addEventListener('hardwareBackPress', () => {
       if (showBookModal) { setShowBookModal(false); return true; }
       router.back();
@@ -358,7 +368,10 @@ export default function BibleReaderScreen() {
     } catch (e) {}
   };
 
-  const handleScrollToIndexFailed = (info: { index: number; highestMeasuredFrameIndex: number }) => {
+  // Referentially stable for the same reason handleViewableItemsChanged is
+  // (see its comment) — react-native-web's vendored FlatList doesn't like
+  // these callback props changing identity between renders.
+  const handleScrollToIndexFailed = useCallback((info: { index: number; highestMeasuredFrameIndex: number }) => {
     const idx = info.index;
     versesListRef.current?.scrollToIndex({ index: info.highestMeasuredFrameIndex, animated: false });
     setTimeout(() => {
@@ -366,7 +379,7 @@ export default function BibleReaderScreen() {
         versesListRef.current?.scrollToIndex({ index: idx, animated: true, viewPosition: 0 });
       }
     }, 200);
-  };
+  }, []);
 
   const [selectedVerses, setSelectedVerses] = useState<Set<number>>(new Set());
 
@@ -447,9 +460,13 @@ export default function BibleReaderScreen() {
     <View style={[styles.container, { backgroundColor: c.bg }]} {...panResponder.panHandlers}>
       <Stack.Screen options={{ headerShown: false }} />
 
-      <View style={[styles.header, { backgroundColor: c.headerBg, paddingRight: 16 + insets.right }]}>
+      <View style={[styles.header, { backgroundColor: c.headerBg, paddingRight: 16 + insets.right, paddingTop: insets.top + 12 }]}>
         <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
-          <Ionicons name="arrow-back" size={22} color={c.text} />
+          {/* Web: an explicit close (X) reads unambiguously as "exit the
+              reader, back to Chapter Selection" — same router.back() action
+              as native's back arrow, and the same for every Bible version
+              (this header is shared by all of them). */}
+          <Ionicons name={Platform.OS === 'web' ? 'close' : 'arrow-back'} size={22} color={c.text} />
         </TouchableOpacity>
         <View style={{ flex: 1 }}>
           <TouchableOpacity onPress={() => {
@@ -479,18 +496,32 @@ export default function BibleReaderScreen() {
       </View>
 
       <View style={[styles.verseJumpBar, { backgroundColor: c.surface, borderBottomColor: c.divider }]}>
-        <ScrollView ref={verseBarRef} horizontal showsHorizontalScrollIndicator={false}
-          contentContainerStyle={{ paddingHorizontal: 8, gap: 4 }}>
-          {primaryVerses.map((_, i) => (
-            <TouchableOpacity
-              key={i}
-              style={[styles.verseJumpBtn, { width: VERSE_BTN_WIDTH - 4 }, activeVerse === i && { backgroundColor: c.accent }]}
-              onPress={() => jumpToVerse(i)}
-            >
-              <Text style={[styles.verseJumpText, { color: activeVerse === i ? '#fff' : c.accent }]}>{i + 1}</Text>
-            </TouchableOpacity>
-          ))}
-        </ScrollView>
+        {/* Capped/centered to the same READING_CONTENT_MAX_WIDTH column as
+            the verse list below (readingContentDesktop) — without this, the
+            verse "1" button here sits flush against the true left edge of a
+            wide desktop viewport while the actual verse 1 row underneath it
+            is centered in a narrower reading column, so the two visibly
+            don't line up. This wraps the ScrollView's own frame (not its
+            content — that still scrolls freely at its natural width), so
+            it's just centering the visible scroll window, not constraining
+            how many verse buttons can fit in it. paddingHorizontal matches
+            the verse list's own contentContainerStyle padding (16 on
+            desktop) so button "1"'s left edge lines up exactly with verse
+            1's left edge below it — mobile keeps the original tighter 8. */}
+        <View style={isTabletUp ? styles.verseJumpBarInner : undefined}>
+          <ScrollView ref={verseBarRef} horizontal showsHorizontalScrollIndicator={false}
+            contentContainerStyle={{ paddingHorizontal: isTabletUp ? 16 : 8, gap: 4 }}>
+            {primaryVerses.map((_, i) => (
+              <TouchableOpacity
+                key={i}
+                style={[styles.verseJumpBtn, { width: VERSE_BTN_WIDTH - 4 }, activeVerse === i && { backgroundColor: c.accent }]}
+                onPress={() => jumpToVerse(i)}
+              >
+                <Text style={[styles.verseJumpText, { color: activeVerse === i ? '#fff' : c.accent }]}>{i + 1}</Text>
+              </TouchableOpacity>
+            ))}
+          </ScrollView>
+        </View>
       </View>
 
       {selectedVerses.size > 0 && (
@@ -512,6 +543,17 @@ export default function BibleReaderScreen() {
           data={Array.from({ length: maxVerses }, (_, i) => i)}
           key="bilingual"
           keyExtractor={i => i.toString()}
+          // A Bible chapter is a bounded list (max ~176 verses, Psalm 119) —
+          // cheap to render in full rather than rely on FlatList's default
+          // initialNumToRender of 10 and incremental windowing as the user
+          // scrolls. That default is what caused "only the first 10 verses
+          // show" — most visible on web, where react-native-web's vendored
+          // VirtualizedList expanding the render window depends on DOM
+          // scroll events being delivered promptly, which is less reliable
+          // than native's own scroll-event delivery.
+          initialNumToRender={maxVerses || 1}
+          maxToRenderPerBatch={maxVerses || 1}
+          windowSize={21}
           contentContainerStyle={[{ padding: 16, paddingBottom: 100 }, isTabletUp && styles.readingContentDesktop]}
           onViewableItemsChanged={handleViewableItemsChanged}
           viewabilityConfig={viewabilityConfigRef.current}
@@ -524,7 +566,6 @@ export default function BibleReaderScreen() {
                 activeOpacity={0.7}
                 onPress={() => toggleVerseSelection(verseNum)}
                 onLongPress={() => toggleVerseSelection(verseNum)}
-                style={isTabletUp && styles.readingRow}
               >
                 <View style={[
                   styles.bilingualVerseBlock,
@@ -558,6 +599,11 @@ export default function BibleReaderScreen() {
           data={primaryVerses}
           key="single"
           keyExtractor={(_, i) => i.toString()}
+          // See the matching comment on the bilingual FlatList above — same
+          // fix, same reasoning.
+          initialNumToRender={primaryVerses.length || 1}
+          maxToRenderPerBatch={primaryVerses.length || 1}
+          windowSize={21}
           contentContainerStyle={[{ padding: 16, paddingBottom: 100 }, isTabletUp && styles.readingContentDesktop]}
           onViewableItemsChanged={handleViewableItemsChanged}
           viewabilityConfig={viewabilityConfigRef.current}
@@ -569,7 +615,6 @@ export default function BibleReaderScreen() {
                 activeOpacity={0.7}
                 onPress={() => toggleVerseSelection(item.verse)}
                 onLongPress={() => toggleVerseSelection(item.verse)}
-                style={isTabletUp && styles.readingRow}
               >
                 {isSelected ? (
                   <View style={{
@@ -677,9 +722,23 @@ const styles = StyleSheet.create({
   // running the full browser-window width — READING_CONTENT_MAX_WIDTH is
   // narrower than the app's general CONTENT_MAX_WIDTH (dashboards/grids),
   // sized for long-form reading specifically.
-  readingContentDesktop: { alignItems: 'center' },
-  readingRow: { width: '100%', maxWidth: READING_CONTENT_MAX_WIDTH },
-  header: { padding: 16, paddingTop: 50, flexDirection: 'row', alignItems: 'center', gap: 8 },
+  //
+  // This caps/centers the whole scrollable content area ONCE (matching the
+  // pattern used for FlatLists elsewhere in this app, e.g. videos.tsx's
+  // CONTENT_MAX_WIDTH-capped list style) rather than each verse row
+  // independently. Capping each row separately (the previous approach) put
+  // every row inside an alignItems:'center' parent with its own
+  // width:'100%' — a percentage width resolved against a parent whose own
+  // width is itself just "shrink to fit its children" is ambiguous, and
+  // rows fell back to shrink-wrapping to their own text's width. A short,
+  // single-line verse shrink-wrapped narrow and then got centered off to
+  // the side; a verse whose text happened to wrap already filled the width
+  // and looked fine — which is why only some verses (the short ones)
+  // visibly misaligned, not all of them.
+  readingContentDesktop: { width: '100%', maxWidth: READING_CONTENT_MAX_WIDTH, alignSelf: 'center' },
+  // paddingTop is overridden inline (insets.top + 12) — see the matching
+  // comment in app/(tabs)/bible.tsx.
+  header: { padding: 16, flexDirection: 'row', alignItems: 'center', gap: 8 },
   headerTitle: { fontSize: 16, fontWeight: 'bold' },
   headerSubtitle: { fontSize: 11, marginTop: 2 },
   backBtn: { padding: 4 },
@@ -688,6 +747,10 @@ const styles = StyleSheet.create({
   fontQuickBtn: { backgroundColor: 'rgba(150,150,150,0.2)', borderRadius: 6, paddingHorizontal: 7, paddingVertical: 4 },
   fontQuickText: { fontWeight: 'bold', fontSize: 11 },
   verseJumpBar: { borderBottomWidth: 1, paddingVertical: 6 },
+  // Same width/centering as readingContentDesktop above, applied to the
+  // verse-jump ScrollView's own frame so its buttons line up with the
+  // verse rows below it on desktop — see the comment at its usage.
+  verseJumpBarInner: { width: '100%', maxWidth: READING_CONTENT_MAX_WIDTH, alignSelf: 'center' },
   verseJumpBtn: { height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center' },
   verseJumpText: { fontSize: 13, fontWeight: '700' },
   selectionBar: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 12, gap: 8 },

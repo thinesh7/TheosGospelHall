@@ -14,6 +14,7 @@ import {
   useWindowDimensions,
   View,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { SongIndexEntry, getSongById, getSongsIndex } from '../utils/songsSync';
 import { getReaderSettings, ReaderLanguage, saveReaderSettings } from '../utils/songReaderSettings';
 import { useTheme } from '../utils/ThemeContext';
@@ -95,6 +96,7 @@ export default function SongReaderScreen() {
   const { songNumber } = useLocalSearchParams<{ songNumber: string }>();
   const { colors: c, theme, cycleTheme } = useTheme();
   const { isTabletUp } = useBreakpoint();
+  const insets = useSafeAreaInsets();
   const { message: toastMessage, opacity: toastOpacity, showToast } = useToast();
   // Reactive (not Dimensions.get() frozen at module scope) so page sizing
   // and horizontal-paging math stay correct across resize/rotation on any
@@ -222,6 +224,45 @@ export default function SongReaderScreen() {
     setSearchQuery('');
   };
 
+  // Prev/Next buttons scrolled the FlatList but never updated currentIndex
+  // themselves — they relied entirely on onMomentumScrollEnd below to
+  // report the new position, which never fires on react-native-web
+  // (confirmed: RNW's ScrollView only wires up onScroll/onTouchMove/onWheel
+  // internally — onMomentumScrollEnd and the rest of the momentum-scroll
+  // event family are silently dropped as unrecognized props). On web that
+  // left currentIndex — and therefore the page indicator, the Prev/Next
+  // disabled state, and lyric preloading for the next song — stuck after
+  // the very first press, since every subsequent press still read the same
+  // stale currentIndex. Setting it directly here, the same way the Bible
+  // reader's chapter Prev/Next already does, makes it work regardless of
+  // whether the platform's ScrollView reports momentum-scroll completion.
+  const goToIndex = (index: number) => {
+    if (index < 0 || index >= songsIndex.length) return;
+    setCurrentIndex(index);
+    flatListRef.current?.scrollToIndex({ index, animated: true });
+  };
+
+  // Manual swipes have the same underlying gap as the buttons above (no
+  // onMomentumScrollEnd on web) — unlike the buttons, a swipe has no
+  // discrete "go to index N" action to hook currentIndex into directly.
+  // onScroll *does* fire on web, but continuously during the drag, not just
+  // once it settles — this debounces it into a single currentIndex update
+  // ~120ms after scrolling stops, approximating what onMomentumScrollEnd
+  // would have reported. Native already gets accurate, immediate
+  // onMomentumScrollEnd reporting, so this stays web-only rather than
+  // risking any change to already-working native behavior.
+  const scrollSettleRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const onScroll = Platform.OS === 'web'
+    ? (e: { nativeEvent: { contentOffset: { x: number } } }) => {
+        const x = e.nativeEvent.contentOffset.x;
+        if (scrollSettleRef.current) clearTimeout(scrollSettleRef.current);
+        scrollSettleRef.current = setTimeout(() => {
+          const index = Math.round(x / width);
+          setCurrentIndex(prev => (prev === index ? prev : index));
+        }, 120);
+      }
+    : undefined;
+
   const SongPage = ({ item }: { item: SongIndexEntry }) => {
     const lyrics = lyricsMap[item.songId];
 
@@ -279,9 +320,14 @@ export default function SongReaderScreen() {
     <View style={[styles.container, { backgroundColor: c.bg }]}>
       <Stack.Screen options={{ headerShown: false }} />
 
-      <View style={[styles.topBar, { backgroundColor: c.headerBg }]}>
+      <View style={[styles.topBar, { backgroundColor: c.headerBg, paddingTop: insets.top + 12 }]}>
         <TouchableOpacity onPress={() => router.back()}>
-          <Ionicons name="chevron-back" size={26} color={c.text} />
+          {/* Mobile web specifically: an explicit close (X) reads
+              unambiguously as "exit Reader Mode," where chevron-back could
+              be mistaken for song-to-song navigation given the Prev/Next
+              controls elsewhere on this same screen. Native and desktop web
+              keep the chevron — same router.back() action either way. */}
+          <Ionicons name={Platform.OS === 'web' && !isTabletUp ? 'close' : 'chevron-back'} size={26} color={c.text} />
         </TouchableOpacity>
         <View style={styles.topBarActions}>
           <TouchableOpacity onPress={() => setShowSearch(true)} style={styles.iconBtn}>
@@ -321,12 +367,14 @@ export default function SongReaderScreen() {
           const index = Math.round(e.nativeEvent.contentOffset.x / width);
           setCurrentIndex(index);
         }}
+        onScroll={onScroll}
+        scrollEventThrottle={Platform.OS === 'web' ? 16 : undefined}
       />
 
       <View style={[styles.bottomBar, { backgroundColor: c.headerBg }]}>
         <TouchableOpacity
           disabled={currentIndex === 0}
-          onPress={() => flatListRef.current?.scrollToIndex({ index: currentIndex - 1, animated: true })}
+          onPress={() => goToIndex(currentIndex - 1)}
           style={styles.navBtn}
         >
           <Ionicons name="chevron-back-circle" size={30} color={currentIndex === 0 ? '#555' : c.accent} />
@@ -336,7 +384,7 @@ export default function SongReaderScreen() {
         </Text>
         <TouchableOpacity
           disabled={currentIndex === songsIndex.length - 1}
-          onPress={() => flatListRef.current?.scrollToIndex({ index: currentIndex + 1, animated: true })}
+          onPress={() => goToIndex(currentIndex + 1)}
           style={styles.navBtn}
         >
           <Ionicons name="chevron-forward-circle" size={30} color={currentIndex === songsIndex.length - 1 ? '#555' : c.accent} />
@@ -480,11 +528,12 @@ export default function SongReaderScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1 },
   page: {},
+  // paddingTop is overridden inline (insets.top + 12) — see the matching
+  // comment in app/(tabs)/bible.tsx.
   topBar: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingTop: 50,
     paddingBottom: 12,
     paddingHorizontal: 16,
   },

@@ -1,5 +1,5 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { createContext, ReactNode, useContext, useEffect, useState } from 'react';
+import { createContext, ReactNode, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import { useColorScheme } from 'react-native';
 import { nextTheme, THEME_ORDER, THEMES, ThemeColors, ThemeName } from './theme';
 
@@ -33,17 +33,30 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
     });
   }, []);
 
-  const setTheme = (t: ThemeName) => {
+  const setTheme = useCallback((t: ThemeName) => {
     setThemeState(t);
     AsyncStorage.setItem(STORAGE_KEY, t).catch(() => {});
-  };
+  }, []);
 
-  const cycleTheme = () => {
+  const cycleTheme = useCallback(() => {
     setTheme(nextTheme(theme));
-  };
+  }, [theme, setTheme]);
+
+  // ThemeProvider wraps the entire app (app/_layout.tsx), and useTheme() is
+  // called from nearly every screen — an inline object literal here would
+  // get a new identity on every render of ThemeProvider itself (e.g. every
+  // time anything in _layout.tsx's own state changes, like the periodic
+  // update-check or a notification listener firing), forcing every single
+  // consumer to re-render even though theme/colors hadn't actually changed.
+  // Memoizing means that only actually happens when theme or isLoaded
+  // genuinely change.
+  const value = useMemo<ThemeContextValue>(
+    () => ({ theme, colors: THEMES[theme], setTheme, cycleTheme, isLoaded }),
+    [theme, isLoaded, setTheme, cycleTheme]
+  );
 
   return (
-    <ThemeContext.Provider value={{ theme, colors: THEMES[theme], setTheme, cycleTheme, isLoaded }}>
+    <ThemeContext.Provider value={value}>
       {children}
     </ThemeContext.Provider>
   );

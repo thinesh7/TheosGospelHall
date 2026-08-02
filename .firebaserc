@@ -1,0 +1,15 @@
+{
+  "projects": {
+    "default": "tgh-theosgospelhall"
+  },
+  "targets": {
+    "tgh-theosgospelhall": {
+      "hosting": {
+        "main": [
+          "theosgospelhall"
+        ]
+      }
+    }
+  },
+  "etags": {}
+}

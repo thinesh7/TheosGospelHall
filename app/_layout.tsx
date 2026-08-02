@@ -11,6 +11,7 @@ import 'react-native-reanimated';
 import { AppDialogProvider } from '@/components/AppDialog';
 import ForceUpdateScreen from '@/components/ForceUpdateScreen';
 import OptionalUpdateModal from '@/components/OptionalUpdateModal';
+import WebBackGuard from '@/components/WebBackGuard';
 import WelcomeSetupScreen from '@/components/WelcomeSetupScreen';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { AppVersionConfig, fetchVersionConfig, getUpdateStatus, UpdateStatus } from '@/utils/appUpdate';
@@ -179,6 +180,7 @@ export default function RootLayout() {
   return (
     <AppThemeProvider>
       <AppDialogProvider>
+      <WebBackGuard />
       <UpdateGateProvider active={isUpdateGateActive}>
       <NavThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
         {appState === 'welcome' ? (

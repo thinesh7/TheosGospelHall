@@ -84,17 +84,30 @@ const UpcomingEvents = forwardRef((props: {}, ref) => {
   }, []);
 
   useEffect(() => {
-    Animated.loop(Animated.sequence([
+    // Animated.loop().start() with no stored handle keeps recursing forever
+    // (on web this is a real JS-driven requestAnimationFrame loop, since
+    // useNativeDriver silently falls back to JS animation there — see the
+    // matching comment in app/(tabs)/videos.tsx), even after this component
+    // unmounts. UpcomingEvents lives on the Home tab, which the tab
+    // navigator keeps mounted in the background rather than tearing down —
+    // so this loop was never actually leaking on *remount*, but it was
+    // still one of several always-running animation loops competing for
+    // main-thread time on every tap, for the entire lifetime of the app.
+    const anim = Animated.loop(Animated.sequence([
       Animated.timing(pulseAnim, { toValue: 1.15, duration: 700, useNativeDriver: true }),
       Animated.timing(pulseAnim, { toValue: 1, duration: 700, useNativeDriver: true }),
-    ])).start();
+    ]));
+    anim.start();
+    return () => anim.stop();
   }, []);
 
   useEffect(() => {
-    Animated.loop(Animated.sequence([
+    const anim = Animated.loop(Animated.sequence([
       Animated.timing(glowAnim, { toValue: 0.22, duration: 1400, useNativeDriver: true }),
       Animated.timing(glowAnim, { toValue: 0.08, duration: 1400, useNativeDriver: true }),
-    ])).start();
+    ]));
+    anim.start();
+    return () => anim.stop();
   }, []);
 
   useEffect(() => {
@@ -103,11 +116,13 @@ const UpcomingEvents = forwardRef((props: {}, ref) => {
     // no need to keep this one animation running on the JS thread for the
     // entire lifetime of the Home screen while the other three loops above
     // already run off it.
-    Animated.loop(Animated.sequence([
+    const anim = Animated.loop(Animated.sequence([
       Animated.timing(shimmerAnim, { toValue: 1, duration: 1800, useNativeDriver: true }),
       Animated.timing(shimmerAnim, { toValue: -1, duration: 0, useNativeDriver: true }),
       Animated.delay(1200),
-    ])).start();
+    ]));
+    anim.start();
+    return () => anim.stop();
   }, []);
 
   useImperativeHandle(ref, () => ({ reload: () => {} }));

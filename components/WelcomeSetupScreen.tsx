@@ -39,11 +39,16 @@ export default function WelcomeSetupScreen({ onComplete }: Props) {
         ])
       );
 
-    Animated.parallel([
+    // Animated.loop().start() with no stored handle keeps recursing forever
+    // (a real JS-driven requestAnimationFrame loop on web) even after this
+    // screen unmounts, which it does exactly once (onComplete, below) but
+    // then stays leaked running for the rest of the app session.
+    const dotsAnim = Animated.parallel([
       animateDot(dot1, 0),
       animateDot(dot2, 175),
       animateDot(dot3, 350),
-    ]).start();
+    ]);
+    dotsAnim.start();
 
     const msgInterval = setInterval(() => {
       setMsgIndex(i => (i + 1) % MESSAGES.length);
@@ -60,7 +65,10 @@ export default function WelcomeSetupScreen({ onComplete }: Props) {
       onComplete();
     });
 
-    return () => clearInterval(msgInterval);
+    return () => {
+      clearInterval(msgInterval);
+      dotsAnim.stop();
+    };
   }, []);
 
   return (
