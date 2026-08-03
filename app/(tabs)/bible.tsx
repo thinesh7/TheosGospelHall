@@ -22,6 +22,50 @@ import { BIBLE_VERSIONS, BOOKS } from '../../utils/bibleData';
 import { getMemBibleSettings, saveBibleSettings } from '../../utils/bibleSettings';
 import { useTheme } from '../../utils/ThemeContext';
 
+interface BibleNav {
+  view: 'home' | 'books' | 'chapters';
+  version?: string;
+  bilingual: boolean;
+  testament: 'OT' | 'NT';
+  bookId?: string;
+}
+
+const HOME_NAV: BibleNav = { view: 'home', bilingual: false, testament: 'OT' };
+
+// Web-only: mirrors BibleNav into the URL's query string via the raw History
+// API instead of expo-router's router.push(). TabShell.web.tsx's own
+// tab-switch fix explains why: router.push() to a route inside the (tabs)
+// group — which '/bible' still is, even just navigating within itself —
+// remounts the entire tab shell (a fresh Home/Videos/Bible/etc. instance on
+// top of whatever the previous one hadn't cleaned up yet). Browsing several
+// chapters in one sitting used to reproduce exactly the "gets slower the
+// longer you use it" degradation that fix targeted, just via this different
+// trigger. Reading/writing the URL directly keeps the original design's
+// goals (browser back works, refresh/deep-link lands on the right screen)
+// without ever calling router.push for same-tab navigation.
+function parseBibleSearch(search: string): BibleNav {
+  const p = new URLSearchParams(search);
+  const rawView = p.get('view');
+  return {
+    view: rawView === 'books' || rawView === 'chapters' ? rawView : 'home',
+    version: p.get('version') || undefined,
+    bilingual: p.get('bilingual') === '1',
+    testament: p.get('testament') === 'NT' ? 'NT' : 'OT',
+    bookId: p.get('bookId') || undefined,
+  };
+}
+
+function buildBibleUrl(nav: BibleNav): string {
+  const p = new URLSearchParams();
+  if (nav.view !== 'home') p.set('view', nav.view);
+  if (nav.version) p.set('version', nav.version);
+  if (nav.bilingual) p.set('bilingual', '1');
+  if (nav.testament) p.set('testament', nav.testament);
+  if (nav.bookId) p.set('bookId', nav.bookId);
+  const qs = p.toString();
+  return qs ? `/bible?${qs}` : '/bible';
+}
+
 interface SettingsModalProps {
   visible: boolean;
   onClose: () => void;
@@ -68,17 +112,29 @@ export default function BibleScreen() {
   // steps back-button-aware. It also means a page refresh or deep link
   // lands on the right screen instead of always resetting to 'home'.
   const params = useLocalSearchParams<{ view?: string; version?: string; bilingual?: string; testament?: string; bookId?: string }>();
+  // Web sources its own nav state from the URL directly (see parseBibleSearch
+  // above) rather than expo-router's params — seeded from whatever the page
+  // actually loaded on (a fresh load, refresh, or deep link), then kept in
+  // sync by the popstate listener below for browser back/forward.
+  const [webNav, setWebNav] = useState<BibleNav>(() => (Platform.OS === 'web' ? parseBibleSearch(window.location.search) : HOME_NAV));
+  const nav: BibleNav = Platform.OS === 'web' ? webNav : {
+    view: params.view === 'books' || params.view === 'chapters' ? params.view : 'home',
+    version: params.version,
+    bilingual: params.bilingual === '1',
+    testament: params.testament === 'NT' ? 'NT' : 'OT',
+    bookId: params.bookId,
+  };
   const { colors: c, theme, cycleTheme } = useTheme();
   const insets = useSafeAreaInsets();
-  const view: 'home' | 'books' | 'chapters' = params.view === 'books' || params.view === 'chapters' ? params.view : 'home';
-  const isBilingual = params.bilingual === '1';
-  const testament: 'OT' | 'NT' = params.testament === 'NT' ? 'NT' : 'OT';
+  const view = nav.view;
+  const isBilingual = nav.bilingual;
+  const testament = nav.testament;
   // Only meaningful once the user has actually picked a version (books/
   // chapters views, where it's always present in the URL) — 'home' falls
   // back to the persisted last choice, which selectVersion below keeps
   // updated for next time regardless of in-page navigation.
-  const version = params.version || getMemBibleSettings().version;
-  const selectedBook = params.bookId ? BOOKS.find(b => b.id === Number(params.bookId)) : null;
+  const version = nav.version || getMemBibleSettings().version;
+  const selectedBook = nav.bookId ? BOOKS.find(b => b.id === Number(nav.bookId)) : null;
   const [fontSize, setFontSize] = useState(() => getMemBibleSettings().fontSize);
   const [showSettings, setShowSettings] = useState(false);
   // Fixed 2/5-column grids only ever suited a phone-width screen — scale up
@@ -106,22 +162,63 @@ export default function BibleScreen() {
     return () => handler.remove();
   }, [view, router]);
 
+  // Browser back/forward within Bible's own browsing steps — mirrors
+  // TabShell.web.tsx's own popstate listener for tab switches, which this
+  // doesn't conflict with: TabShell's handler only reacts when its own
+  // `tghTab` marker is present, and otherwise just re-confirms the already-
+  // active tab from the pathname (still '/bible' either way) — a harmless
+  // no-op alongside this one syncing the actual view/version/testament/book.
+  useEffect(() => {
+    if (Platform.OS !== 'web') return;
+    const onPopState = () => setWebNav(parseBibleSearch(window.location.search));
+    window.addEventListener('popstate', onPopState);
+    return () => window.removeEventListener('popstate', onPopState);
+  }, []);
+
   const goToBooks = (v: string, bilingual: boolean) => {
     if (!bilingual) saveBibleSettings({ version: v });
-    router.push({ pathname: '/bible', params: { view: 'books', version: v, bilingual: bilingual ? '1' : '0', testament: 'OT' } });
+    const next: BibleNav = { view: 'books', version: v, bilingual, testament: 'OT' };
+    if (Platform.OS === 'web') {
+      window.history.pushState({ tghBible: true }, '', buildBibleUrl(next));
+      setWebNav(next);
+    } else {
+      router.push({ pathname: '/bible', params: { view: 'books', version: v, bilingual: bilingual ? '1' : '0', testament: 'OT' } });
+    }
   };
 
   const setTestament = (t: 'OT' | 'NT') => {
     // In place — switching OT/NT is a filter, not a navigation step, so it
-    // shouldn't add its own back-button stop.
-    router.setParams({ testament: t });
+    // shouldn't add its own back-button stop (replaceState/router.setParams,
+    // not push).
+    if (Platform.OS === 'web') {
+      const next: BibleNav = { ...nav, testament: t };
+      window.history.replaceState({ tghBible: true }, '', buildBibleUrl(next));
+      setWebNav(next);
+    } else {
+      router.setParams({ testament: t });
+    }
+  };
+
+  // Symmetric with pushState above — window.history.back() is what actually
+  // pops the raw entries goToBooks/goToChapters push, whereas router.back()
+  // is bound to expo-router's own navigation stack, which never learned
+  // about those (they were pushed directly, bypassing router.push).
+  const goBack = () => {
+    if (Platform.OS === 'web') window.history.back();
+    else router.back();
   };
 
   const goToChapters = (book: any) => {
-    router.push({
-      pathname: '/bible',
-      params: { view: 'chapters', version, bilingual: isBilingual ? '1' : '0', testament, bookId: String(book.id) },
-    });
+    const next: BibleNav = { view: 'chapters', version, bilingual: isBilingual, testament, bookId: String(book.id) };
+    if (Platform.OS === 'web') {
+      window.history.pushState({ tghBible: true }, '', buildBibleUrl(next));
+      setWebNav(next);
+    } else {
+      router.push({
+        pathname: '/bible',
+        params: { view: 'chapters', version, bilingual: isBilingual ? '1' : '0', testament, bookId: String(book.id) },
+      });
+    }
   };
 
   const openChapter = (book: any, chapter: number) => {
@@ -213,7 +310,7 @@ export default function BibleScreen() {
     return (
       <View style={[styles.container, { backgroundColor: c.bg }]}>
         <View style={[styles.header, { backgroundColor: c.headerBg, paddingRight: 16 + insets.right, paddingTop: insets.top + 12 }]}>
-          <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
+          <TouchableOpacity onPress={() => goBack()} style={styles.backBtn}>
             <Ionicons name="arrow-back" size={22} color={c.text} />
           </TouchableOpacity>
           <View style={{ flex: 1 }}>
@@ -261,7 +358,7 @@ export default function BibleScreen() {
     return (
       <View style={[styles.container, { backgroundColor: c.bg }]}>
         <View style={[styles.header, { backgroundColor: c.headerBg, paddingRight: 16 + insets.right, paddingTop: insets.top + 12 }]}>
-          <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
+          <TouchableOpacity onPress={() => goBack()} style={styles.backBtn}>
             <Ionicons name="arrow-back" size={22} color={c.text} />
           </TouchableOpacity>
           <View style={{ flex: 1 }}>

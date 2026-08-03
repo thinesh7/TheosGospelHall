@@ -1,11 +1,11 @@
 import { forwardRef, useImperativeHandle, useState } from 'react';
 import {
   ActivityIndicator,
-  Alert,
   ScrollView,
   StyleSheet,
   TouchableOpacity,
 } from 'react-native';
+import { useAppDialog } from '../AppDialog';
 import { Text } from '../AppText';
 import { TextInput } from '../AppTextInput';
 import { sendPushNotificationToAll } from '../../utils/pushNotify';
@@ -14,6 +14,7 @@ import { AdminScreenHandle } from './SpecialMeetingsAdmin';
 
 const NotificationsAdmin = forwardRef<AdminScreenHandle, {}>((_props, ref) => {
   const { colors } = useTheme();
+  const dialog = useAppDialog();
   const [message, setMessage] = useState('');
   const [sending, setSending] = useState(false);
 
@@ -24,11 +25,11 @@ const NotificationsAdmin = forwardRef<AdminScreenHandle, {}>((_props, ref) => {
   const handleSend = () => {
     const trimmed = message.trim();
     if (!trimmed) {
-      Alert.alert('Required', 'Please enter a notification message.');
+      dialog.alert('Required', 'Please enter a notification message.');
       return;
     }
 
-    Alert.alert(
+    dialog.alert(
       'Send Notification',
       'This message will be sent to all app users. Continue?',
       [
@@ -44,15 +45,15 @@ const NotificationsAdmin = forwardRef<AdminScreenHandle, {}>((_props, ref) => {
       const result = await sendPushNotificationToAll('📢 Theos Gospel Hall', body);
       setMessage('');
       if (result.failedCount > 0) {
-        Alert.alert(
+        dialog.alert(
           'Partially Sent',
           `✅ ${result.successCount} delivered\n❌ ${result.failedCount} failed\n\nCheck Firebase → notificationLogs for details.`
         );
       } else {
-        Alert.alert('✅ Sent!', `Notification delivered to ${result.successCount} device${result.successCount === 1 ? '' : 's'}.`);
+        dialog.alert('✅ Sent!', `Notification delivered to ${result.successCount} device${result.successCount === 1 ? '' : 's'}.`);
       }
     } catch (e: any) {
-      Alert.alert('Error', e?.message || 'Could not send notification. Please try again.');
+      dialog.alert('Error', e?.message || 'Could not send notification. Please try again.');
     }
     setSending(false);
   };

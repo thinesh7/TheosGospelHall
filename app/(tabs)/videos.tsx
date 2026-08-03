@@ -682,15 +682,27 @@ function VideoModal({ visible, videoId, title, isLive, onClose, onPrev, onNext, 
   const { isMobile, isTabletUp } = useBreakpoint();
   const insets = useSafeAreaInsets();
   // Fullscreen-landscape treatment (hides title/actions, fills the screen
-  // edge-to-edge) is meant for a phone rotated sideways — gated to mobile so
-  // a desktop/tablet browser window (which is always wider than tall) isn't
-  // mistaken for that case, which previously made the player try to render
-  // wider than the viewport itself (height * 16/9 exceeding window width).
-  const isLandscape = isMobile && width > height;
+  // edge-to-edge) is meant for a device rotated sideways. On web, a browser
+  // window is always wider than tall regardless of orientation, so a
+  // desktop/tablet *browser tab* being wide must not be mistaken for a
+  // rotated phone — gated to mobile web there. On native, width>height is
+  // an unambiguous real device rotation (there's no "wide window" case to
+  // guard against), so every native device — including tablets — keeps
+  // main's original behavior of going fullscreen in landscape.
+  const isLandscape = (Platform.OS !== 'web' || isMobile) && width > height;
   const [playerReady, setPlayerReady] = useState(false);
   const [isInFullscreen, setIsInFullscreen] = useState(false);
   const [playing, setPlaying] = useState(false);
   const [showResume, setShowResume] = useState(false);
+  // Muted until a pending resume decision is settled. seekTo() on a freshly-
+  // ready player starts it playing as a side effect (see handleReady below),
+  // independent of the play/pause state — on native, react-native-youtube-
+  // iframe exposes no imperative pauseVideo(), so pausing after the fact
+  // can't win that race reliably. Baking `mute` into the *initial* embed
+  // params (below) instead means the iframe never has a chance to be
+  // audible in the first place, regardless of that race — the reactive
+  // `mute` prop then just has to unmute once the user actually resumes.
+  const [videoMuted, setVideoMuted] = useState(false);
   const [progressLoaded, setProgressLoaded] = useState(false);
   const [loadError, setLoadError] = useState(false);
   const [locked, setLocked] = useState(false);
@@ -714,12 +726,18 @@ function VideoModal({ visible, videoId, title, isLive, onClose, onPrev, onNext, 
   const switchingVideoRef = useRef(false);
   const switchGuardTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const fsOverlayOpacity = useRef(new Animated.Value(0)).current;
-  // Horizontal slide-in for song-to-song navigation only (see the
-  // hasSongNav-gated effect below) — set right before calling the real
-  // onNext/onPrev so the content effect knows which side to slide in from.
-  // null on the modal's initial open, which correctly skips the animation.
+  // Slide-in for song-to-song navigation only (see the hasSongNav-gated
+  // effect below) — set right before calling the real onNext/onPrev so the
+  // content effect knows which axis/side to slide in from. null on the
+  // modal's initial open, which correctly skips the animation. Two axes:
+  // horizontal for the desktop Prev/Next buttons and left/right swipes,
+  // vertical for up/down swipes — the vertical swipe restores the original
+  // feed's up-for-next browsing gesture (Songs used to be a vertically
+  // paged, TikTok/Reels-style feed) on top of today's single-player modal.
   const songSlideX = useRef(new Animated.Value(0)).current;
+  const songSlideY = useRef(new Animated.Value(0)).current;
   const songNavDirectionRef = useRef<'next' | 'prev' | null>(null);
+  const songNavAxisRef = useRef<'x' | 'y'>('x');
 
   // Refs so the PanResponder (created once) and the 'ended' handler always
   // see the latest nav props without needing to be in their dependency arrays.
@@ -735,25 +753,38 @@ function VideoModal({ visible, videoId, title, isLive, onClose, onPrev, onNext, 
   hasNextRef.current = hasNext;
   const hasSongNav = !!(onPrev || onNext);
   const handleSongPrev = useCallback(() => {
+    songNavAxisRef.current = 'x';
     songNavDirectionRef.current = 'prev';
     onPrevRef.current?.();
   }, []);
   const handleSongNext = useCallback(() => {
+    songNavAxisRef.current = 'x';
     songNavDirectionRef.current = 'next';
     onNextRef.current?.();
   }, []);
 
-  // Horizontal swipe to move between songs — mirrors the desktop Prev/Next
-  // buttons' left/right convention. Inactive (never claims the gesture)
+  // Swipe to move between songs — recognizes both the desktop Prev/Next
+  // buttons' left/right convention *and* a vertical swipe (up = next, down
+  // = previous), matching the original vertically-paged Songs feed's
+  // gesture so it still feels like swiping through a feed even though only
+  // one song is mounted at a time now. Inactive (never claims the gesture)
   // when this modal isn't in Songs nav mode, so plain Videos playback is
   // unaffected.
   const navPanResponder = useRef(
     PanResponder.create({
-      onMoveShouldSetPanResponder: (_, g) =>
-        Math.abs(g.dx) > 60 && Math.abs(g.dy) < 30 && Math.abs(g.dx) > Math.abs(g.dy) * 2,
+      onMoveShouldSetPanResponder: (_, g) => {
+        const horizontal = Math.abs(g.dx) > 60 && Math.abs(g.dy) < 30 && Math.abs(g.dx) > Math.abs(g.dy) * 2;
+        const vertical = Math.abs(g.dy) > 60 && Math.abs(g.dx) < 30 && Math.abs(g.dy) > Math.abs(g.dx) * 2;
+        return horizontal || vertical;
+      },
       onPanResponderRelease: (_, g) => {
-        if (g.dx < -80 && hasNextRef.current) { songNavDirectionRef.current = 'next'; onNextRef.current?.(); }
-        else if (g.dx > 80 && hasPrevRef.current) { songNavDirectionRef.current = 'prev'; onPrevRef.current?.(); }
+        if (Math.abs(g.dx) >= Math.abs(g.dy)) {
+          if (g.dx < -80 && hasNextRef.current) { songNavAxisRef.current = 'x'; songNavDirectionRef.current = 'next'; onNextRef.current?.(); }
+          else if (g.dx > 80 && hasPrevRef.current) { songNavAxisRef.current = 'x'; songNavDirectionRef.current = 'prev'; onPrevRef.current?.(); }
+        } else {
+          if (g.dy < -80 && hasNextRef.current) { songNavAxisRef.current = 'y'; songNavDirectionRef.current = 'next'; onNextRef.current?.(); }
+          else if (g.dy > 80 && hasPrevRef.current) { songNavAxisRef.current = 'y'; songNavDirectionRef.current = 'prev'; onPrevRef.current?.(); }
+        }
       },
     })
   ).current;
@@ -773,6 +804,7 @@ function VideoModal({ visible, videoId, title, isLive, onClose, onPrev, onNext, 
       setIsInFullscreen(false);
       setPlaying(false);
       setShowResume(false);
+      setVideoMuted(false);
       setLocked(false);
       setProgressLoaded(false);
       setLoadError(false);
@@ -821,6 +853,10 @@ function VideoModal({ visible, videoId, title, isLive, onClose, onPrev, onNext, 
       if (!mountedRef.current) return;
       resumePositionRef.current = progress ? progress.position : 0;
       if (progress) durationRef.current = progress.duration;
+      // Settled before progressLoaded flips (which is what actually mounts
+      // the player below), so the very first render of <YoutubePlayer> for
+      // this video already has the right initialPlayerParams.mute baked in.
+      setVideoMuted(resumePositionRef.current > 0);
       setProgressLoaded(true);
       armLoadTimeout();
     });
@@ -856,10 +892,15 @@ function VideoModal({ visible, videoId, title, isLive, onClose, onPrev, onNext, 
       // player that hasn't explicitly been paused yet (still "unstarted"/
       // "cued" right after onReady, which is exactly when this runs) starts
       // playback as a side effect of the seek itself — independent of our
-      // own play/pause state or the autoplay setting. Explicitly pausing
-      // right after is what actually stops it; setPlaying(false) alone only
-      // kept our own state from drifting; it didn't tell the real player to
-      // pause.
+      // own play/pause state or the autoplay setting. pauseVideo() (below)
+      // asks the player to stop, and works on web, but
+      // react-native-youtube-iframe exposes no such imperative method on
+      // native (it's a no-op there via optional chaining), so it can't be
+      // relied on to win that race on Android/iOS. `videoMuted` is what
+      // actually keeps native silent: it was baked into this player's
+      // *initial* embed params back when progressLoaded flipped (see the
+      // getVideoProgress effect above), before this seekTo — and therefore
+      // before any of this — could ever run.
       playerRef.current?.pauseVideo?.();
       setPlaying(false);
       setShowResume(true);
@@ -872,6 +913,7 @@ function VideoModal({ visible, videoId, title, isLive, onClose, onPrev, onNext, 
   const handleResume = useCallback(() => {
     setShowResume(false);
     setPlaying(true);
+    setVideoMuted(false);
   }, []);
 
   const handleStartOver = useCallback(() => {
@@ -880,6 +922,7 @@ function VideoModal({ visible, videoId, title, isLive, onClose, onPrev, onNext, 
     resumePositionRef.current = 0;
     playerRef.current?.seekTo(0, true);
     setPlaying(true);
+    setVideoMuted(false);
   }, [videoId]);
 
   const onChangeState = useCallback((state: string) => {
@@ -969,10 +1012,12 @@ function VideoModal({ visible, videoId, title, isLive, onClose, onPrev, onNext, 
   useEffect(() => {
     if (!hasSongNav) return;
     const direction = songNavDirectionRef.current;
+    const axis = songNavAxisRef.current;
     songNavDirectionRef.current = null;
     if (!direction) return;
-    songSlideX.setValue(direction === 'next' ? 48 : -48);
-    Animated.timing(songSlideX, { toValue: 0, duration: 260, easing: Easing.out(Easing.cubic), useNativeDriver: true }).start();
+    const anim = axis === 'y' ? songSlideY : songSlideX;
+    anim.setValue(direction === 'next' ? 48 : -48);
+    Animated.timing(anim, { toValue: 0, duration: 260, easing: Easing.out(Easing.cubic), useNativeDriver: true }).start();
   }, [videoId, hasSongNav]);
 
   return (
@@ -1007,7 +1052,7 @@ function VideoModal({ visible, videoId, title, isLive, onClose, onPrev, onNext, 
             }
           </View>
         )}
-        <Animated.View style={{ transform: [{ translateX: songSlideX }] }}>
+        <Animated.View style={{ transform: [{ translateX: songSlideX }, { translateY: songSlideY }] }}>
           {(() => {
             // Math.min caps the player at CONTENT_MAX_WIDTH on tablet/desktop
             // (a no-op on mobile, where width is already well under that cap)
@@ -1034,6 +1079,14 @@ function VideoModal({ visible, videoId, title, isLive, onClose, onPrev, onNext, 
                   width={videoW}
                   videoId={videoId || ''}
                   play={playing}
+                  // Songs have always played muted by design (no unmute
+                  // affordance exists) — forced here rather than only via
+                  // initialPlayerParams below so it also survives Prev/Next
+                  // swapping to a different song while this same player
+                  // instance stays mounted. `videoMuted` layers the separate,
+                  // resume-prompt-only mute on top for plain Videos (see the
+                  // getVideoProgress effect and handleReady above).
+                  mute={hasSongNav || videoMuted}
                   forceAndroidAutoplay={true}
                   onReady={handleReady}
                   onChangeState={onChangeState}
@@ -1046,7 +1099,7 @@ function VideoModal({ visible, videoId, title, isLive, onClose, onPrev, onNext, 
                   // validation requires, that a locally-embedded page
                   // doesn't have. Back to the default (remote) loading.
                   webViewProps={{ allowsInlineMediaPlayback: true, mediaPlaybackRequiresUserAction: false, allowsFullscreenVideo: true, injectedJavaScript: YOUTUBE_FORCE_RESIZE_JS }}
-                  initialPlayerParams={{ rel: 0, modestbranding: 1, controls: 1, playsinline: 1 }}
+                  initialPlayerParams={{ rel: 0, modestbranding: 1, controls: 1, playsinline: 1, mute: (hasSongNav || resumePositionRef.current > 0) ? 1 : 0 }}
                 />
                 {showResume && videoId && (
                   <Image
@@ -1633,6 +1686,40 @@ function VideosScreenContent({ autoPlayLive, onAutoPlayLiveConsumed, isActive }:
     setSongAutoAdvance(false);
   };
 
+  // On native, RN's Modal wires the hardware back button to onRequestClose
+  // automatically. On web there's no such wiring — a video opening never
+  // touched browser history, so pressing the browser Back button while a
+  // video was open just fell through to whatever the surrounding page
+  // history dictated instead of closing the video. Pushing one history
+  // entry while the modal is open (and popping it again however it closes)
+  // gives web the same "Back closes the video" behavior, mirroring how
+  // song-reader/bible-reader already push their own entries for in-app nav.
+  const videoHistoryPushedRef = useRef(false);
+  const videoClosingViaPopRef = useRef(false);
+  useEffect(() => {
+    if (Platform.OS !== 'web') return;
+    const onPopState = () => {
+      if (videoHistoryPushedRef.current) {
+        videoHistoryPushedRef.current = false;
+        videoClosingViaPopRef.current = true;
+        closeVideo();
+      }
+    };
+    window.addEventListener('popstate', onPopState);
+    return () => window.removeEventListener('popstate', onPopState);
+  }, []);
+  useEffect(() => {
+    if (Platform.OS !== 'web') return;
+    if (videoModalVisible && !videoHistoryPushedRef.current) {
+      window.history.pushState({ tghVideoModal: true }, '');
+      videoHistoryPushedRef.current = true;
+    } else if (!videoModalVisible && videoHistoryPushedRef.current) {
+      videoHistoryPushedRef.current = false;
+      if (!videoClosingViaPopRef.current) window.history.back();
+      videoClosingViaPopRef.current = false;
+    }
+  }, [videoModalVisible]);
+
   // On desktop web, switching tabs just toggles this whole screen's
   // container to display:none — it stays mounted, so an open video's
   // iframe would otherwise keep playing invisibly in the background. Only
@@ -1698,8 +1785,8 @@ function VideosScreenContent({ autoPlayLive, onAutoPlayLiveConsumed, isActive }:
   const fetchShorts = async (pageToken = '', forceLoad = false) => {
     try {
       if (!pageToken || forceLoad) { setLoadingShorts(true); setShortsError(false); setShortsLoaded(false); setQuotaExhausted(false); } else setLoadingMoreShorts(true);
-      const data = await ytFetch('playlistItems', { playlistId: SHORTS_PLAYLIST_ID, part: 'snippet', maxResults: '50', ...(pageToken ? { pageToken } : {}) });
-      const enriched = await enrichDates(mapItems(data.items || []));
+      const data = await ytFetch('playlistItems', { playlistId: SHORTS_PLAYLIST_ID, part: 'snippet', maxResults: '50', ...(pageToken ? { pageToken } : {}) }, forceLoad ? 0 : undefined);
+      const enriched = await enrichDates(mapItems(data.items || []), forceLoad ? 0 : undefined);
       if (pageToken) {
         setShorts(prev => { const s = new Set(prev.map((v: any) => v.snippet.resourceId.videoId)); return [...prev, ...enriched.filter((v: any) => !s.has(v.snippet.resourceId.videoId))]; });
       } else { setShorts(dedupeById(enriched)); }
@@ -1714,8 +1801,8 @@ function VideosScreenContent({ autoPlayLive, onAutoPlayLiveConsumed, isActive }:
   const fetchVideos = async (pageToken = '', forceLoad = false) => {
     try {
       if (!pageToken || forceLoad) { setLoadingVideos(true); setVideosError(false); setVideosLoaded(false); setQuotaExhausted(false); } else setLoadingMoreVideos(true);
-      const data = await ytFetch('playlistItems', { playlistId: VIDEOS_PLAYLIST_ID, part: 'snippet', maxResults: '50', ...(pageToken ? { pageToken } : {}) });
-      const enriched = (await enrichDates(mapItems(data.items || []))).sort(byDateDesc);
+      const data = await ytFetch('playlistItems', { playlistId: VIDEOS_PLAYLIST_ID, part: 'snippet', maxResults: '50', ...(pageToken ? { pageToken } : {}) }, forceLoad ? 0 : undefined);
+      const enriched = (await enrichDates(mapItems(data.items || []), forceLoad ? 0 : undefined)).sort(byDateDesc);
       if (pageToken) {
         setVideos(prev => { const s = new Set(prev.map((v: any) => v.snippet.resourceId.videoId)); return [...prev, ...enriched.filter((v: any) => !s.has(v.snippet.resourceId.videoId))].sort(byDateDesc); });
       } else { setVideos(dedupeById(enriched)); }
@@ -1730,8 +1817,8 @@ function VideosScreenContent({ autoPlayLive, onAutoPlayLiveConsumed, isActive }:
   const fetchSongs = async (pageToken = '', forceLoad = false) => {
     try {
       if (!pageToken || forceLoad) { setLoadingSongs(true); setSongsError(false); setSongsLoaded(false); setQuotaExhausted(false); } else setLoadingMoreSongs(true);
-      const data = await ytFetch('playlistItems', { playlistId: SONGS_PLAYLIST_ID, part: 'snippet', maxResults: '50', ...(pageToken ? { pageToken } : {}) });
-      const enriched = await enrichDates(mapItems(data.items || []));
+      const data = await ytFetch('playlistItems', { playlistId: SONGS_PLAYLIST_ID, part: 'snippet', maxResults: '50', ...(pageToken ? { pageToken } : {}) }, forceLoad ? 0 : undefined);
+      const enriched = await enrichDates(mapItems(data.items || []), forceLoad ? 0 : undefined);
       if (pageToken) {
         setSongs(prev => { const s = new Set(prev.map((v: any) => v.snippet.resourceId.videoId)); return [...prev, ...enriched.filter((v: any) => !s.has(v.snippet.resourceId.videoId))]; });
       } else { setSongs(dedupeById(enriched)); }
@@ -1743,12 +1830,12 @@ function VideosScreenContent({ autoPlayLive, onAutoPlayLiveConsumed, isActive }:
     } finally { setLoadingSongs(false); setLoadingMoreSongs(false); }
   };
 
-  const loadLiveAndFetch = async () => {
+  const loadLiveAndFetch = async (force = false) => {
     const cached = await getCachedLivePlaylists();
     let ids = cached.filter(p => p.isActive).map(p => p.playlistId);
     if (!ids.length) ids = FALLBACK_LIVE_IDS;
     setLiveIds(ids);
-    fetchLive(false, ids);
+    fetchLive(false, ids, force);
     const fresh = await syncLivePlaylists();
     let freshIds = fresh.filter(p => p.isActive).map(p => p.playlistId);
     if (!freshIds.length) freshIds = FALLBACK_LIVE_IDS;
@@ -1756,23 +1843,24 @@ function VideosScreenContent({ autoPlayLive, onAutoPlayLiveConsumed, isActive }:
     setLiveIds(freshIds);
     if (idsChanged) {
       setLiveNextTokens({});
-      fetchLive(false, freshIds);
+      fetchLive(false, freshIds, force);
     }
   };
 
-  const fetchLive = async (loadMore: boolean, idsOverride?: string[]) => {
+  const fetchLive = async (loadMore: boolean, idsOverride?: string[], force = false) => {
     try {
       if (!loadMore) { setLoadingLive(true); setLiveError(false); setQuotaExhausted(false); } else setLoadingMoreLive(true);
       const ids = idsOverride || liveIds;
       const toFetch = loadMore ? ids.filter(id => liveNextTokens[id]) : ids;
       if (!toFetch.length) return;
+      const ttl = force ? 0 : LIVE_STATUS_CACHE_TTL_MS;
       const results = await Promise.all(toFetch.map(async id => {
         const data = await ytFetch(
           'playlistItems',
           { playlistId: id, part: 'snippet', maxResults: '50', ...(loadMore && liveNextTokens[id] ? { pageToken: liveNextTokens[id] } : {}) },
-          LIVE_STATUS_CACHE_TTL_MS
+          ttl
         );
-        const enriched = await enrichDates(mapItems(data.items || []), LIVE_STATUS_CACHE_TTL_MS);
+        const enriched = await enrichDates(mapItems(data.items || []), ttl);
         return { items: enriched, nextPageToken: data.nextPageToken || '' };
       }));
       const newTokens = { ...liveNextTokens };
@@ -1792,8 +1880,8 @@ function VideosScreenContent({ autoPlayLive, onAutoPlayLiveConsumed, isActive }:
   const fetchAll = async (pageToken = '', forceLoad = false) => {
     try {
       if (!pageToken || forceLoad) { setLoadingAll(true); setAllError(false); setAllLoaded(false); setQuotaExhausted(false); } else setLoadingMoreAll(true);
-      const data = await ytFetch('playlistItems', { playlistId: UPLOADS_PLAYLIST_ID, part: 'snippet', maxResults: '50', ...(pageToken ? { pageToken } : {}) });
-      const enriched = (await enrichDates(mapItems(data.items || []))).sort(byDateDesc);
+      const data = await ytFetch('playlistItems', { playlistId: UPLOADS_PLAYLIST_ID, part: 'snippet', maxResults: '50', ...(pageToken ? { pageToken } : {}) }, forceLoad ? 0 : undefined);
+      const enriched = (await enrichDates(mapItems(data.items || []), forceLoad ? 0 : undefined)).sort(byDateDesc);
       if (pageToken) {
         setAllVideos(prev => { const s = new Set(prev.map((v: any) => v.snippet.resourceId.videoId)); return [...prev, ...enriched.filter((v: any) => !s.has(v.snippet.resourceId.videoId))].sort(byDateDesc); });
       } else { setAllVideos(dedupeById(enriched)); }
@@ -1808,7 +1896,7 @@ function VideosScreenContent({ autoPlayLive, onAutoPlayLiveConsumed, isActive }:
   const fetchCategories = async (pageToken = '', forceLoad = false) => {
     try {
       if (!pageToken || forceLoad) { setLoadingCategories(true); setCategoriesError(false); setCategoriesLoaded(false); setQuotaExhausted(false); } else setLoadingMoreCategories(true);
-      const data = await ytFetch('playlists', { channelId: CHANNEL_ID, part: 'snippet,contentDetails', maxResults: '50', ...(pageToken ? { pageToken } : {}) });
+      const data = await ytFetch('playlists', { channelId: CHANNEL_ID, part: 'snippet,contentDetails', maxResults: '50', ...(pageToken ? { pageToken } : {}) }, forceLoad ? 0 : undefined);
       const mapped = (data.items || [])
         .filter((p: any) => p?.id && p?.snippet?.title && p?.snippet?.thumbnails)
         .map((p: any) => ({
@@ -1831,8 +1919,8 @@ function VideosScreenContent({ autoPlayLive, onAutoPlayLiveConsumed, isActive }:
   const fetchCategoryVideos = async (playlistId: string, pageToken = '', forceLoad = false) => {
     try {
       if (!pageToken || forceLoad) { setLoadingCategoryVideos(true); setCategoryVideosError(false); setCategoryVideosLoaded(false); setQuotaExhausted(false); } else setLoadingMoreCategoryVideos(true);
-      const data = await ytFetch('playlistItems', { playlistId, part: 'snippet', maxResults: '50', ...(pageToken ? { pageToken } : {}) });
-      const enriched = (await enrichDates(mapItems(data.items || []))).sort(byDateDesc);
+      const data = await ytFetch('playlistItems', { playlistId, part: 'snippet', maxResults: '50', ...(pageToken ? { pageToken } : {}) }, forceLoad ? 0 : undefined);
+      const enriched = (await enrichDates(mapItems(data.items || []), forceLoad ? 0 : undefined)).sort(byDateDesc);
       let finalVideos: any[];
       if (pageToken) {
         const prev = categoryVideosCacheRef.current[playlistId]?.videos || [];
@@ -2095,7 +2183,12 @@ function VideosScreenContent({ autoPlayLive, onAutoPlayLiveConsumed, isActive }:
     const isUpcoming = !!item?.snippet?.isUpcoming;
     if (!videoId || !thumb) return null;
     // enrichDates() already computed isLiveNow for this exact item when the
-    // list loaded — no need to re-check with another YouTube API call.
+    // list loaded, and the Live tab refreshes that on a short (60s) TTL —
+    // deliberately trusted as-is rather than re-checking with another
+    // uncached YouTube API call on every single tap (that would cost one
+    // extra request per tap, forever, with no way to cache it away — not
+    // worth spending quota on tightening an already-60s-bounded staleness
+    // window further).
     const handlePress = () => {
       openVideo(videoId, title, !!item?.snippet?.isLiveNow);
     };
@@ -2155,13 +2248,13 @@ function VideosScreenContent({ autoPlayLive, onAutoPlayLiveConsumed, isActive }:
   const retryAfterQuotaExhausted = () => {
     setQuotaExhausted(false);
     if (isSearching) { doSearch(search); return; }
-    if (activeTab === 'shorts') { setShortsLoaded(false); fetchShorts(); }
-    else if (activeTab === 'videos') { setVideosLoaded(false); fetchVideos(); }
-    else if (activeTab === 'songs') { setSongsLoaded(false); fetchSongs(); }
-    else if (activeTab === 'live') { setLiveLoaded(false); loadLiveAndFetch(); }
+    if (activeTab === 'shorts') { setShortsLoaded(false); fetchShorts('', true); }
+    else if (activeTab === 'videos') { setVideosLoaded(false); fetchVideos('', true); }
+    else if (activeTab === 'songs') { setSongsLoaded(false); fetchSongs('', true); }
+    else if (activeTab === 'live') { setLiveLoaded(false); loadLiveAndFetch(true); }
     else if (activeTab === 'categories' && selectedCategory) { setCategoryVideosLoaded(false); fetchCategoryVideos(selectedCategory.id, '', true); }
-    else if (activeTab === 'categories') { setCategoriesLoaded(false); fetchCategories(); }
-    else if (activeTab === 'all') { setAllLoaded(false); fetchAll(); }
+    else if (activeTab === 'categories') { setCategoriesLoaded(false); fetchCategories('', true); }
+    else if (activeTab === 'all') { setAllLoaded(false); fetchAll('', true); }
   };
 
   const TABS: { key: Tab; label: string; icon: string }[] = [
@@ -2329,31 +2422,31 @@ function VideosScreenContent({ autoPlayLive, onAutoPlayLiveConsumed, isActive }:
 
       {!isSearching && activeTab === 'shorts' && (
         loadingShorts ? <TabLoadingState tab="shorts" />
-        : shortsError ? <VideoErrorState onRetry={() => { setShortsLoaded(false); fetchShorts(); }} />
+        : shortsError ? <VideoErrorState onRetry={() => { setShortsLoaded(false); fetchShorts('', true); }} />
         : <FlatList key={`shorts-grid-${shortsNumColumns}`} data={padGridRow(shorts, shortsNumColumns)} keyExtractor={(i, idx) => isGridFiller(i) ? `filler-${idx}` : i.snippet.resourceId.videoId} refreshing={loadingShorts} onRefresh={() => fetchShorts('', true)} renderItem={({ item, index }) => isGridFiller(item) ? <View style={styles.gridFillerCell} /> : <ShortCard item={item} index={index} />} numColumns={shortsNumColumns} contentContainerStyle={styles.list} columnWrapperStyle={styles.shortsColumnWrapper} ListEmptyComponent={<Text style={[styles.empty, { color: colors.subtext }]}>No shorts found</Text>} ListFooterComponent={<LoadMore token={shortsNextToken} loading={loadingMoreShorts} onPress={() => fetchShorts(shortsNextToken)} />} />
       )}
 
       {!isSearching && activeTab === 'videos' && (
         loadingVideos ? <TabLoadingState tab="videos" />
-        : videosError ? <VideoErrorState onRetry={() => { setVideosLoaded(false); fetchVideos(); }} />
+        : videosError ? <VideoErrorState onRetry={() => { setVideosLoaded(false); fetchVideos('', true); }} />
         : <FlatList key={gridKey} {...gridColumnProps} data={padGridRow(videos, numColumns)} keyExtractor={(i, idx) => isGridFiller(i) ? `filler-${idx}` : i.snippet.resourceId.videoId} refreshing={loadingVideos} onRefresh={() => fetchVideos('', true)} renderItem={({ item }) => isGridFiller(item) ? <View style={styles.gridFillerCell} /> : <VideoCard item={item} />} contentContainerStyle={styles.list} ListEmptyComponent={<Text style={[styles.empty, { color: colors.subtext }]}>No videos found</Text>} ListFooterComponent={<LoadMore token={videosNextToken} loading={loadingMoreVideos} onPress={() => fetchVideos(videosNextToken)} />} />
       )}
 
       {!isSearching && activeTab === 'songs' && (
         loadingSongs ? <TabLoadingState tab="songs" />
-        : songsError ? <VideoErrorState onRetry={() => { setSongsLoaded(false); fetchSongs(); }} />
+        : songsError ? <VideoErrorState onRetry={() => { setSongsLoaded(false); fetchSongs('', true); }} />
         : <FlatList key={gridKey} {...gridColumnProps} data={padGridRow(songs, numColumns)} keyExtractor={(i, idx) => isGridFiller(i) ? `filler-${idx}` : i.snippet.resourceId.videoId} refreshing={loadingSongs} onRefresh={() => fetchSongs('', true)} renderItem={({ item, index }) => isGridFiller(item) ? <View style={styles.gridFillerCell} /> : <SongCard item={item} index={index} />} contentContainerStyle={styles.list} ListEmptyComponent={<Text style={[styles.empty, { color: colors.subtext }]}>No songs found</Text>} ListFooterComponent={<LoadMore token={songsNextToken} loading={loadingMoreSongs} onPress={() => fetchSongs(songsNextToken)} />} />
       )}
 
       {!isSearching && activeTab === 'live' && (
         loadingLive ? <TabLoadingState tab="live" />
-        : liveError ? <VideoErrorState onRetry={() => { setLiveLoaded(false); loadLiveAndFetch(); }} />
-        : <FlatList key={gridKey} {...gridColumnProps} data={padGridRow(liveVideos, numColumns)} keyExtractor={(i, idx) => isGridFiller(i) ? `filler-${idx}` : i.snippet.resourceId.videoId} refreshing={loadingLive} onRefresh={() => loadLiveAndFetch()} renderItem={({ item }) => isGridFiller(item) ? <View style={styles.gridFillerCell} /> : <LiveCard item={item} />} contentContainerStyle={styles.list} ListEmptyComponent={<Text style={[styles.empty, { color: colors.subtext }]}>No live streams found</Text>} ListFooterComponent={hasMoreLive ? <TouchableOpacity style={[styles.loadMore, { backgroundColor: colors.accent }]} onPress={() => fetchLive(true)}>{loadingMoreLive ? <ActivityIndicator color="#fff" /> : <Text style={styles.loadMoreText}>Load More</Text>}</TouchableOpacity> : null} />
+        : liveError ? <VideoErrorState onRetry={() => { setLiveLoaded(false); loadLiveAndFetch(true); }} />
+        : <FlatList key={gridKey} {...gridColumnProps} data={padGridRow(liveVideos, numColumns)} keyExtractor={(i, idx) => isGridFiller(i) ? `filler-${idx}` : i.snippet.resourceId.videoId} refreshing={loadingLive} onRefresh={() => loadLiveAndFetch(true)} renderItem={({ item }) => isGridFiller(item) ? <View style={styles.gridFillerCell} /> : <LiveCard item={item} />} contentContainerStyle={styles.list} ListEmptyComponent={<Text style={[styles.empty, { color: colors.subtext }]}>No live streams found</Text>} ListFooterComponent={hasMoreLive ? <TouchableOpacity style={[styles.loadMore, { backgroundColor: colors.accent }]} onPress={() => fetchLive(true)}>{loadingMoreLive ? <ActivityIndicator color="#fff" /> : <Text style={styles.loadMoreText}>Load More</Text>}</TouchableOpacity> : null} />
       )}
 
       {!isSearching && activeTab === 'categories' && !selectedCategory && (
         loadingCategories ? <TabLoadingState tab="categories" />
-        : categoriesError ? <VideoErrorState onRetry={() => { setCategoriesLoaded(false); fetchCategories(); }} />
+        : categoriesError ? <VideoErrorState onRetry={() => { setCategoriesLoaded(false); fetchCategories('', true); }} />
         : <FlatList key={gridKey} {...gridColumnProps} data={padGridRow(categories, numColumns)} keyExtractor={(i, idx) => isGridFiller(i) ? `filler-${idx}` : i.id} refreshing={loadingCategories} onRefresh={() => fetchCategories('', true)} renderItem={({ item }) => isGridFiller(item) ? <View style={styles.gridFillerCell} /> : <CategoryCard item={item} />} contentContainerStyle={styles.list} ListEmptyComponent={<Text style={[styles.empty, { color: colors.subtext }]}>No playlists found</Text>} ListFooterComponent={<LoadMore token={categoriesNextToken} loading={loadingMoreCategories} onPress={() => fetchCategories(categoriesNextToken)} />} />
       )}
 
@@ -2372,7 +2465,7 @@ function VideosScreenContent({ autoPlayLive, onAutoPlayLiveConsumed, isActive }:
 
       {!isSearching && activeTab === 'all' && (
         loadingAll ? <TabLoadingState tab="all" />
-        : allError ? <VideoErrorState onRetry={() => { setAllLoaded(false); fetchAll(); }} />
+        : allError ? <VideoErrorState onRetry={() => { setAllLoaded(false); fetchAll('', true); }} />
         : <FlatList key={gridKey} {...gridColumnProps} data={padGridRow(allVideos, numColumns)} keyExtractor={(i, idx) => isGridFiller(i) ? `filler-${idx}` : i.snippet.resourceId.videoId} refreshing={loadingAll} onRefresh={() => fetchAll('', true)} renderItem={({ item }) => isGridFiller(item) ? <View style={styles.gridFillerCell} /> : <VideoCard item={item} />} contentContainerStyle={styles.list} ListEmptyComponent={<Text style={[styles.empty, { color: colors.subtext }]}>No videos found</Text>} ListFooterComponent={<LoadMore token={allNextToken} loading={loadingMoreAll} onPress={() => fetchAll(allNextToken)} />} />
       )}
       </>

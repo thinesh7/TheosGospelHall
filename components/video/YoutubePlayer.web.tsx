@@ -47,6 +47,10 @@ interface YoutubePlayerProps {
   width: number;
   videoId: string;
   play?: boolean;
+  // Reactive mute/unmute after construction — e.g. unmuting once a user
+  // dismisses a resume prompt. initialPlayerParams.mute (below) only
+  // controls the muted state at construction time.
+  mute?: boolean;
   onReady?: () => void;
   onChangeState?: (state: string) => void;
   onFullScreenChange?: (isFullscreen: boolean) => void;
@@ -66,7 +70,7 @@ export interface YoutubePlayerHandle {
 }
 
 const YoutubePlayer = forwardRef<YoutubePlayerHandle, YoutubePlayerProps>(function YoutubePlayerWeb(
-  { height, width, videoId, play, onReady, onChangeState, onFullScreenChange, onError, initialPlayerParams },
+  { height, width, videoId, play, mute, onReady, onChangeState, onFullScreenChange, onError, initialPlayerParams },
   ref
 ) {
   const containerRef = useRef<HTMLDivElement | null>(null);
@@ -220,6 +224,18 @@ const YoutubePlayer = forwardRef<YoutubePlayerHandle, YoutubePlayerProps>(functi
       playerInstanceRef.current.pauseVideo?.();
     }
   }, [play]);
+
+  // Mirrors the play effect above for sound — e.g. VideoModal unmutes once
+  // the user dismisses a resume prompt, after construction already baked in
+  // initialPlayerParams.mute for the initial (possibly muted) load.
+  useEffect(() => {
+    if (!playerReadyRef.current || !playerInstanceRef.current) return;
+    if (mute) {
+      playerInstanceRef.current.mute?.();
+    } else {
+      playerInstanceRef.current.unMute?.();
+    }
+  }, [mute]);
 
   return <div ref={containerRef} style={{ width, height }} />;
 });

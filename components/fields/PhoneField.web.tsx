@@ -1,6 +1,7 @@
 import { useRef, useState } from 'react';
 import { StyleSheet, View } from 'react-native';
-import { getCountries, getCountryCallingCode } from 'libphonenumber-js/mobile';
+import { AsYouType, getCountries, getCountryCallingCode, isValidPhoneNumber, validatePhoneNumberLength } from 'libphonenumber-js/mobile';
+import { Ionicons } from '@expo/vector-icons';
 import { TextInput } from '@/components/AppTextInput';
 import { radii, spacing } from '@/constants/layout';
 import { useTheme } from '@/utils/ThemeContext';
@@ -36,12 +37,25 @@ export default function PhoneField({ formKey, defaultCountry = 'IN', onChange }:
     emit({ callingCode, formattedNumber: nationalNumber ? `+${callingCode}${nationalNumber}` : '' });
   };
 
-  const handleNumberChange = (digits: string) => {
-    const cleaned = digits.replace(/[^0-9]/g, '');
+  // Digits typed once past the longest plausible number for this country are
+  // dropped rather than accepted and only caught at "Continue" — mirrors the
+  // native widget's per-country length cap. Not applied until TOO_LONG
+  // specifically (not merely "not yet valid"), so a number that's still
+  // mid-typing is never truncated.
+  const handleNumberChange = (raw: string) => {
+    const cleaned = raw.replace(/[^0-9]/g, '');
+    if (cleaned && validatePhoneNumberLength(cleaned, countryCode as any) === 'TOO_LONG') return;
     setNationalNumber(cleaned);
     const callingCode = getCountryCallingCode(countryCode as any);
     emit({ nationalNumber: cleaned, formattedNumber: cleaned ? `+${callingCode}${cleaned}` : '' });
   };
+
+  // Live grouping (e.g. "98765 43210") via the same libphonenumber-js
+  // metadata already used for validation, purely a display concern —
+  // handleNumberChange above always strips back to raw digits regardless of
+  // what's shown here, so this never affects the value actually submitted.
+  const displayValue = nationalNumber ? new AsYouType(countryCode as any).input(nationalNumber) : '';
+  const isComplete = nationalNumber.length > 0 && isValidPhoneNumber(`+${getCountryCallingCode(countryCode as any)}${nationalNumber}`);
 
   return (
     <View key={formKey} style={[styles.container, { backgroundColor: colors.surfaceAlt, borderColor: colors.divider }]}>
@@ -65,10 +79,15 @@ export default function PhoneField({ formKey, defaultCountry = 'IN', onChange }:
         style={[styles.input, { color: colors.text }]}
         placeholder="Mobile number"
         placeholderTextColor={colors.subtext}
-        value={nationalNumber}
+        value={displayValue}
         onChangeText={handleNumberChange}
         keyboardType="number-pad"
       />
+      {isComplete && (
+        <View style={styles.validIcon}>
+          <Ionicons name="checkmark-circle" size={18} color={colors.accent} />
+        </View>
+      )}
     </View>
   );
 }
@@ -95,4 +114,5 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
   },
   input: { flex: 1, paddingHorizontal: spacing.md, fontSize: 15, height: '100%' },
+  validIcon: { paddingRight: spacing.md },
 });

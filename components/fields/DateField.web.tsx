@@ -1,4 +1,4 @@
-import { CSSProperties, useEffect, useRef, useState } from 'react';
+import { CSSProperties, KeyboardEvent as ReactKeyboardEvent, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { radii, spacing } from '@/constants/layout';
 import { useTheme } from '@/utils/ThemeContext';
@@ -61,9 +61,16 @@ export default function DateField({ value, onChange, minimumDate, maximumDate, d
   const [yearsPageStart, setYearsPageStart] = useState(() => Math.floor((value ?? defaultDate ?? new Date()).getFullYear() / YEARS_PER_PAGE) * YEARS_PER_PAGE);
   const [hoveredCell, setHoveredCell] = useState<number | null>(null);
   const [hoveredLabel, setHoveredLabel] = useState(false);
+  // Keyboard-focused day within the grid (WAI-ARIA "Date Picker Dialog"
+  // roving-tabindex pattern) — screen-reader/keyboard users previously had
+  // no way to reach an individual day at all besides a mouse click, since
+  // every cell was an unlabeled, equally-focusable button with no arrow-key
+  // navigation wired up.
+  const [focusedDayDate, setFocusedDayDate] = useState<Date>(() => value ?? defaultDate ?? new Date());
   const containerRef = useRef<HTMLDivElement>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
   const popupRef = useRef<HTMLDivElement>(null);
+  const dayButtonRefs = useRef<Map<string, HTMLButtonElement>>(new Map());
 
   useEffect(() => {
     if (!isOpen) return;
@@ -72,6 +79,7 @@ export default function DateField({ value, onChange, minimumDate, maximumDate, d
     // last left after a previous open/navigate.
     const resolvedViewDate = value ?? defaultDate ?? new Date();
     setViewDate(resolvedViewDate);
+    setFocusedDayDate(resolvedViewDate);
     setPickerView('days');
     setYearsPageStart(Math.floor(resolvedViewDate.getFullYear() / YEARS_PER_PAGE) * YEARS_PER_PAGE);
     setIsEntered(false);
@@ -112,6 +120,15 @@ export default function DateField({ value, onChange, minimumDate, maximumDate, d
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen]);
+
+  // Moves real DOM focus onto whichever day cell is logically "focused" —
+  // covers the popover's initial open, arrow-key moves, and month/year
+  // navigation all landing keyboard focus on a sensible cell rather than
+  // leaving it stranded on a header button or nowhere at all.
+  useEffect(() => {
+    if (!isOpen || pickerView !== 'days') return;
+    dayButtonRefs.current.get(startOfDay(focusedDayDate).toDateString())?.focus();
+  }, [isOpen, pickerView, focusedDayDate, viewDate]);
 
   const min = minimumDate ? startOfDay(minimumDate) : null;
   const max = maximumDate ? startOfDay(maximumDate) : null;
@@ -182,6 +199,36 @@ export default function DateField({ value, onChange, minimumDate, maximumDate, d
     setIsOpen(false);
   };
 
+  // WAI-ARIA "Date Picker Dialog" grid keyboard convention: arrow keys move
+  // by day/week, Home/End jump to the start/end of the week, PageUp/PageDown
+  // move a month (Shift+PageUp/Down a year), Enter/Space selects. Moving
+  // past the visible month re-points viewDate so the new focused day is
+  // actually rendered — the focus effect above then moves real DOM focus.
+  const moveFocusedDay = (candidate: Date) => {
+    let next = candidate;
+    if (min && next < min) next = min;
+    if (max && next > max) next = max;
+    setFocusedDayDate(next);
+    if (next.getFullYear() !== year || next.getMonth() !== month) {
+      setViewDate(new Date(next.getFullYear(), next.getMonth(), 1));
+    }
+  };
+  const handleDayGridKeyDown = (e: ReactKeyboardEvent<HTMLButtonElement>, date: Date) => {
+    switch (e.key) {
+      case 'ArrowLeft': e.preventDefault(); moveFocusedDay(new Date(date.getFullYear(), date.getMonth(), date.getDate() - 1)); break;
+      case 'ArrowRight': e.preventDefault(); moveFocusedDay(new Date(date.getFullYear(), date.getMonth(), date.getDate() + 1)); break;
+      case 'ArrowUp': e.preventDefault(); moveFocusedDay(new Date(date.getFullYear(), date.getMonth(), date.getDate() - 7)); break;
+      case 'ArrowDown': e.preventDefault(); moveFocusedDay(new Date(date.getFullYear(), date.getMonth(), date.getDate() + 7)); break;
+      case 'Home': e.preventDefault(); moveFocusedDay(new Date(date.getFullYear(), date.getMonth(), date.getDate() - date.getDay())); break;
+      case 'End': e.preventDefault(); moveFocusedDay(new Date(date.getFullYear(), date.getMonth(), date.getDate() + (6 - date.getDay()))); break;
+      case 'PageUp': e.preventDefault(); moveFocusedDay(e.shiftKey ? new Date(date.getFullYear() - 1, date.getMonth(), date.getDate()) : new Date(date.getFullYear(), date.getMonth() - 1, date.getDate())); break;
+      case 'PageDown': e.preventDefault(); moveFocusedDay(e.shiftKey ? new Date(date.getFullYear() + 1, date.getMonth(), date.getDate()) : new Date(date.getFullYear(), date.getMonth() + 1, date.getDate())); break;
+      case 'Enter':
+      case ' ': e.preventDefault(); if (!isDisabled(date)) selectDate(date); break;
+      default: break;
+    }
+  };
+
   const navBtnStyle = (enabled: boolean, hovered: boolean): CSSProperties => ({
     width: 30,
     height: 30,
@@ -222,6 +269,9 @@ export default function DateField({ value, onChange, minimumDate, maximumDate, d
       <button
         ref={triggerRef}
         type="button"
+        aria-haspopup="dialog"
+        aria-expanded={isOpen}
+        aria-label={value ? `Date of birth, ${formatDateDisplay(value)}. Activate to change.` : `${placeholder}. Activate to choose a date.`}
         onClick={() => setIsOpen(o => !o)}
         onMouseEnter={() => setTriggerActive(true)}
         onMouseLeave={() => setTriggerActive(false)}
@@ -261,6 +311,9 @@ export default function DateField({ value, onChange, minimumDate, maximumDate, d
       {isOpen && coords && createPortal(
         <div
           ref={popupRef}
+          role="dialog"
+          aria-modal="false"
+          aria-label="Choose date"
           style={{
             position: 'fixed',
             top: coords.top,
@@ -348,6 +401,9 @@ export default function DateField({ value, onChange, minimumDate, maximumDate, d
                     key={y}
                     type="button"
                     disabled={disabled}
+                    aria-label={String(y)}
+                    aria-current={current ? 'date' : undefined}
+                    aria-selected={selected}
                     onClick={() => selectYear(y)}
                     onMouseEnter={() => setHoveredCell(i)}
                     onMouseLeave={() => setHoveredCell(c => (c === i ? null : c))}
@@ -371,6 +427,9 @@ export default function DateField({ value, onChange, minimumDate, maximumDate, d
                     key={label}
                     type="button"
                     disabled={disabled}
+                    aria-label={`${MONTH_LABELS[m]} ${year}`}
+                    aria-current={current ? 'date' : undefined}
+                    aria-selected={selected}
                     onClick={() => selectMonth(m)}
                     onMouseEnter={() => setHoveredCell(m)}
                     onMouseLeave={() => setHoveredCell(c => (c === m ? null : c))}
@@ -385,10 +444,12 @@ export default function DateField({ value, onChange, minimumDate, maximumDate, d
 
           {pickerView === 'days' && (
             <>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', marginBottom: 2 }}>
+              <div role="row" style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', marginBottom: 2 }}>
                 {WEEKDAY_LABELS.map(w => (
                   <div
                     key={w}
+                    role="columnheader"
+                    aria-hidden="true"
                     style={{
                       textAlign: 'center',
                       fontSize: 10.5,
@@ -405,18 +466,31 @@ export default function DateField({ value, onChange, minimumDate, maximumDate, d
                 ))}
               </div>
 
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', rowGap: 4 }}>
+              <div role="grid" aria-label={`${MONTH_LABELS[month]} ${year}`} style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', rowGap: 4 }}>
                 {cells.map(({ date, inMonth }, i) => {
                   const disabled = isDisabled(date);
                   const selected = !!value && isSameDay(date, value);
                   const isToday = isSameDay(date, today);
                   const hovered = hoveredDay === i && !disabled && !selected;
+                  const isFocusable = isSameDay(date, focusedDayDate);
                   return (
                     <button
                       key={i}
+                      ref={el => {
+                        if (el) dayButtonRefs.current.set(date.toDateString(), el);
+                        else dayButtonRefs.current.delete(date.toDateString());
+                      }}
                       type="button"
+                      role="gridcell"
                       disabled={disabled}
+                      tabIndex={isFocusable ? 0 : -1}
+                      aria-label={date.toLocaleDateString(undefined, { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
+                      aria-selected={selected}
+                      aria-current={isToday ? 'date' : undefined}
+                      aria-disabled={disabled}
                       onClick={() => selectDate(date)}
+                      onFocus={() => setFocusedDayDate(date)}
+                      onKeyDown={e => handleDayGridKeyDown(e, date)}
                       onMouseEnter={() => setHoveredDay(i)}
                       onMouseLeave={() => setHoveredDay(d => (d === i ? null : d))}
                       style={{

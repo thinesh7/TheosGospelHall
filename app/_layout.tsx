@@ -5,7 +5,7 @@ import { Stack } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
 import { useEffect, useRef, useState } from 'react';
-import { AppState as RNAppState, Linking } from 'react-native';
+import { AppState as RNAppState, Linking, Platform } from 'react-native';
 import 'react-native-reanimated';
 
 import { AppDialogProvider } from '@/components/AppDialog';
@@ -150,6 +150,15 @@ export default function RootLayout() {
 
   useEffect(() => {
     if (appState !== 'ready') return;
+    // Push notifications are a native (FCM/APNs) feature — this app has no
+    // VAPID key/service worker configured for Web Push, so on web this whole
+    // chain used to surface a real, unexplained browser "Allow
+    // notifications?" prompt (Device.isDevice is always true on web, so the
+    // native-only bail-out inside registerForPushNotifications never
+    // triggered) that could never succeed, retried 3x, and logged errors to
+    // Firestore on every page load. Skipping it outright on web is correct:
+    // there's no working push transport here to register for.
+    if (Platform.OS === 'web') return;
     configureNotificationHandler();
     const tokenSub = setupTokenRefreshListener();
     const removeListeners = setupNotificationListeners(undefined, handleNotificationResponse);

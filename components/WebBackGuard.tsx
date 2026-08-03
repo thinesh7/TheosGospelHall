@@ -63,7 +63,21 @@ export default function WebBackGuard() {
             onPress: () => {
               confirmOpen = false;
               allowExit = true;
-              window.history.go(-2);
+              // -2 would only land back on this same app's own entry (the
+              // page that was already loaded when this component first
+              // mounted, two pushGuard() calls below whichever guard entry
+              // was just popped to) — a pushState never unloads the
+              // document, so that "landing" is invisible: the confirm
+              // dialog just closes and the user is still looking at the
+              // same screen. Genuinely leaving means stepping one further,
+              // past that entry, to whatever real page (or blank tab state)
+              // preceded this app in history. This offset is stable no
+              // matter how many times the guard has already been triggered
+              // — each trigger re-pads back up to exactly two guard entries
+              // below the app's own entry (see pushGuard() above), so the
+              // app's own entry is always exactly 2 back and the true exit
+              // target is always exactly 3.
+              window.history.go(-3);
             },
           },
         ]

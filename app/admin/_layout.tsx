@@ -7,8 +7,10 @@ import { Text } from '@/components/AppText';
 import { AdminCloseButton } from '@/components/admin/AdminCloseButton';
 import { Sidebar } from '@/components/layout/Sidebar';
 import { ADMIN_ROUTE_META, ADMIN_SIDEBAR_ITEMS, activeSidebarKey } from '@/constants/adminRoutes';
+import { CONTENT_MAX_WIDTH } from '@/constants/layout';
 import { auth } from '@/firebaseConfig';
 import { useBreakpoint } from '@/hooks/use-breakpoint';
+import { getAdminEntryTab } from '@/utils/adminEntry';
 import { useTheme } from '@/utils/ThemeContext';
 
 type AuthState = 'loading' | 'authed' | 'anon';
@@ -21,14 +23,26 @@ type AuthState = 'loading' | 'authed' | 'anon';
 // re-hosted behind a thin wrapper.
 export default function AdminLayout() {
   const [authState, setAuthState] = useState<AuthState>('loading');
-  const { isTabletUp } = useBreakpoint();
+  // isDesktopUp (>=1024), not isTabletUp (>=700) — matches the main app
+  // shell's own threshold for showing a persistent Sidebar (see
+  // TabShell.web.tsx). At tablet width a 300px-wide admin sidebar (wider
+  // than the main app's 260px default — see the Sidebar usage below) left
+  // as little as ~400px for content, cramped for admin forms/cards; the
+  // mobile Stack (header + back arrow) handles that range instead, same as
+  // the rest of the app already does.
+  const { isDesktopUp } = useBreakpoint();
   const { colors } = useTheme();
   const pathname = usePathname();
   const router = useRouter();
   const isLoginRoute = pathname === '/admin/login';
-  // Always sends back to the main app's home tab, regardless of how deep
-  // in the admin stack (or which layout branch) the user currently is.
-  const handleClose = () => router.replace('/(tabs)' as never);
+  // Returns to whichever tab the hidden admin-entry gesture was actually
+  // triggered from (see utils/adminEntry.ts) rather than always Home —
+  // matches how components/AdminPanel.tsx's plain <Modal> used to leave the
+  // user exactly where they tapped from on main. router.replace (not back)
+  // because admin's own internal navigation can be several screens deep by
+  // the time Close is tapped; replacing collapses all of it in one step
+  // instead of stepping back through each level.
+  const handleClose = () => router.replace(getAdminEntryTab() as never);
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, user => setAuthState(user ? 'authed' : 'anon'));
@@ -71,13 +85,13 @@ export default function AdminLayout() {
     if (authState === 'authed') return <Redirect href={'/admin' as never} />;
     // Desktop's web routing works fine with a bare Slot; only mobile needs
     // the Stack ancestor above.
-    if (isTabletUp) return <Slot />;
+    if (isDesktopUp) return <Slot />;
     return mobileStack;
   }
 
   if (authState === 'anon') return <Redirect href={'/admin/login' as never} />;
 
-  if (isTabletUp) {
+  if (isDesktopUp) {
     const meta = ADMIN_ROUTE_META[pathname] ?? ADMIN_ROUTE_META['/admin'];
     return (
       <View style={[styles.desktopRow, { backgroundColor: colors.bg }]}>
@@ -116,7 +130,16 @@ export default function AdminLayout() {
             <AdminCloseButton onPress={handleClose} tintColor="#fff" backgroundColor="#0f3460" style={styles.desktopCloseBtn} />
           </View>
           <View style={styles.desktopContentBody}>
-            <Slot />
+            {/* Every leaf admin screen is an unmodified admin/*.tsx component
+                (a bare ScrollView with no width cap of its own) — capping and
+                centering it here, once, gives the whole section the same
+                content-width treatment as the rest of the app (Home, Bible,
+                Videos, the registration form all use this exact constant)
+                instead of every card/form/table stretching edge-to-edge on a
+                wide monitor. */}
+            <View style={styles.desktopContentInner}>
+              <Slot />
+            </View>
           </View>
         </View>
       </View>
@@ -129,7 +152,8 @@ export default function AdminLayout() {
 const styles = StyleSheet.create({
   desktopRow: { flex: 1, flexDirection: 'row' },
   desktopContent: { flex: 1 },
-  desktopContentBody: { flex: 1 },
+  desktopContentBody: { flex: 1, alignItems: 'center' },
+  desktopContentInner: { flex: 1, width: '100%', maxWidth: CONTENT_MAX_WIDTH },
   sidebarHeader: { paddingHorizontal: 20, paddingBottom: 20, marginBottom: 12, borderBottomWidth: 1 },
   brandRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   brandLogo: { width: 36, height: 36, borderRadius: 8 },
