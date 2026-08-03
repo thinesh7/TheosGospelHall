@@ -33,6 +33,7 @@ import { useBreakpoint } from '../../hooks/use-breakpoint';
 import { useTheme } from '../../utils/ThemeContext';
 import { getCachedLivePlaylists, syncLivePlaylists } from '../../utils/livePlaylistsSync';
 import { subscribeVideoMaintenance } from '../../utils/videoMaintenance';
+import { withRouterHistoryId } from '../../utils/webHistory';
 import { QuotaExhaustedError, ytFetch } from '../../utils/youtubeProxy';
 
 const CHANNEL_ID = 'UCFg0eNTRs2UIcihQAVpyrJA';
@@ -1813,7 +1814,7 @@ function VideosScreenContent({ autoPlayLive, onAutoPlayLiveConsumed, isActive }:
   useEffect(() => {
     if (Platform.OS !== 'web') return;
     if (videoModalVisible && !videoHistoryPushedRef.current) {
-      window.history.pushState({ tghVideoModal: true }, '');
+      window.history.pushState(withRouterHistoryId({ tghVideoModal: true }), '');
       videoHistoryPushedRef.current = true;
     } else if (!videoModalVisible && videoHistoryPushedRef.current) {
       videoHistoryPushedRef.current = false;

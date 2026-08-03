@@ -1,7 +1,7 @@
 import { Stack, usePathname, useRouter } from 'expo-router';
 import { onAuthStateChanged } from 'firebase/auth';
 import { useEffect, useState } from 'react';
-import { Image, StyleSheet, View } from 'react-native';
+import { Image, Platform, StyleSheet, View } from 'react-native';
 import { Redirect, Slot } from 'expo-router';
 import { Text } from '@/components/AppText';
 import { AdminCloseButton } from '@/components/admin/AdminCloseButton';
@@ -10,6 +10,7 @@ import { ADMIN_ROUTE_META, ADMIN_SIDEBAR_ITEMS, activeSidebarKey } from '@/const
 import { CONTENT_MAX_WIDTH } from '@/constants/layout';
 import { auth } from '@/firebaseConfig';
 import { useBreakpoint } from '@/hooks/use-breakpoint';
+import { getAdminEntryBackSteps } from '@/utils/adminEntry';
 import { useTheme } from '@/utils/ThemeContext';
 
 type AuthState = 'loading' | 'authed' | 'anon';
@@ -34,26 +35,40 @@ export default function AdminLayout() {
   const pathname = usePathname();
   const router = useRouter();
   const isLoginRoute = pathname === '/admin/login';
-  // The (tabs) screen the user was on before entering Admin is still
-  // mounted underneath admin in the root stack (contact.tsx pushes into
-  // Admin with router.push, never replace) — dismissAll() pops back to
-  // that *existing* instance, preserving whatever tab/scroll/state it was
-  // left in, exactly matching how components/AdminPanel.tsx's plain
-  // <Modal> used to leave the user exactly where they tapped from on main.
-  // An earlier version of this used router.replace(<a remembered tab
-  // path>) instead — that reproduced the exact bug just fixed in
-  // app/(tabs)/bible.tsx: any push/replace targeting a route inside the
-  // (tabs) group (which every tab path resolves to, since app/_layout.tsx
-  // registers only one "(tabs)" Stack.Screen for all of them) mints a
-  // *new* instance of the whole tabs layout rather than returning to the
-  // one already open — on native that new instance's TabShell always
-  // starts on Home (see components/navigation/TabShell.tsx's hardcoded
-  // useState(0)/initialPage={0}), regardless of which path was named.
-  // dismissAll() sidesteps this entirely by never navigating "to" a tabs
-  // route at all — it just pops back to whatever's already there.
+  // Platform-specific on purpose — one mechanism did not reliably cover
+  // both. Native: the (tabs) screen the user was on before entering Admin
+  // is still mounted underneath admin in the root stack (contact.tsx
+  // pushes into Admin, never replaces), and router.dismissAll() pops back
+  // to that *existing* instance — no extra bookkeeping needed there.
+  // (router.replace(<a remembered tab path>) was tried first instead, for
+  // both platforms; that reproduced the exact bug just fixed in
+  // app/(tabs)/bible.tsx, since every tab path resolves to the same single
+  // "(tabs)" Stack.Screen and replace/push mints a *new* instance whose
+  // TabShell always starts on Home on native.)
+  // Web needed two more attempts to get right: dismissAll()/canDismiss()
+  // walk React Navigation's state tree, which gets reconciled against the
+  // browser's own history/URL on every navigation — confirmed via direct
+  // testing that this does not reliably preserve "admin was pushed on top
+  // of an existing (tabs) instance", landing back on Home instead of the
+  // entry tab. Replacing to a remembered path (TabShell.web.tsx seeds its
+  // active tab from the URL at mount) fixed *which tab* but still minted a
+  // brand-new (tabs)/ContactScreen instance rather than reusing the
+  // already-mounted one — right tab, but scrolled back to the top instead
+  // of wherever the user actually was (e.g. the footer/copyright area the
+  // entry gesture lives in). window.history.go(), by contrast, triggers a
+  // popstate back to an existing session-history entry rather than
+  // constructing a new screen, so it reuses that original instance —
+  // scroll position and all — exactly like main's Android app closing a
+  // plain <Modal> back to whatever was already there. See
+  // utils/adminEntry.ts for how the step count is tracked.
   const handleClose = () => {
-    if (router.canDismiss()) router.dismissAll();
-    else router.replace('/');
+    if (Platform.OS === 'web') {
+      window.history.go(getAdminEntryBackSteps());
+    } else if (router.canDismiss()) {
+      router.dismissAll();
+    } else {
+      router.replace('/');
+    }
   };
 
   useEffect(() => {

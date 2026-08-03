@@ -15,6 +15,7 @@ import VideosScreen from '@/app/(tabs)/videos';
 import { checkCurrentlyLive, LiveNowInfo } from '@/utils/liveStatus';
 import { useTheme } from '@/utils/ThemeContext';
 import { useIsUpdateGateActive } from '@/utils/UpdateGateContext';
+import { withRouterHistoryId } from '@/utils/webHistory';
 
 // Route each tab corresponds to — index must line up 1:1 with TABS below.
 // Unlike the native shell (no URL concept), web needs this so a direct load,
@@ -123,7 +124,7 @@ export default function TabShell() {
   // requirement (see TAB_PATHS' own comment) just as well.
   const goToTab = (index: number) => {
     if (index === activeTab) return;
-    window.history.pushState({ tghTab: index }, '', TAB_PATHS[index]);
+    window.history.pushState(withRouterHistoryId({ tghTab: index }), '', TAB_PATHS[index]);
     setActiveTab(index);
   };
 

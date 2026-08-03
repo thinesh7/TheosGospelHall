@@ -11,6 +11,7 @@ import { Toast, useToast } from '../../components/Toast';
 import { CONTENT_MAX_WIDTH } from '../../constants/layout';
 import { useTheme } from '../../utils/ThemeContext';
 import { getCachedHomeContent, getMemoryCachedHomeContent, HomeContent, subscribeHomeContent } from '../../utils/homeContentSync';
+import { setAdminEntryTab } from '../../utils/adminEntry';
 
 const APP_VERSION = Constants.expoConfig?.version ?? '1.0.0';
 
@@ -42,6 +43,9 @@ export default function AboutScreen() {
     if (tapCountRef.current >= 5) {
       tapCountRef.current = 0;
       clearTimeout(tapTimerRef.current);
+      // Read by web's half of admin/_layout.tsx's Close button — see
+      // utils/adminEntry.ts for why native doesn't need this.
+      setAdminEntryTab('/contact');
       router.push('/admin/login' as never);
     }
   };

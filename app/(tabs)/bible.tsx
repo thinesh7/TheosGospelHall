@@ -21,6 +21,7 @@ import { useBreakpoint } from '../../hooks/use-breakpoint';
 import { BIBLE_VERSIONS, BOOKS } from '../../utils/bibleData';
 import { getMemBibleSettings, saveBibleSettings } from '../../utils/bibleSettings';
 import { useTheme } from '../../utils/ThemeContext';
+import { withRouterHistoryId } from '../../utils/webHistory';
 
 interface BibleNav {
   view: 'home' | 'books' | 'chapters';
@@ -191,11 +192,52 @@ export default function BibleScreen() {
     return () => window.removeEventListener('popstate', onPopState);
   }, []);
 
+  // Guarantees Back always has a full chain of stops to walk through —
+  // Home, then Books, then Chapters — even when this screen first mounts
+  // *already* on "books" or "chapters" (a page refresh, or a shared/
+  // bookmarked link straight into a chapter list), not just when reached by
+  // clicking through from Home normally. Reaching "books" that way used to
+  // have nothing but WebBackGuard's own site-exit padding sitting directly
+  // underneath it in history — since navigating *to* the Bible tab itself
+  // never pushes a Bible-specific entry, only whatever got the user to
+  // /bible in the first place (a tab switch, or nothing at all on a fresh
+  // load) did. One Back press from "books" then jumped straight past
+  // "Home" to the "Leave Theos Gospel Hall?" dialog instead of landing on
+  // Bible's own home screen.
+  //
+  // Only ever pushes forward here — never replaceState on the entry that
+  // was current when this effect runs. WebBackGuard mounts (and pushes its
+  // own two `tghBackGuard`-marked padding entries) before this effect does,
+  // since it's rendered ahead of <Stack> in app/_layout.tsx and effects fire
+  // in that same top-to-bottom order on a fresh page load. Replacing the
+  // then-current entry — as this used to do — silently overwrote the more
+  // recent of those two guard entries, quietly shrinking WebBackGuard's
+  // padding from two entries to one and putting a `tghBible`-marked entry
+  // where a `tghBackGuard`-marked one used to be. Pushing every synthesized
+  // level as a brand-new entry instead leaves WebBackGuard's own entries —
+  // and anything else already in history — completely untouched, at the
+  // cost of one harmless extra "back to the same screen" hop the first time
+  // Back is pressed right after a deep link/refresh straight into a
+  // non-home view. Runs only for a genuinely fresh mount into a non-home
+  // view, never for normal in-app navigation (which already pushes each
+  // level as it happens, via goToBooks/goToChapters below).
+  useEffect(() => {
+    if (Platform.OS !== 'web') return;
+    const initial = parseBibleSearch(window.location.search);
+    if (initial.view === 'home') return;
+    window.history.pushState(withRouterHistoryId({ tghBible: true }), '', '/bible');
+    if (initial.view === 'chapters') {
+      const booksNav: BibleNav = { view: 'books', version: initial.version, bilingual: initial.bilingual, testament: initial.testament };
+      window.history.pushState(withRouterHistoryId({ tghBible: true }), '', buildBibleUrl(booksNav));
+    }
+    window.history.pushState(withRouterHistoryId({ tghBible: true }), '', buildBibleUrl(initial));
+  }, []);
+
   const goToBooks = (v: string, bilingual: boolean) => {
     if (!bilingual) saveBibleSettings({ version: v });
     const next: BibleNav = { view: 'books', version: v, bilingual, testament: 'OT' };
     if (Platform.OS === 'web') {
-      window.history.pushState({ tghBible: true }, '', buildBibleUrl(next));
+      window.history.pushState(withRouterHistoryId({ tghBible: true }), '', buildBibleUrl(next));
       setWebNav(next);
     } else {
       setNativeNav(next);
@@ -207,7 +249,7 @@ export default function BibleScreen() {
       // In place — switching OT/NT is a filter, not a navigation step, so it
       // shouldn't add its own back-button stop.
       const next: BibleNav = { ...nav, testament: t };
-      window.history.replaceState({ tghBible: true }, '', buildBibleUrl(next));
+      window.history.replaceState(withRouterHistoryId({ tghBible: true }), '', buildBibleUrl(next));
       setWebNav(next);
     } else {
       setNativeNav(prev => ({ ...prev, testament: t }));
@@ -225,7 +267,7 @@ export default function BibleScreen() {
   const goToChapters = (book: any) => {
     const next: BibleNav = { view: 'chapters', version, bilingual: isBilingual, testament, bookId: String(book.id) };
     if (Platform.OS === 'web') {
-      window.history.pushState({ tghBible: true }, '', buildBibleUrl(next));
+      window.history.pushState(withRouterHistoryId({ tghBible: true }), '', buildBibleUrl(next));
       setWebNav(next);
     } else {
       setNativeNav(next);
@@ -248,157 +290,166 @@ export default function BibleScreen() {
   const OTBooks = BOOKS.filter(b => b.id <= 39);
   const NTBooks = BOOKS.filter(b => b.id >= 40);
 
-  if (view === 'home') {
-    const tamilVersions = BIBLE_VERSIONS.filter(v => v.lang === 'Tamil');
-    const englishVersions = BIBLE_VERSIONS.filter(v => v.lang === 'English');
-    return (
-      <View style={[styles.container, { backgroundColor: c.bg }]}>
-        <StatusBar barStyle={theme === 'light' ? 'dark-content' : 'light-content'} />
-        <View style={[styles.header, { backgroundColor: c.headerBg, paddingRight: 16 + insets.right, paddingTop: insets.top + 12 }]}>
-          <View style={{ flex: 1 }}>
-            <Text style={[styles.headerTitle, { color: c.text }]}>📖 Bible</Text>
-            <Text style={[styles.headerSubtitle, { color: c.subtext }]}>5 versions available</Text>
-          </View>
-          <TouchableOpacity onPress={cycleTheme} style={styles.themeBtn}>
-            <ThemeToggleIcon theme={theme} size={22} color={c.text} />
-          </TouchableOpacity>
-          <TouchableOpacity onPress={() => setShowSettings(true)} style={styles.settingsBtn}>
-            <Ionicons name="settings-outline" size={22} color={c.text} />
-          </TouchableOpacity>
-        </View>
-        <ScrollView contentContainerStyle={{ padding: 16, width: '100%', maxWidth: CONTENT_MAX_WIDTH, alignSelf: 'center' }}>
-          <TouchableOpacity
-            style={[styles.bilingualCard, { backgroundColor: c.accent }]}
-            onPress={() => goToBooks(getMemBibleSettings().primaryVersion, true)}
-          >
+  const tamilVersions = BIBLE_VERSIONS.filter(v => v.lang === 'Tamil');
+  const englishVersions = BIBLE_VERSIONS.filter(v => v.lang === 'English');
+  const books = testament === 'OT' ? OTBooks : NTBooks;
+  const currentVersion = BIBLE_VERSIONS.find(v => v.code === version);
+  const otLabel = isEnglish ? 'Old Testament (OT)' : 'பழைய ஏற்பாடு (OT)';
+  const ntLabel = isEnglish ? 'New Testament (NT)' : 'புதிய ஏற்பாடு (NT)';
+  const selectLabel = isEnglish ? 'Select a book' : 'புத்தகம் தேர்வு செய்யுங்கள்';
+  const chapters = selectedBook ? Array.from({ length: selectedBook.chapters }, (_, i) => i + 1) : [];
+  const chapterTitle = selectedBook ? (isBilingual ? `${selectedBook.name} | ${selectedBook.tamil}` : isEnglish ? selectedBook.name : selectedBook.tamil) : '';
+
+  // A single persistent root, with the three "screens" swapped *inside* it,
+  // rather than each view returning (and thus mounting/unmounting) its own
+  // separate root <View style={{backgroundColor: c.bg}}>. Three separate
+  // early returns meant every view transition tore down the previous
+  // screen's themed background container and mounted a brand new one —
+  // harmless on native, but on web that's exactly the kind of unmount/
+  // remount that produces a visible flash (of whatever's behind it,
+  // typically the page's default background) between the old and new
+  // screen. Keeping one root mounted the whole time and only swapping what's
+  // inside it removes that flash entirely, matching the same "don't tear
+  // down a shared container to switch views" pattern already used for
+  // VideoModal elsewhere in this app.
+  return (
+    <View style={[styles.container, { backgroundColor: c.bg }]}>
+      {view === 'home' && (
+        <>
+          <StatusBar barStyle={theme === 'light' ? 'dark-content' : 'light-content'} />
+          <View style={[styles.header, { backgroundColor: c.headerBg, paddingRight: 16 + insets.right, paddingTop: insets.top + 12 }]}>
             <View style={{ flex: 1 }}>
-              <View style={styles.bilingualTitleRow}>
-                <View style={styles.bilingualMark}>
-                  <Text style={styles.bilingualMarkText}>அ / A</Text>
-                </View>
-                <Text style={styles.bilingualTitle}>Bilingual Reading</Text>
-              </View>
-              <Text style={styles.bilingualDesc}>Tamil (top) + English (bottom) together</Text>
+              <Text style={[styles.headerTitle, { color: c.text }]}>📖 Bible</Text>
+              <Text style={[styles.headerSubtitle, { color: c.subtext }]}>5 versions available</Text>
             </View>
-            <Ionicons name="chevron-forward" size={24} color="#fff" />
-          </TouchableOpacity>
-          <Text style={[styles.sectionLabel, { color: c.subtext }]}>Tamil Versions</Text>
-          {tamilVersions.map(v => (
-            <TouchableOpacity key={v.code} style={[styles.versionCard, { backgroundColor: c.surface }]}
-              onPress={() => goToBooks(v.code, false)}>
-              <View style={[styles.versionIcon, { backgroundColor: c.accent }]}><Text style={styles.versionIconText}>த</Text></View>
-              <View style={{ flex: 1 }}>
-                <Text style={[styles.versionName, { color: c.text }]}>{v.name}</Text>
-                <Text style={[styles.versionShort, { color: c.subtext }]}>{v.short}</Text>
-              </View>
-              <Ionicons name="chevron-forward" size={18} color={c.subtext} />
+            <TouchableOpacity onPress={cycleTheme} style={styles.themeBtn}>
+              <ThemeToggleIcon theme={theme} size={22} color={c.text} />
             </TouchableOpacity>
-          ))}
-          <Text style={[styles.sectionLabel, { color: c.subtext, marginTop: 16 }]}>English Versions</Text>
-          {englishVersions.map(v => (
-            <TouchableOpacity key={v.code} style={[styles.versionCard, { backgroundColor: c.surface }]}
-              onPress={() => goToBooks(v.code, false)}>
-              <View style={[styles.versionIcon, { backgroundColor: '#1a6b3a' }]}><Text style={styles.versionIconText}>E</Text></View>
-              <View style={{ flex: 1 }}>
-                <Text style={[styles.versionName, { color: c.text }]}>{v.name}</Text>
-                <Text style={[styles.versionShort, { color: c.subtext }]}>{v.short}</Text>
-              </View>
-              <Ionicons name="chevron-forward" size={18} color={c.subtext} />
+            <TouchableOpacity onPress={() => setShowSettings(true)} style={styles.settingsBtn}>
+              <Ionicons name="settings-outline" size={22} color={c.text} />
             </TouchableOpacity>
-          ))}
-        </ScrollView>
-        <SettingsModal visible={showSettings} onClose={() => setShowSettings(false)} c={c} fontSize={fontSize} setFontSize={setFontSize} />
-      </View>
-    );
-  }
-
-  if (view === 'books') {
-    const books = testament === 'OT' ? OTBooks : NTBooks;
-    const currentVersion = BIBLE_VERSIONS.find(v => v.code === version);
-    const otLabel = isEnglish ? 'Old Testament (OT)' : 'பழைய ஏற்பாடு (OT)';
-    const ntLabel = isEnglish ? 'New Testament (NT)' : 'புதிய ஏற்பாடு (NT)';
-    const selectLabel = isEnglish ? 'Select a book' : 'புத்தகம் தேர்வு செய்யுங்கள்';
-    return (
-      <View style={[styles.container, { backgroundColor: c.bg }]}>
-        <View style={[styles.header, { backgroundColor: c.headerBg, paddingRight: 16 + insets.right, paddingTop: insets.top + 12 }]}>
-          <TouchableOpacity onPress={() => goBack()} style={styles.backBtn}>
-            <Ionicons name="arrow-back" size={22} color={c.text} />
-          </TouchableOpacity>
-          <View style={{ flex: 1 }}>
-            <Text style={[styles.headerTitle, { color: c.text }]}>{isBilingual ? 'Bilingual' : currentVersion?.name}</Text>
-            <Text style={[styles.headerSubtitle, { color: c.subtext }]}>{selectLabel}</Text>
           </View>
-          <TouchableOpacity onPress={cycleTheme} style={styles.themeBtn}>
-            <ThemeToggleIcon theme={theme} size={22} color={c.text} />
-          </TouchableOpacity>
-        </View>
-        <View style={[styles.testamentRow, { backgroundColor: c.surface }]}>
-          <TouchableOpacity style={[styles.testamentBtn, testament === 'OT' && { backgroundColor: c.accent }]} onPress={() => setTestament('OT')}>
-            <Text style={[styles.testamentText, { color: testament === 'OT' ? '#fff' : c.subtext }]}>{otLabel}</Text>
-          </TouchableOpacity>
-          <TouchableOpacity style={[styles.testamentBtn, testament === 'NT' && { backgroundColor: c.accent }]} onPress={() => setTestament('NT')}>
-            <Text style={[styles.testamentText, { color: testament === 'NT' ? '#fff' : c.subtext }]}>{ntLabel}</Text>
-          </TouchableOpacity>
-        </View>
-        <FlatList
-          data={books} key={`books-${testament}-${bookColumns}`}
-          keyExtractor={item => item.id.toString()} numColumns={bookColumns}
-          // Bounded list (max 39 books per testament) — render it in full
-          // rather than rely on FlatList's default initialNumToRender of 10,
-          // which combined with a multi-column grid meant only the first
-          // couple of rows appeared until scrolled (most noticeable on web,
-          // same underlying issue as the Bible reader's verse list).
-          initialNumToRender={books.length}
-          contentContainerStyle={{ padding: 12, width: '100%', maxWidth: CONTENT_MAX_WIDTH, alignSelf: 'center' }}
-          renderItem={({ item }) => (
-            <TouchableOpacity style={[styles.bookCard, { backgroundColor: c.surface }]}
-              onPress={() => goToChapters(item)}>
-              <Text style={[styles.bookName, { color: c.text }]}>{isBilingual ? item.name : isEnglish ? item.name : item.tamil}</Text>
-              {isBilingual && <Text style={[styles.bookTamil, { color: c.subtext }]}>{item.tamil}</Text>}
-              <Text style={[styles.bookChapters, { color: c.accent }]}>{item.chapters} chapters</Text>
+          <ScrollView contentContainerStyle={{ padding: 16, width: '100%', maxWidth: CONTENT_MAX_WIDTH, alignSelf: 'center' }}>
+            <TouchableOpacity
+              style={[styles.bilingualCard, { backgroundColor: c.accent }]}
+              onPress={() => goToBooks(getMemBibleSettings().primaryVersion, true)}
+            >
+              <View style={{ flex: 1 }}>
+                <View style={styles.bilingualTitleRow}>
+                  <View style={styles.bilingualMark}>
+                    <Text style={styles.bilingualMarkText}>அ / A</Text>
+                  </View>
+                  <Text style={styles.bilingualTitle}>Bilingual Reading</Text>
+                </View>
+                <Text style={styles.bilingualDesc}>Tamil (top) + English (bottom) together</Text>
+              </View>
+              <Ionicons name="chevron-forward" size={24} color="#fff" />
             </TouchableOpacity>
-          )}
-        />
-      </View>
-    );
-  }
+            <Text style={[styles.sectionLabel, { color: c.subtext }]}>Tamil Versions</Text>
+            {tamilVersions.map(v => (
+              <TouchableOpacity key={v.code} style={[styles.versionCard, { backgroundColor: c.surface }]}
+                onPress={() => goToBooks(v.code, false)}>
+                <View style={[styles.versionIcon, { backgroundColor: c.accent }]}><Text style={styles.versionIconText}>த</Text></View>
+                <View style={{ flex: 1 }}>
+                  <Text style={[styles.versionName, { color: c.text }]}>{v.name}</Text>
+                  <Text style={[styles.versionShort, { color: c.subtext }]}>{v.short}</Text>
+                </View>
+                <Ionicons name="chevron-forward" size={18} color={c.subtext} />
+              </TouchableOpacity>
+            ))}
+            <Text style={[styles.sectionLabel, { color: c.subtext, marginTop: 16 }]}>English Versions</Text>
+            {englishVersions.map(v => (
+              <TouchableOpacity key={v.code} style={[styles.versionCard, { backgroundColor: c.surface }]}
+                onPress={() => goToBooks(v.code, false)}>
+                <View style={[styles.versionIcon, { backgroundColor: '#1a6b3a' }]}><Text style={styles.versionIconText}>E</Text></View>
+                <View style={{ flex: 1 }}>
+                  <Text style={[styles.versionName, { color: c.text }]}>{v.name}</Text>
+                  <Text style={[styles.versionShort, { color: c.subtext }]}>{v.short}</Text>
+                </View>
+                <Ionicons name="chevron-forward" size={18} color={c.subtext} />
+              </TouchableOpacity>
+            ))}
+          </ScrollView>
+          <SettingsModal visible={showSettings} onClose={() => setShowSettings(false)} c={c} fontSize={fontSize} setFontSize={setFontSize} />
+        </>
+      )}
 
-  if (view === 'chapters' && selectedBook) {
-    const chapters = Array.from({ length: selectedBook.chapters }, (_, i) => i + 1);
-    const chapterTitle = isBilingual ? `${selectedBook.name} | ${selectedBook.tamil}` : isEnglish ? selectedBook.name : selectedBook.tamil;
-    return (
-      <View style={[styles.container, { backgroundColor: c.bg }]}>
-        <View style={[styles.header, { backgroundColor: c.headerBg, paddingRight: 16 + insets.right, paddingTop: insets.top + 12 }]}>
-          <TouchableOpacity onPress={() => goBack()} style={styles.backBtn}>
-            <Ionicons name="arrow-back" size={22} color={c.text} />
-          </TouchableOpacity>
-          <View style={{ flex: 1 }}>
-            <Text style={[styles.headerTitle, { color: c.text }]}>{chapterTitle}</Text>
-            <Text style={[styles.headerSubtitle, { color: c.subtext }]}>{isEnglish || isBilingual ? 'Select chapter' : 'அதிகாரம் தேர்வு செய்யுங்கள்'}</Text>
+      {view === 'books' && (
+        <>
+          <View style={[styles.header, { backgroundColor: c.headerBg, paddingRight: 16 + insets.right, paddingTop: insets.top + 12 }]}>
+            <TouchableOpacity onPress={() => goBack()} style={styles.backBtn}>
+              <Ionicons name="arrow-back" size={22} color={c.text} />
+            </TouchableOpacity>
+            <View style={{ flex: 1 }}>
+              <Text style={[styles.headerTitle, { color: c.text }]}>{isBilingual ? 'Bilingual' : currentVersion?.name}</Text>
+              <Text style={[styles.headerSubtitle, { color: c.subtext }]}>{selectLabel}</Text>
+            </View>
+            <TouchableOpacity onPress={cycleTheme} style={styles.themeBtn}>
+              <ThemeToggleIcon theme={theme} size={22} color={c.text} />
+            </TouchableOpacity>
           </View>
-          <TouchableOpacity onPress={cycleTheme} style={styles.themeBtn}>
-            <ThemeToggleIcon theme={theme} size={22} color={c.text} />
-          </TouchableOpacity>
-        </View>
-        <FlatList
-          data={chapters} key={`chapters-${selectedBook.id}-${chapterColumns}`}
-          keyExtractor={item => item.toString()} numColumns={chapterColumns}
-          // Bounded list (max 150 chapters, Psalms) — same reasoning as the
-          // books grid above: render it in full instead of leaving it to
-          // FlatList's default initialNumToRender of 10.
-          initialNumToRender={chapters.length}
-          contentContainerStyle={{ padding: 12, width: '100%', maxWidth: CONTENT_MAX_WIDTH, alignSelf: 'center' }}
-          renderItem={({ item }) => (
-            <TouchableOpacity style={[styles.chapterBtn, { backgroundColor: c.surface }]} onPress={() => openChapter(selectedBook, item)}>
-              <Text style={[styles.chapterText, { color: c.accent }]}>{item}</Text>
+          <View style={[styles.testamentRow, { backgroundColor: c.surface }]}>
+            <TouchableOpacity style={[styles.testamentBtn, testament === 'OT' && { backgroundColor: c.accent }]} onPress={() => setTestament('OT')}>
+              <Text style={[styles.testamentText, { color: testament === 'OT' ? '#fff' : c.subtext }]}>{otLabel}</Text>
             </TouchableOpacity>
-          )}
-        />
-      </View>
-    );
-  }
+            <TouchableOpacity style={[styles.testamentBtn, testament === 'NT' && { backgroundColor: c.accent }]} onPress={() => setTestament('NT')}>
+              <Text style={[styles.testamentText, { color: testament === 'NT' ? '#fff' : c.subtext }]}>{ntLabel}</Text>
+            </TouchableOpacity>
+          </View>
+          <FlatList
+            data={books} key={`books-${testament}-${bookColumns}`}
+            keyExtractor={item => item.id.toString()} numColumns={bookColumns}
+            // Bounded list (max 39 books per testament) — render it in full
+            // rather than rely on FlatList's default initialNumToRender of 10,
+            // which combined with a multi-column grid meant only the first
+            // couple of rows appeared until scrolled (most noticeable on web,
+            // same underlying issue as the Bible reader's verse list).
+            initialNumToRender={books.length}
+            contentContainerStyle={{ padding: 12, width: '100%', maxWidth: CONTENT_MAX_WIDTH, alignSelf: 'center' }}
+            renderItem={({ item }) => (
+              <TouchableOpacity style={[styles.bookCard, { backgroundColor: c.surface }]}
+                onPress={() => goToChapters(item)}>
+                <Text style={[styles.bookName, { color: c.text }]}>{isBilingual ? item.name : isEnglish ? item.name : item.tamil}</Text>
+                {isBilingual && <Text style={[styles.bookTamil, { color: c.subtext }]}>{item.tamil}</Text>}
+                <Text style={[styles.bookChapters, { color: c.accent }]}>{item.chapters} chapters</Text>
+              </TouchableOpacity>
+            )}
+          />
+        </>
+      )}
 
-  return null;
+      {view === 'chapters' && selectedBook && (
+        <>
+          <View style={[styles.header, { backgroundColor: c.headerBg, paddingRight: 16 + insets.right, paddingTop: insets.top + 12 }]}>
+            <TouchableOpacity onPress={() => goBack()} style={styles.backBtn}>
+              <Ionicons name="arrow-back" size={22} color={c.text} />
+            </TouchableOpacity>
+            <View style={{ flex: 1 }}>
+              <Text style={[styles.headerTitle, { color: c.text }]}>{chapterTitle}</Text>
+              <Text style={[styles.headerSubtitle, { color: c.subtext }]}>{isEnglish || isBilingual ? 'Select chapter' : 'அதிகாரம் தேர்வு செய்யுங்கள்'}</Text>
+            </View>
+            <TouchableOpacity onPress={cycleTheme} style={styles.themeBtn}>
+              <ThemeToggleIcon theme={theme} size={22} color={c.text} />
+            </TouchableOpacity>
+          </View>
+          <FlatList
+            data={chapters} key={`chapters-${selectedBook.id}-${chapterColumns}`}
+            keyExtractor={item => item.toString()} numColumns={chapterColumns}
+            // Bounded list (max 150 chapters, Psalms) — same reasoning as the
+            // books grid above: render it in full instead of leaving it to
+            // FlatList's default initialNumToRender of 10.
+            initialNumToRender={chapters.length}
+            contentContainerStyle={{ padding: 12, width: '100%', maxWidth: CONTENT_MAX_WIDTH, alignSelf: 'center' }}
+            renderItem={({ item }) => (
+              <TouchableOpacity style={[styles.chapterBtn, { backgroundColor: c.surface }]} onPress={() => openChapter(selectedBook, item)}>
+                <Text style={[styles.chapterText, { color: c.accent }]}>{item}</Text>
+              </TouchableOpacity>
+            )}
+          />
+        </>
+      )}
+    </View>
+  );
 }
 
 const styles = StyleSheet.create({

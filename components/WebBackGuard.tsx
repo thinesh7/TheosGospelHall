@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react';
 import { Platform } from 'react-native';
 import { useAppDialog } from '@/components/AppDialog';
+import { withRouterHistoryId } from '@/utils/webHistory';
 
 // Mobile/desktop web only. A real website always has "whatever page opened
 // this one" sitting right behind it in browser history, so a single
@@ -32,11 +33,10 @@ export default function WebBackGuard() {
   useEffect(() => {
     if (Platform.OS !== 'web' || typeof window === 'undefined') return;
 
-    const GUARD_STATE = { tghBackGuard: true };
     let allowExit = false;
     let confirmOpen = false;
 
-    const pushGuard = () => window.history.pushState(GUARD_STATE, '', window.location.href);
+    const pushGuard = () => window.history.pushState(withRouterHistoryId({ tghBackGuard: true }), '', window.location.href);
     pushGuard();
     pushGuard();
 
