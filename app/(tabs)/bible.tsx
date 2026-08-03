@@ -1,5 +1,5 @@
 import { Ionicons } from '@expo/vector-icons';
-import { useLocalSearchParams, useRouter } from 'expo-router';
+import { useRouter } from 'expo-router';
 import { useEffect, useState } from 'react';
 import {
   BackHandler,
@@ -102,28 +102,31 @@ function SettingsModal({ visible, onClose, c, fontSize, setFontSize }: SettingsM
 
 export default function BibleScreen() {
   const router = useRouter();
-  // Version/Book/Chapter selection lives in the URL (?view=books&version=...
-  // &testament=...&bookId=...) instead of local useState, and every forward
-  // step uses router.push (a real, distinct history entry) rather than a
-  // setState call. That makes the browser/hardware back button work like
-  // ordinary navigation — the same proven mechanism bible-reader.tsx's own
-  // back button already relies on — instead of needing this screen to
-  // separately shadow browser history itself to make its own internal
-  // steps back-button-aware. It also means a page refresh or deep link
-  // lands on the right screen instead of always resetting to 'home'.
-  const params = useLocalSearchParams<{ view?: string; version?: string; bilingual?: string; testament?: string; bookId?: string }>();
   // Web sources its own nav state from the URL directly (see parseBibleSearch
-  // above) rather than expo-router's params — seeded from whatever the page
-  // actually loaded on (a fresh load, refresh, or deep link), then kept in
-  // sync by the popstate listener below for browser back/forward.
+  // above) — seeded from whatever the page actually loaded on (a fresh load,
+  // refresh, or deep link), then kept in sync by the popstate listener below
+  // for browser back/forward.
   const [webNav, setWebNav] = useState<BibleNav>(() => (Platform.OS === 'web' ? parseBibleSearch(window.location.search) : HOME_NAV));
-  const nav: BibleNav = Platform.OS === 'web' ? webNav : {
-    view: params.view === 'books' || params.view === 'chapters' ? params.view : 'home',
-    version: params.version,
-    bilingual: params.bilingual === '1',
-    testament: params.testament === 'NT' ? 'NT' : 'OT',
-    bookId: params.bookId,
-  };
+  // Native: plain local state, not expo-router params/router.push. This tab
+  // is mounted as a single, persistent React component *inside*
+  // TabShell.tsx's PagerView (components/navigation/TabShell.tsx imports and
+  // renders <BibleScreen/> directly as one page) — it is never itself a
+  // routed Stack screen. But app/_layout.tsx's root Stack only ever
+  // registers "(tabs)" as a single top-level Stack.Screen (there is no
+  // separate "bible" entry — see its <Stack.Screen name="(tabs)" .../>), so
+  // calling router.push({ pathname: '/bible', ... }) — which this screen's
+  // own version/book/chapter navigation used to do, matching the pattern
+  // used for genuinely separate screens like bible-reader — resolves to
+  // that same "(tabs)" screen and pushes a *second, brand-new* instance of
+  // the entire tabs layout on top of the current one: a fresh TabShell,
+  // whose activeTab starts over at its initial value (0, Home). That's
+  // exactly the reported bug — selecting any Bible version immediately
+  // "returned to Home" — because a whole new Home-tab-first TabShell had
+  // just been pushed. Since this screen never actually leaves the (tabs)
+  // group, its own book/chapter browsing needs no navigation at all, only
+  // local state.
+  const [nativeNav, setNativeNav] = useState<BibleNav>(HOME_NAV);
+  const nav: BibleNav = Platform.OS === 'web' ? webNav : nativeNav;
   const { colors: c, theme, cycleTheme } = useTheme();
   const insets = useSafeAreaInsets();
   const view = nav.view;
@@ -145,22 +148,35 @@ export default function BibleScreen() {
 
   const isEnglish = BIBLE_VERSIONS.find(v => v.code === version)?.lang === 'English';
 
+  // Steps native's local nav state back one level: chapters -> books ->
+  // home. Shared by the hardware back handler below and the on-screen back
+  // arrows (see goBack further down).
+  const nativeGoBack = () => {
+    setNativeNav(prev => {
+      if (prev.view === 'chapters') return { ...prev, view: 'books', bookId: undefined };
+      if (prev.view === 'books') return HOME_NAV;
+      return prev;
+    });
+  };
+
   useEffect(() => {
     // Web has no hardware back key — the browser's own back button already
     // works correctly here since every forward step is a real history
-    // entry (see the params/router.push comment above). Native still needs
-    // this: router.back() at the tab's own root screen ('home') would pop
-    // *out* of the tab, so it's deliberately left unhandled there (return
-    // false) to fall through to the OS's default behavior instead.
+    // entry (see goToBooks/goToChapters below). Native steps its own local
+    // nav state back instead of calling router.back() — this screen is
+    // never itself a routed stack entry (see nativeNav's own comment
+    // above), so there's nothing for expo-router to pop here. Left
+    // unhandled (return false) at 'home' so the OS's default behavior
+    // (whatever that resolves to for this tab) still applies there.
     if (Platform.OS === 'web') return;
     const backAction = () => {
       if (view === 'home') return false;
-      router.back();
+      nativeGoBack();
       return true;
     };
     const handler = BackHandler.addEventListener('hardwareBackPress', backAction);
     return () => handler.remove();
-  }, [view, router]);
+  }, [view]);
 
   // Browser back/forward within Bible's own browsing steps — mirrors
   // TabShell.web.tsx's own popstate listener for tab switches, which this
@@ -182,30 +198,28 @@ export default function BibleScreen() {
       window.history.pushState({ tghBible: true }, '', buildBibleUrl(next));
       setWebNav(next);
     } else {
-      router.push({ pathname: '/bible', params: { view: 'books', version: v, bilingual: bilingual ? '1' : '0', testament: 'OT' } });
+      setNativeNav(next);
     }
   };
 
   const setTestament = (t: 'OT' | 'NT') => {
-    // In place — switching OT/NT is a filter, not a navigation step, so it
-    // shouldn't add its own back-button stop (replaceState/router.setParams,
-    // not push).
     if (Platform.OS === 'web') {
+      // In place — switching OT/NT is a filter, not a navigation step, so it
+      // shouldn't add its own back-button stop.
       const next: BibleNav = { ...nav, testament: t };
       window.history.replaceState({ tghBible: true }, '', buildBibleUrl(next));
       setWebNav(next);
     } else {
-      router.setParams({ testament: t });
+      setNativeNav(prev => ({ ...prev, testament: t }));
     }
   };
 
-  // Symmetric with pushState above — window.history.back() is what actually
-  // pops the raw entries goToBooks/goToChapters push, whereas router.back()
-  // is bound to expo-router's own navigation stack, which never learned
-  // about those (they were pushed directly, bypassing router.push).
+  // Symmetric with pushState above for web — window.history.back() is what
+  // actually pops the raw entries goToBooks/goToChapters push. Native steps
+  // its own local nav state back the same way the hardware handler does.
   const goBack = () => {
     if (Platform.OS === 'web') window.history.back();
-    else router.back();
+    else nativeGoBack();
   };
 
   const goToChapters = (book: any) => {
@@ -214,10 +228,7 @@ export default function BibleScreen() {
       window.history.pushState({ tghBible: true }, '', buildBibleUrl(next));
       setWebNav(next);
     } else {
-      router.push({
-        pathname: '/bible',
-        params: { view: 'chapters', version, bilingual: isBilingual ? '1' : '0', testament, bookId: String(book.id) },
-      });
+      setNativeNav(next);
     }
   };
 

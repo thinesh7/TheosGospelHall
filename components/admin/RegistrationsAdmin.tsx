@@ -249,8 +249,12 @@ const RegistrationsAdmin = forwardRef<AdminScreenHandle, Props>(({ programId }, 
       `Church Details: ${selected.churchDetails || '-'}`,
       `Registration Status: ${statusLabel}`,
     ];
-    await Clipboard.setStringAsync(lines.join('\n'));
-    showToast('📋 Registration details copied');
+    try {
+      await Clipboard.setStringAsync(lines.join('\n'));
+      showToast('📋 Registration details copied');
+    } catch {
+      dialog.alert('Error', 'Could not copy details. Please try again.');
+    }
   };
 
   if (selected) {
@@ -279,13 +283,13 @@ const RegistrationsAdmin = forwardRef<AdminScreenHandle, Props>(({ programId }, 
               <View style={styles.contactBtnRow}>
                 <TouchableOpacity
                   style={[styles.contactBtn, { backgroundColor: '#25d366' }]}
-                  onPress={() => Linking.openURL(`https://wa.me/${phoneToDocId(selected.phone)}`)}
+                  onPress={() => Linking.openURL(`https://wa.me/${phoneToDocId(selected.phone)}`).catch(() => dialog.alert('Error', 'Could not open WhatsApp. Is it installed?'))}
                 >
                   <Ionicons name="logo-whatsapp" size={16} color="#fff" />
                 </TouchableOpacity>
                 <TouchableOpacity
                   style={[styles.contactBtn, { backgroundColor: '#22c55e' }]}
-                  onPress={() => Linking.openURL(`tel:${selected.phone}`)}
+                  onPress={() => Linking.openURL(`tel:${selected.phone}`).catch(() => dialog.alert('Error', 'Could not open the dialer.'))}
                 >
                   <Ionicons name="call" size={16} color="#fff" />
                 </TouchableOpacity>

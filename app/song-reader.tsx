@@ -192,8 +192,10 @@ export default function SongReaderScreen() {
     // Share.share() has no web implementation — copy the same text that
     // would have been shared instead, with a toast confirmation.
     if (Platform.OS === 'web') {
-      await Clipboard.setStringAsync(message);
-      showToast('📋 Lyrics copied');
+      try {
+        await Clipboard.setStringAsync(message);
+        showToast('📋 Lyrics copied');
+      } catch {}
       return;
     }
     try {

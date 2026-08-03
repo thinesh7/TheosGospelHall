@@ -32,6 +32,23 @@ const TABS = [
 
 const PORTRAIT_LOCKED_TABS = [2, 3];
 
+// expo-screen-orientation's lock/unlockAsync are async and can reject (OS
+// restriction, a rapid tab-switch racing a previous lock request, etc.).
+// Every call site here fired them with no .catch() at all — any rejection
+// is an unhandled promise rejection, which crashes the app outright on
+// native (matching the exact bug already fixed for VideoModal's fullscreen
+// transitions in app/(tabs)/videos.tsx's safeLockOrientation/
+// safeUnlockOrientation, which this mirrors). This fires on every single
+// tab switch (see the [activeTab] effect below), making it a much
+// higher-frequency crash risk than the fullscreen case it was already
+// fixed for elsewhere.
+function safeLockOrientation(lock: ScreenOrientation.OrientationLock) {
+  ScreenOrientation.lockAsync(lock).catch(() => {});
+}
+function safeUnlockOrientation() {
+  ScreenOrientation.unlockAsync().catch(() => {});
+}
+
 export default function TabShell() {
   const { colors } = useTheme();
   const [activeTab, setActiveTab] = useState(0);
@@ -69,9 +86,9 @@ export default function TabShell() {
       return next;
     });
     if (PORTRAIT_LOCKED_TABS.includes(activeTab)) {
-      ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.PORTRAIT_UP);
+      safeLockOrientation(ScreenOrientation.OrientationLock.PORTRAIT_UP);
     } else {
-      ScreenOrientation.unlockAsync();
+      safeUnlockOrientation();
     }
   }, [activeTab]);
 

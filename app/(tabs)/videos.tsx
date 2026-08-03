@@ -532,9 +532,11 @@ function VideoActions({ videoId, title, absolute = false, direction = 'row' }: {
   // ancestor it can't guarantee everywhere it's used).
   const shareVideo = async () => {
     if (Platform.OS === 'web') {
-      await Clipboard.setStringAsync(youtubeUrl);
-      setLinkCopied(true);
-      setTimeout(() => setLinkCopied(false), 1500);
+      try {
+        await Clipboard.setStringAsync(youtubeUrl);
+        setLinkCopied(true);
+        setTimeout(() => setLinkCopied(false), 1500);
+      } catch {}
       return;
     }
     try {

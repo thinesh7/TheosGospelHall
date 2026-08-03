@@ -399,8 +399,10 @@ export default function BibleReaderScreen() {
   const copyVerse = async (verseNum: number, text: string, unavailable?: boolean) => {
     const bookName = isEnglish ? selectedBook?.name : selectedBook?.tamil;
     const copyText = `${bookName} ${selectedChapter}:${verseNum} - ${unavailable ? UNAVAILABLE_NOTE : cleanText(text)}`;
-    await Clipboard.setStringAsync(copyText);
-    showToast('Verse copied!');
+    try {
+      await Clipboard.setStringAsync(copyText);
+      showToast('Verse copied!');
+    } catch {}
   };
 
   const copySelectedVerses = async () => {
@@ -424,8 +426,10 @@ export default function BibleReaderScreen() {
       }
     });
 
-    await Clipboard.setStringAsync(blocks.join('\n\n'));
-    showToast(`${sorted.length} verse${sorted.length > 1 ? 's' : ''} copied!`);
+    try {
+      await Clipboard.setStringAsync(blocks.join('\n\n'));
+      showToast(`${sorted.length} verse${sorted.length > 1 ? 's' : ''} copied!`);
+    } catch {}
     clearSelection();
   };
 

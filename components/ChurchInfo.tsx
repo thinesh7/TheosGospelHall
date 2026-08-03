@@ -47,15 +47,24 @@ interface Props {
 export default function ChurchInfo({ showToast }: Props) {
   const { colors } = useTheme();
 
+  // Passed directly as onPress below — React Native never awaits or catches
+  // whatever promise an onPress handler returns, so an unguarded await here
+  // that ever rejects would be an unhandled promise rejection, which
+  // crashes the app outright on native (same class of bug already found
+  // and fixed for expo-screen-orientation calls elsewhere in this codebase).
   const copyAddress = async (branch: (typeof BRANCHES)[number]) => {
-    await Clipboard.setStringAsync(`Theos Gospel Hall\n\n${branch.address}\n\nGoogle Maps Location: ${branch.mapLink}`);
-    showToast('📋 Address copied');
+    try {
+      await Clipboard.setStringAsync(`Theos Gospel Hall\n\n${branch.address}\n\nGoogle Maps Location: ${branch.mapLink}`);
+      showToast('📋 Address copied');
+    } catch {}
   };
 
   const copyAllAddresses = async () => {
-    const text = `Theos Gospel Hall\n\n${BRANCHES.map(b => `${b.city}:\n${b.address}`).join('\n\n')}`;
-    await Clipboard.setStringAsync(text);
-    showToast('📋 All addresses copied');
+    try {
+      const text = `Theos Gospel Hall\n\n${BRANCHES.map(b => `${b.city}:\n${b.address}`).join('\n\n')}`;
+      await Clipboard.setStringAsync(text);
+      showToast('📋 All addresses copied');
+    } catch {}
   };
 
   return (

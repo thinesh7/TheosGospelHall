@@ -10,7 +10,6 @@ import { ADMIN_ROUTE_META, ADMIN_SIDEBAR_ITEMS, activeSidebarKey } from '@/const
 import { CONTENT_MAX_WIDTH } from '@/constants/layout';
 import { auth } from '@/firebaseConfig';
 import { useBreakpoint } from '@/hooks/use-breakpoint';
-import { getAdminEntryTab } from '@/utils/adminEntry';
 import { useTheme } from '@/utils/ThemeContext';
 
 type AuthState = 'loading' | 'authed' | 'anon';
@@ -35,14 +34,27 @@ export default function AdminLayout() {
   const pathname = usePathname();
   const router = useRouter();
   const isLoginRoute = pathname === '/admin/login';
-  // Returns to whichever tab the hidden admin-entry gesture was actually
-  // triggered from (see utils/adminEntry.ts) rather than always Home —
-  // matches how components/AdminPanel.tsx's plain <Modal> used to leave the
-  // user exactly where they tapped from on main. router.replace (not back)
-  // because admin's own internal navigation can be several screens deep by
-  // the time Close is tapped; replacing collapses all of it in one step
-  // instead of stepping back through each level.
-  const handleClose = () => router.replace(getAdminEntryTab() as never);
+  // The (tabs) screen the user was on before entering Admin is still
+  // mounted underneath admin in the root stack (contact.tsx pushes into
+  // Admin with router.push, never replace) — dismissAll() pops back to
+  // that *existing* instance, preserving whatever tab/scroll/state it was
+  // left in, exactly matching how components/AdminPanel.tsx's plain
+  // <Modal> used to leave the user exactly where they tapped from on main.
+  // An earlier version of this used router.replace(<a remembered tab
+  // path>) instead — that reproduced the exact bug just fixed in
+  // app/(tabs)/bible.tsx: any push/replace targeting a route inside the
+  // (tabs) group (which every tab path resolves to, since app/_layout.tsx
+  // registers only one "(tabs)" Stack.Screen for all of them) mints a
+  // *new* instance of the whole tabs layout rather than returning to the
+  // one already open — on native that new instance's TabShell always
+  // starts on Home (see components/navigation/TabShell.tsx's hardcoded
+  // useState(0)/initialPage={0}), regardless of which path was named.
+  // dismissAll() sidesteps this entirely by never navigating "to" a tabs
+  // route at all — it just pops back to whatever's already there.
+  const handleClose = () => {
+    if (router.canDismiss()) router.dismissAll();
+    else router.replace('/');
+  };
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, user => setAuthState(user ? 'authed' : 'anon'));
