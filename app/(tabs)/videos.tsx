@@ -98,35 +98,22 @@ function safeUnlockOrientation() {
   ScreenOrientation.unlockAsync().catch(() => {});
 }
 
-// The embedded YouTube iframe (react-native-youtube-iframe, loaded from the
-// library's remote lonelycpp.github.io page — useLocalHTML was tried and
-// broke playback outright with YouTube error 153, since a locally-embedded
-// page lacks the origin YouTube's embed validation expects) doesn't always
-// track the WebView's size on Android. Confirmed via on-device diagnostics
-// that the outer container and the iframe's own box are both correctly
-// sized — the fix has to reach the player *inside* that iframe. Forces a
-// CSS !important size on the iframe element and calls the player's official
-// setSize() API in case anything resizes it after load.
-const YOUTUBE_FORCE_RESIZE_JS = `
-(function() {
-  function forceFill() {
-    var iframe = document.querySelector('iframe');
-    if (!iframe) { setTimeout(forceFill, 150); return; }
-    iframe.style.setProperty('width', '100%', 'important');
-    iframe.style.setProperty('height', '100%', 'important');
-    iframe.style.setProperty('position', 'absolute', 'important');
-    iframe.style.setProperty('top', '0', 'important');
-    iframe.style.setProperty('left', '0', 'important');
-    if (typeof player !== 'undefined' && player && typeof player.setSize === 'function') {
-      player.setSize(window.innerWidth, window.innerHeight);
-    }
-  }
-  forceFill();
-  setTimeout(forceFill, 500);
-  setTimeout(forceFill, 1500);
-})();
-true;
-`;
+// react-native-youtube-iframe loads its player HTML into a native WebView
+// exactly once per mount and never re-measures itself afterward. This app
+// previously tried to correct that after the fact from the *outside* —
+// forcing CSS on the internal iframe and calling the player's setSize() API
+// on a timer, then (still not reliably) via a ResizeObserver — but every
+// version of that reactive-fixup approach still visibly failed on-device: a
+// cropped/zoomed/off-center player with dead black space above it whenever
+// the *first* size the WebView was constructed with was wrong (see
+// Video_Module_Regression_Report.docx). Rather than keep patching that after
+// the fact, the fix now lives on the *input* side instead: see
+// VideoModal's sizeReady below, which simply never constructs the native
+// player until the container's real, final width is already known — a
+// wrong-then-corrected size can't happen if nothing is built until after
+// the correction. See also the textZoom={100} webViewProps prop near this
+// component's <YoutubePlayer/>, for a second, independent native-only cause
+// of the same symptom (the system font/display-size accessibility setting).
 
 type Tab = 'shorts' | 'videos' | 'songs' | 'live' | 'categories' | 'all';
 
@@ -670,14 +657,27 @@ interface VideoModalProps {
 
 function VideoModal({ visible, videoId, title, isLive, onClose, onPrev, onNext, onEnded, hasPrev, hasNext, autoAdvance }: VideoModalProps) {
   const { width: windowWidth, height } = useWindowDimensions();
-  // The video was coming out narrower than the real screen on at least one
-  // Android device/OS combination, leaving a black gap on one side —
-  // useWindowDimensions() not matching this modal's actual rendered width
-  // there for whatever reason. Measuring the modal's own root View via
-  // onLayout instead is correct by construction: it's the real width,
-  // not a value calculated from a device API that's proven unreliable here.
+  // Web-only fallback for the one frame before onLayout below fires —
+  // harmless there since YoutubePlayer.web.tsx's <div>/<iframe> both reflow
+  // live with ordinary CSS regardless of what value this starts at.
   const [measuredWidth, setMeasuredWidth] = useState(0);
-  const width = measuredWidth || windowWidth;
+  // Native restores main's exact original mechanism: useWindowDimensions()
+  // read directly, always live, no gating on a separate onLayout
+  // measurement. An onLayout/measuredWidth fallback used to sit in front of
+  // this for native too — added during migration on a theory that
+  // useWindowDimensions() itself was unreliable here — but on-device
+  // testing traced the actual cropped/zoomed/off-center player (see
+  // Video_Module_Regression_Report.docx) to the videoModal alignItems
+  // regression and the videoW formula gaining tablet/desktop capping
+  // (both fixed above/below), not to this hook. Since main proves
+  // useWindowDimensions() alone is correct here — including reacting
+  // instantly to a device rotating into/out of fullscreen, which an
+  // onLayout-based gate can only catch after that view's own next layout
+  // pass — native no longer waits on anything extra.
+  const width = Platform.OS === 'web' ? (measuredWidth || windowWidth) : windowWidth;
+  // Only web ever needs to wait on a measurement; native's width is always
+  // immediately available (see above), matching main exactly.
+  const sizeReady = Platform.OS === 'web' ? width > 0 : true;
   const { colors } = useTheme();
   const { isMobile, isTabletUp } = useBreakpoint();
   const insets = useSafeAreaInsets();
@@ -691,7 +691,6 @@ function VideoModal({ visible, videoId, title, isLive, onClose, onPrev, onNext, 
   // main's original behavior of going fullscreen in landscape.
   const isLandscape = (Platform.OS !== 'web' || isMobile) && width > height;
   const [playerReady, setPlayerReady] = useState(false);
-  const [isInFullscreen, setIsInFullscreen] = useState(false);
   const [playing, setPlaying] = useState(false);
   const [showResume, setShowResume] = useState(false);
   // Muted until a pending resume decision is settled. seekTo() on a freshly-
@@ -770,18 +769,37 @@ function VideoModal({ visible, videoId, title, isLive, onClose, onPrev, onNext, 
   // one song is mounted at a time now. Inactive (never claims the gesture)
   // when this modal isn't in Songs nav mode, so plain Videos playback is
   // unaffected.
+  //
+  // claimedAxisRef records which axis onMoveShouldSetPanResponder actually
+  // claimed the gesture for — onPanResponderRelease then acts on that same
+  // axis, rather than independently re-deriving "which axis wins" from the
+  // gesture's final dx/dy. Re-deriving it at release was the bug: a swipe
+  // clearly claimed as horizontal (say dx=-90, dy=20 at the moment it was
+  // claimed) can still drift to a final dy that *exceeds* dx by release —
+  // any natural diagonal wobble over a longer drag — at which point the old
+  // "whichever of dx/dy is bigger, right now" check would flip to reading
+  // the vertical thresholds instead, and could fire the *opposite*
+  // direction from the one the user's swipe actually meant (e.g. a
+  // left-swipe-for-next ending with dy slightly larger than dx would read
+  // as a downward swipe and fire "prev" instead). Acting on the
+  // originally-claimed axis instead makes that impossible.
+  const claimedAxisRef = useRef<'x' | 'y' | null>(null);
   const navPanResponder = useRef(
     PanResponder.create({
       onMoveShouldSetPanResponder: (_, g) => {
         const horizontal = Math.abs(g.dx) > 60 && Math.abs(g.dy) < 30 && Math.abs(g.dx) > Math.abs(g.dy) * 2;
         const vertical = Math.abs(g.dy) > 60 && Math.abs(g.dx) < 30 && Math.abs(g.dy) > Math.abs(g.dx) * 2;
-        return horizontal || vertical;
+        if (horizontal) { claimedAxisRef.current = 'x'; return true; }
+        if (vertical) { claimedAxisRef.current = 'y'; return true; }
+        return false;
       },
       onPanResponderRelease: (_, g) => {
-        if (Math.abs(g.dx) >= Math.abs(g.dy)) {
+        const axis = claimedAxisRef.current;
+        claimedAxisRef.current = null;
+        if (axis === 'x') {
           if (g.dx < -80 && hasNextRef.current) { songNavAxisRef.current = 'x'; songNavDirectionRef.current = 'next'; onNextRef.current?.(); }
           else if (g.dx > 80 && hasPrevRef.current) { songNavAxisRef.current = 'x'; songNavDirectionRef.current = 'prev'; onPrevRef.current?.(); }
-        } else {
+        } else if (axis === 'y') {
           if (g.dy < -80 && hasNextRef.current) { songNavAxisRef.current = 'y'; songNavDirectionRef.current = 'next'; onNextRef.current?.(); }
           else if (g.dy > 80 && hasPrevRef.current) { songNavAxisRef.current = 'y'; songNavDirectionRef.current = 'prev'; onPrevRef.current?.(); }
         }
@@ -801,7 +819,6 @@ function VideoModal({ visible, videoId, title, isLive, onClose, onPrev, onNext, 
   useEffect(() => {
     if (!visible) {
       setPlayerReady(false);
-      setIsInFullscreen(false);
       setPlaying(false);
       setShowResume(false);
       setVideoMuted(false);
@@ -991,7 +1008,6 @@ function VideoModal({ visible, videoId, title, isLive, onClose, onPrev, onNext, 
   const onFullScreenChange = useCallback((isFs: boolean) => {
     if (!mountedRef.current) return;
     fsTransitionRef.current = true;
-    setIsInFullscreen(isFs);
     Animated.timing(fsOverlayOpacity, { toValue: 1, duration: 100, useNativeDriver: true }).start();
     if (isFs) {
       safeLockOrientation(ScreenOrientation.OrientationLock.LANDSCAPE);
@@ -1023,12 +1039,12 @@ function VideoModal({ visible, videoId, title, isLive, onClose, onPrev, onNext, 
   return (
     <Modal visible={visible} animationType="slide" statusBarTranslucent onRequestClose={() => { if (!locked) onClose(); }}>
       <View
-        style={[styles.videoModal, isLandscape && styles.videoModalLandscape]}
+        style={[styles.videoModal, Platform.OS === 'web' && isTabletUp && styles.videoModalDesktopCenter, isLandscape && styles.videoModalLandscape]}
         onLayout={e => setMeasuredWidth(e.nativeEvent.layout.width)}
-        {...(hasSongNav && !isTabletUp ? navPanResponder.panHandlers : {})}
+        {...(hasSongNav && (Platform.OS !== 'web' || !isTabletUp) ? navPanResponder.panHandlers : {})}
       >
         <StatusBar hidden />
-        {(!playerReady || !progressLoaded) && (
+        {(!playerReady || !progressLoaded || !sizeReady) && (
           <View style={[StyleSheet.absoluteFillObject, { backgroundColor: '#0a0a0a', justifyContent: 'center', alignItems: 'center', zIndex: 10 }]}>
             {loadError
               ? <PlayerErrorState onRetry={() => {
@@ -1068,10 +1084,29 @@ function VideoModal({ visible, videoId, title, isLive, onClose, onPrev, onNext, 
             const ACTIONS_RAIL_WIDTH = 110;
             const maxDesktopVideoH = isTabletUp ? height - 130 : Infinity;
             const maxDesktopVideoW = isTabletUp ? width - ACTIONS_RAIL_WIDTH - 24 : width;
-            const videoW = isLandscape ? height * 16 / 9 : Math.min(maxDesktopVideoW, CONTENT_MAX_WIDTH, (maxDesktopVideoH * 16) / 9);
+            // Deliberately two separate formulas, not one shared calc — main
+            // (the original Android app) never had tablet/desktop-width
+            // capping at all: no isTabletUp, no CONTENT_MAX_WIDTH, no
+            // ACTIONS_RAIL_WIDTH budget. Every attempt to keep native on the
+            // *same* capped formula as web (even with isTabletUp always false
+            // in practice on a phone) still visibly reproduced the migrated
+            // app's cropped/zoomed/off-center player on-device (see
+            // Video_Module_Regression_Report.docx) — so native now computes
+            // its size exactly the way main's own VideoModal always did,
+            // full stop, regardless of isTabletUp (which is itself
+            // documented elsewhere in this file as occasionally misreporting
+            // true during Android's very first layout pass — a native
+            // formula that still branched on it could still transiently hit
+            // the capped path). Web keeps the capped/responsive formula,
+            // which was never reported broken and is genuinely needed there
+            // (a browser window, unlike any physical device, can be
+            // arbitrarily wide).
+            const videoW = Platform.OS === 'web'
+              ? (isLandscape ? height * 16 / 9 : Math.min(maxDesktopVideoW, CONTENT_MAX_WIDTH, (maxDesktopVideoH * 16) / 9))
+              : (isLandscape ? height * 16 / 9 : width);
             const videoH = isLandscape ? height : videoW * 9 / 16;
 
-            const videoBlock = progressLoaded && (
+            const videoBlock = progressLoaded && sizeReady && (
               <View style={{ width: videoW, height: videoH }}>
                 <YoutubePlayer
                   ref={playerRef}
@@ -1079,14 +1114,16 @@ function VideoModal({ visible, videoId, title, isLive, onClose, onPrev, onNext, 
                   width={videoW}
                   videoId={videoId || ''}
                   play={playing}
-                  // Songs have always played muted by design (no unmute
-                  // affordance exists) — forced here rather than only via
-                  // initialPlayerParams below so it also survives Prev/Next
-                  // swapping to a different song while this same player
-                  // instance stays mounted. `videoMuted` layers the separate,
-                  // resume-prompt-only mute on top for plain Videos (see the
-                  // getVideoProgress effect and handleReady above).
-                  mute={hasSongNav || videoMuted}
+                  // Only the resume-prompt-specific mute applies here (see
+                  // the getVideoProgress effect and handleReady above) — an
+                  // earlier attempt also forced this permanently true
+                  // whenever hasSongNav (i.e. for every Song, forever, with
+                  // no way to unmute), on a mistaken reading of main's
+                  // SongItem hardcoding initialPlayerParams.mute:1. On-device
+                  // testing showed that was wrong: Songs are expected to
+                  // play with sound like any other video, muted only for the
+                  // same brief resume-prompt window plain Videos already get.
+                  mute={videoMuted}
                   forceAndroidAutoplay={true}
                   onReady={handleReady}
                   onChangeState={onChangeState}
@@ -1098,8 +1135,15 @@ function VideoModal({ visible, videoId, title, isLive, onClose, onPrev, onNext, 
                   // page apparently supplies an origin YouTube's embed
                   // validation requires, that a locally-embedded page
                   // doesn't have. Back to the default (remote) loading.
-                  webViewProps={{ allowsInlineMediaPlayback: true, mediaPlaybackRequiresUserAction: false, allowsFullscreenVideo: true, injectedJavaScript: YOUTUBE_FORCE_RESIZE_JS }}
-                  initialPlayerParams={{ rel: 0, modestbranding: 1, controls: 1, playsinline: 1, mute: (hasSongNav || resumePositionRef.current > 0) ? 1 : 0 }}
+                  // textZoom={100} (Android-only; harmlessly ignored on iOS/
+                  // web) pins the WebView's layout to 100% regardless of the
+                  // device's system font/display-size accessibility setting —
+                  // react-native-webview inherits that system scale by
+                  // default, which skews a viewport-percentage-based page
+                  // like this player's (see YoutubePlayer.tsx's own comment)
+                  // on any device with a non-default text/display size.
+                  webViewProps={{ allowsInlineMediaPlayback: true, mediaPlaybackRequiresUserAction: false, allowsFullscreenVideo: true, textZoom: 100 }}
+                  initialPlayerParams={{ rel: 0, modestbranding: 1, controls: 1, playsinline: 1, mute: resumePositionRef.current > 0 ? 1 : 0 }}
                 />
                 {showResume && videoId && (
                   <Image
@@ -1121,7 +1165,7 @@ function VideoModal({ visible, videoId, title, isLive, onClose, onPrev, onNext, 
             // of the corrupted/cropped rendering seen on native — this
             // keeps the same YoutubePlayer instance mounted regardless.
             return (
-              <View style={isTabletUp ? styles.desktopPlayerRow : undefined}>
+              <View style={Platform.OS === 'web' && isTabletUp ? styles.desktopPlayerRow : undefined}>
                 <View>
                   {videoBlock}
                   {!isLandscape && <Text style={styles.videoModalTitle} numberOfLines={3}>{title}</Text>}
@@ -1136,8 +1180,8 @@ function VideoModal({ visible, videoId, title, isLive, onClose, onPrev, onNext, 
                   // title height, with no measuring needed. Desktop's
                   // buttons are unaffected — they stay in their original
                   // position over the video, below.
-                  <View style={!isTabletUp ? styles.mobileActionsRowWrap : undefined}>
-                    <VideoActions videoId={videoId || ''} title={title} direction={isTabletUp ? 'column' : 'row'} />
+                  <View style={Platform.OS !== 'web' || !isTabletUp ? styles.mobileActionsRowWrap : undefined}>
+                    <VideoActions videoId={videoId || ''} title={title} direction={Platform.OS === 'web' && isTabletUp ? 'column' : 'row'} />
                     {hasSongNav && !isTabletUp && Platform.OS === 'web' && (
                       <>
                         <TouchableOpacity
@@ -1169,7 +1213,7 @@ function VideoModal({ visible, videoId, title, isLive, onClose, onPrev, onNext, 
           {/* Screen-lock guards against accidental touches (e.g. in a
               pocket, or during fullscreen landscape) — not a concern with
               mouse-based desktop input, so it's mobile/tablet only. */}
-          {!isTabletUp && (
+          {(Platform.OS !== 'web' || !isTabletUp) && (
             <TouchableOpacity style={styles.lockToggleBtn} onPress={() => setLocked(true)}>
               <Ionicons name="lock-open-outline" size={24} color="#fff" />
             </TouchableOpacity>
@@ -1179,7 +1223,7 @@ function VideoModal({ visible, videoId, title, isLive, onClose, onPrev, onNext, 
           </TouchableOpacity>
         </View>
         {hasSongNav && !isLandscape && (
-          isTabletUp ? (
+          Platform.OS === 'web' && isTabletUp ? (
             // Desktop: unchanged, buttons over the video (rail layout
             // means the icons are beside it, not below, so there's no
             // "align with the icons" row to match here).
@@ -1230,8 +1274,28 @@ function VideoModal({ visible, videoId, title, isLive, onClose, onPrev, onNext, 
 // than the real viewport on desktop, which is what caused the video title
 // to render mid-page and the layout to overflow/scroll oddly.
 function useStagePlayerSize() {
+  // Native restores main's exact original approach: Dimensions.get('screen')
+  // captured once (a static hardware fact, not a layout measurement that
+  // can be transiently wrong on a render pass), the same source and Math.min/
+  // max portrait-normalization main always used for the Shorts player. Main
+  // never had tablet/desktop sizing here at all — this doesn't fork on
+  // isTabletUp/isMobile for native the way web does below, keeping native
+  // fully immune to any breakpoint-detection flakiness, matching the same
+  // Platform.OS-forked approach used for VideoModal's own sizing (see
+  // Video_Module_Regression_Report.docx for what on-device testing showed
+  // when native shared web's capped/reactive formula instead).
+  const nativeDims = useRef((() => {
+    const s = Dimensions.get('screen');
+    const w = Math.min(s.width, s.height);
+    const h = Math.max(s.width, s.height);
+    return { width: w, height: h };
+  })());
   const { width, height } = useWindowDimensions();
   const { isMobile } = useBreakpoint();
+  if (Platform.OS !== 'web') {
+    const w = nativeDims.current.width;
+    return { containerW: w, containerH: nativeDims.current.height, videoW: w, videoH: w * 9 / 16 };
+  }
   if (isMobile) {
     const w = Math.min(width, height);
     const h = Math.max(width, height);
@@ -1346,7 +1410,7 @@ function ShortsPlayerItemInner({ item, index, isActive, onEnd, onClose, total, o
   }, []);
 
   return (
-    <View style={{ width: containerW, height: containerH, backgroundColor: '#000', justifyContent: 'center', alignItems: 'center' }}>
+    <View style={{ width: containerW, height: containerH, backgroundColor: '#000', justifyContent: 'center', ...(Platform.OS === 'web' && isTabletUp ? { alignItems: 'center' as const } : null) }}>
       <StatusBar hidden />
       {(!shortReady || !progressLoaded) && (
         <View style={[StyleSheet.absoluteFillObject, { backgroundColor: '#0a0a0a', justifyContent: 'center', alignItems: 'center', zIndex: 10 }]}>
@@ -1372,7 +1436,7 @@ function ShortsPlayerItemInner({ item, index, isActive, onEnd, onClose, total, o
           present, only styles/props vary by isTabletUp — never swapping to
           a structurally different subtree, which avoids a remount (and the
           player restarting) if isTabletUp flips transiently. */}
-      <View style={isTabletUp ? styles.desktopPlayerRow : undefined}>
+      <View style={Platform.OS === 'web' && isTabletUp ? styles.desktopPlayerRow : undefined}>
         <View>
           {isActive && progressLoaded ? (
             <YoutubePlayer
@@ -1435,8 +1499,8 @@ function ShortsPlayerItemInner({ item, index, isActive, onEnd, onClose, total, o
           // own height (aligned with the YouTube/Copy icons) instead of the
           // whole video. Desktop keeps its buttons in their original
           // position (rendered by the parent, over the video) — unaffected.
-          <View style={!isTabletUp ? styles.mobileActionsRowWrap : undefined}>
-            <VideoActions videoId={videoId || ''} title={title} direction={isTabletUp ? 'column' : 'row'} />
+          <View style={Platform.OS !== 'web' || !isTabletUp ? styles.mobileActionsRowWrap : undefined}>
+            <VideoActions videoId={videoId || ''} title={title} direction={Platform.OS === 'web' && isTabletUp ? 'column' : 'row'} />
             {!isTabletUp && Platform.OS === 'web' && (onPrev || onNext) && (
               <>
                 <TouchableOpacity
@@ -1464,7 +1528,7 @@ function ShortsPlayerItemInner({ item, index, isActive, onEnd, onClose, total, o
       {/* Native mobile only — mobile web gets the inline buttons above
           instead, since there's no swipe/scroll gesture happening there
           anymore for this hint to describe. */}
-      {shortReady && !isTabletUp && Platform.OS !== 'web' && (
+      {shortReady && Platform.OS !== 'web' && (
         <View style={[styles.songsSwipeHint, { bottom: insets.bottom + 16 }]}>
           <Ionicons name="chevron-up" size={16} color="rgba(255,255,255,0.5)" />
           <Text style={styles.songsSwipeHintText}>Swipe to navigate</Text>
@@ -1497,7 +1561,10 @@ function VideosScreenContent({ autoPlayLive, onAutoPlayLiveConsumed, isActive }:
   // (unchanged), 2 on tablet, and a 3-5 column grid on desktop that scales
   // with the actual available width instead of a single fixed count — a
   // "true desktop" grid rather than a stretched single-column mobile list.
-  const numColumns = isMobile ? 1 : isTablet ? 2 : Math.max(3, Math.min(5, Math.round((Math.min(gridWidth, WIDE_CONTENT_MAX_WIDTH) - GRID_GAP * 2) / TARGET_CARD_WIDTH)));
+  // Native is forced to 1 unconditionally (matching main, which never had
+  // any of this multi-column logic) rather than via isMobile, for the same
+  // reason as shortsNumColumns above.
+  const numColumns = Platform.OS !== 'web' ? 1 : isMobile ? 1 : isTablet ? 2 : Math.max(3, Math.min(5, Math.round((Math.min(gridWidth, WIDE_CONTENT_MAX_WIDTH) - GRID_GAP * 2) / TARGET_CARD_WIDTH)));
   // key is applied directly as a JSX attribute at each call site below, not
   // through this spread — React 19 errors on a "key" prop arriving via a
   // spread object instead of a literal JSX attribute.
@@ -1508,8 +1575,12 @@ function VideosScreenContent({ autoPlayLive, onAutoPlayLiveConsumed, isActive }:
   // Shorts thumbnails are portrait (much narrower than regular video cards),
   // so they get their own fluid column count with a smaller target width —
   // previously a hardcoded 2 columns regardless of viewport, the one grid
-  // in this file with no responsive logic at all.
-  const shortsNumColumns = isMobile ? 2 : isTablet ? 3 : Math.max(3, Math.min(6, Math.round((Math.min(gridWidth, WIDE_CONTENT_MAX_WIDTH) - GRID_GAP * 2) / TARGET_SHORT_CARD_WIDTH)));
+  // in this file with no responsive logic at all. Native keeps that fixed 2,
+  // matching main exactly and unconditionally (not merely isMobile, which —
+  // like isTabletUp — is derived from useWindowDimensions() and can
+  // transiently misreport on Android's very first layout pass; hardcoding
+  // this for native removes any dependency on that value being right).
+  const shortsNumColumns = Platform.OS !== 'web' ? 2 : isMobile ? 2 : isTablet ? 3 : Math.max(3, Math.min(6, Math.round((Math.min(gridWidth, WIDE_CONTENT_MAX_WIDTH) - GRID_GAP * 2) / TARGET_SHORT_CARD_WIDTH)));
 
   const [activeTab, setActiveTab] = useState<Tab>('shorts');
   const [search, setSearch] = useState('');
@@ -1610,21 +1681,50 @@ function VideosScreenContent({ autoPlayLive, onAutoPlayLiveConsumed, isActive }:
   useEffect(() => { shortsDataRef.current = shorts; }, [shorts]);
   useEffect(() => { fetchShorts(); }, []);
 
+  // Deliberately depends on shortsPlayerVisible ONLY — matches main exactly
+  // (main's equivalent effect never included isMobile in its dependency
+  // array at all). isMobile/isTabletUp are derived from
+  // useWindowDimensions(), whose width/height swap the instant a device
+  // physically rotates — on most phones, the landscape width alone crosses
+  // the tablet breakpoint (700dp), flipping isMobile to false. If this
+  // lock/unlock effect depended on isMobile too, that flip re-ran it *while
+  // a Short was already open in fullscreen landscape* (isMobile flipping is
+  // exactly what fullscreen rotation causes) and re-locked back to
+  // PORTRAIT a moment after entering it — precisely the "briefly goes
+  // landscape then immediately snaps back to portrait" symptom, and a
+  // plausible source of instability when that raced against
+  // onFullScreenChange's own lock/unlock calls on exit too. The item-size
+  // sync below still reacts to isMobile (needed for web's responsive
+  // recompute if the browser is resized mid-playback), but no longer
+  // touches orientation at all.
   useEffect(() => {
     if (shortsPlayerVisible) {
       safeLockOrientation(ScreenOrientation.OrientationLock.PORTRAIT);
-      // Must exactly match useStagePlayerSize's containerH — the actual
-      // rendered height of each ShortsPlayerItemInner — or getItemLayout's
-      // offsets desync from where items really sit and scrollToIndex/paging
-      // land on the wrong position. 'screen' (the physical monitor size on
-      // web) happens to roughly equal 'window' on a real mobile device, but
-      // is wildly different from the browser's actual viewport on desktop —
-      // this stayed latent until the Prev/Next buttons became the first
-      // thing to programmatically scroll this list on desktop.
-      const { width, height } = Dimensions.get('window');
-      shortItemSizeRef.current = isMobile ? Math.max(width, height) : height;
     } else {
       safeUnlockOrientation();
+    }
+  }, [shortsPlayerVisible]);
+
+  useEffect(() => {
+    if (!shortsPlayerVisible) return;
+    // Must exactly match useStagePlayerSize's containerH — the actual
+    // rendered height of each ShortsPlayerItemInner — or getItemLayout's
+    // offsets desync from where items really sit and scrollToIndex/paging
+    // land on the wrong position. Native uses 'screen' here (matching
+    // useStagePlayerSize's own native branch and main's original
+    // behavior) rather than 'window', which several other spots in this
+    // file document as occasionally reporting a transiently wrong value
+    // on Android's very first layout pass. Web keeps 'window' — 'screen'
+    // (the physical monitor size) is wildly different from the browser's
+    // actual viewport on desktop, which is what this comment originally
+    // described going wrong before Prev/Next needed to scroll this list
+    // programmatically on desktop.
+    if (Platform.OS !== 'web') {
+      const s = Dimensions.get('screen');
+      shortItemSizeRef.current = Math.max(s.width, s.height);
+    } else {
+      const { width, height } = Dimensions.get('window');
+      shortItemSizeRef.current = isMobile ? Math.max(width, height) : height;
     }
   }, [shortsPlayerVisible, isMobile]);
 
@@ -2153,7 +2253,30 @@ function VideosScreenContent({ autoPlayLive, onAutoPlayLiveConsumed, isActive }:
     );
   };
 
-  const ShortCard = ({ item, index }: any) => {
+  // Native renders main's exact original card — thumbnail with the title
+  // overlaid in a bottom gradient strip, not the redesigned "thumbnail +
+  // separate info panel below" card web/desktop uses. Kept as fully
+  // separate JSX/styles (not a shared component with conditional style
+  // props) per the "completely separate Android/web implementations"
+  // requirement — a style tweak here can't accidentally affect web's card.
+  const ShortCardNative = ({ item, index }: any) => {
+    const videoId = item?.snippet?.resourceId?.videoId;
+    const thumb = item?.snippet?.thumbnails?.high?.url || item?.snippet?.thumbnails?.medium?.url;
+    const title = decodeHtml(item?.snippet?.title || '');
+    if (!videoId || !thumb) return null;
+    return (
+      <TouchableOpacity
+        style={styles.shortCardNative}
+        onPress={() => { setCurrentShortIndex(index); setPlayingShortId(videoId); setShortsPlayerVisible(true); }}
+      >
+        <Image source={{ uri: thumb }} style={styles.shortThumbNative} />
+        <View style={styles.shortPlayIconNative}><Ionicons name="play-circle" size={36} color="rgba(255,255,255,0.9)" /></View>
+        <View style={styles.shortOverlayNative}><Text style={styles.shortTitleNative} numberOfLines={2}>{title}</Text></View>
+      </TouchableOpacity>
+    );
+  };
+
+  const ShortCardWeb = ({ item, index }: any) => {
     const videoId = item?.snippet?.resourceId?.videoId;
     const thumb = item?.snippet?.thumbnails?.high?.url || item?.snippet?.thumbnails?.medium?.url;
     const title = decodeHtml(item?.snippet?.title || '');
@@ -2173,6 +2296,7 @@ function VideosScreenContent({ autoPlayLive, onAutoPlayLiveConsumed, isActive }:
       </TouchableOpacity>
     );
   };
+  const ShortCard = Platform.OS === 'web' ? ShortCardWeb : ShortCardNative;
 
   const LiveCard = ({ item }: any) => {
     const videoId = item?.snippet?.resourceId?.videoId;
@@ -2423,7 +2547,7 @@ function VideosScreenContent({ autoPlayLive, onAutoPlayLiveConsumed, isActive }:
       {!isSearching && activeTab === 'shorts' && (
         loadingShorts ? <TabLoadingState tab="shorts" />
         : shortsError ? <VideoErrorState onRetry={() => { setShortsLoaded(false); fetchShorts('', true); }} />
-        : <FlatList key={`shorts-grid-${shortsNumColumns}`} data={padGridRow(shorts, shortsNumColumns)} keyExtractor={(i, idx) => isGridFiller(i) ? `filler-${idx}` : i.snippet.resourceId.videoId} refreshing={loadingShorts} onRefresh={() => fetchShorts('', true)} renderItem={({ item, index }) => isGridFiller(item) ? <View style={styles.gridFillerCell} /> : <ShortCard item={item} index={index} />} numColumns={shortsNumColumns} contentContainerStyle={styles.list} columnWrapperStyle={styles.shortsColumnWrapper} ListEmptyComponent={<Text style={[styles.empty, { color: colors.subtext }]}>No shorts found</Text>} ListFooterComponent={<LoadMore token={shortsNextToken} loading={loadingMoreShorts} onPress={() => fetchShorts(shortsNextToken)} />} />
+        : <FlatList key={`shorts-grid-${shortsNumColumns}`} data={padGridRow(shorts, shortsNumColumns)} keyExtractor={(i, idx) => isGridFiller(i) ? `filler-${idx}` : i.snippet.resourceId.videoId} refreshing={loadingShorts} onRefresh={() => fetchShorts('', true)} renderItem={({ item, index }) => isGridFiller(item) ? <View style={styles.gridFillerCell} /> : <ShortCard item={item} index={index} />} numColumns={shortsNumColumns} contentContainerStyle={Platform.OS === 'web' ? styles.list : styles.shortsListNative} columnWrapperStyle={Platform.OS === 'web' ? styles.shortsColumnWrapper : styles.shortsColumnWrapperNative} ListEmptyComponent={<Text style={[styles.empty, { color: colors.subtext }]}>No shorts found</Text>} ListFooterComponent={<LoadMore token={shortsNextToken} loading={loadingMoreShorts} onPress={() => fetchShorts(shortsNextToken)} />} />
       )}
 
       {!isSearching && activeTab === 'videos' && (
@@ -2540,6 +2664,18 @@ const styles = StyleSheet.create({
   shortPlayIcon: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, justifyContent: 'center', alignItems: 'center' },
   shortInfo: { padding: 12 },
   shortTitle: { fontSize: 14, fontWeight: '600', lineHeight: 19 },
+  // Native-only — main's original card: title overlaid on the thumbnail in
+  // a bottom gradient strip, not a separate info panel below it. Kept as
+  // fully separate style objects (not shared with the web card above) so a
+  // future web-only tweak to shortCard/shortThumb/etc. can never bleed into
+  // this, and vice versa.
+  shortsListNative: { padding: 12, paddingBottom: 100 },
+  shortsColumnWrapperNative: { gap: 8 },
+  shortCardNative: { flex: 1, borderRadius: 12, overflow: 'hidden', elevation: 3, marginBottom: 8, backgroundColor: '#000', minHeight: 220 },
+  shortThumbNative: { width: '100%', height: 220 },
+  shortPlayIconNative: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, justifyContent: 'center', alignItems: 'center' },
+  shortOverlayNative: { position: 'absolute', bottom: 0, left: 0, right: 0, paddingHorizontal: 10, paddingVertical: 10, backgroundColor: 'rgba(0,0,0,0.45)' },
+  shortTitleNative: { fontSize: 11, color: '#fff', fontWeight: '600' },
   liveBadge: { position: 'absolute', top: 8, left: 8, backgroundColor: '#ff0000', borderRadius: 6, paddingHorizontal: 8, paddingVertical: 3, flexDirection: 'row', alignItems: 'center', gap: 4 },
   liveDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: '#fff' },
   liveBadgeText: { color: '#fff', fontSize: 10, fontWeight: 'bold' },
@@ -2556,7 +2692,31 @@ const styles = StyleSheet.create({
   shortsClose: { position: 'absolute', top: 50, right: 16, backgroundColor: 'rgba(0,0,0,0.5)', borderRadius: 20, padding: 6, zIndex: 10 },
   songsSwipeHint: { position: 'absolute', alignSelf: 'center', flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: 'rgba(255,255,255,0.15)', borderRadius: 20, paddingHorizontal: 16, paddingVertical: 8 },
   songsSwipeHintText: { color: 'rgba(255,255,255,0.9)', fontSize: 12, fontWeight: '600' },
-  videoModal: { flex: 1, backgroundColor: '#000', justifyContent: 'center', alignItems: 'center', paddingTop: 10 },
+  // No alignItems here — matches main exactly. It was added during the
+  // migration (main never had it) to center desktopPlayerRow, which is
+  // narrower than the modal on desktop/tablet (video+title capped to
+  // CONTENT_MAX_WIDTH) — applied unconditionally, it also reached the
+  // plain-phone case, where the direct child is instead a plain <View> (no
+  // explicit width of its own) wrapping the video box *and*
+  // videoModalTitle's own width:'100%' Text. A percentage-width child
+  // inside a parent whose own width is resolved via alignItems:'center'
+  // shrink-to-fit (rather than stretching to the modal's full, definite
+  // width) is a real, confirmed-on-device Yoga layout hazard — the title
+  // rendering far wider than the screen and centered, both edges clipped,
+  // is exactly that failure mode, and is what the migrated app's own
+  // regression report screenshots show. videoModalDesktopCenter below
+  // applies the centering only where main never had this shape to begin
+  // with (isTabletUp's desktopPlayerRow), leaving the phone case identical
+  // to main's original, working layout.
+  // justifyContent:'center' vertically centers the video+title+actions
+  // column as a group within the full screen height (it's the only flex-
+  // participating child — everything else here is position:'absolute').
+  // A flex-start variant was tried to close the gap this leaves above a
+  // 16:9 video on a tall phone, but that just relocated the same leftover
+  // space entirely below the content instead of removing it — centered,
+  // split top/bottom, is the correct look here, matching main.
+  videoModal: { flex: 1, backgroundColor: '#000', justifyContent: 'center', paddingTop: 10 },
+  videoModalDesktopCenter: { alignItems: 'center' },
   videoModalLandscape: { justifyContent: 'center', alignItems: 'center' },
   // Desktop: video+title on the left, the action icons as a vertical rail
   // beside it — alignItems:'center' is what actually centers that rail
