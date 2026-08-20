@@ -3,7 +3,6 @@ import { useRouter } from 'expo-router';
 import { useEffect, useState } from 'react';
 import {
   BackHandler,
-  FlatList,
   Modal,
   Platform,
   ScrollView,
@@ -14,58 +13,49 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Text } from '../../components/AppText';
-import { useResponsiveColumns } from '../../components/layout/ResponsiveGrid';
+import BibleBooksView from '../../components/bible/BibleBooksView';
+import BibleChaptersView from '../../components/bible/BibleChaptersView';
 import ThemeToggleIcon from '../../components/ThemeToggleIcon';
 import { CONTENT_MAX_WIDTH } from '../../constants/layout';
 import { useBreakpoint } from '../../hooks/use-breakpoint';
 import { BIBLE_VERSIONS, BOOKS } from '../../utils/bibleData';
 import { getMemBibleSettings, saveBibleSettings } from '../../utils/bibleSettings';
 import { useTheme } from '../../utils/ThemeContext';
-import { withRouterHistoryId } from '../../utils/webHistory';
 
-interface BibleNav {
+// Native-only nav state — home/books/chapters browsed via local state inside
+// this one persistent screen (it's mounted once inside TabShell.tsx's
+// PagerView, never itself a routed Stack entry — see nativeGoBack's own
+// comment below for why). Reader is a genuine routed push either way
+// (app/bible-reader.tsx), on both platforms.
+//
+// Web does NOT use this nav state at all: Books and Chapters are their own
+// routes (app/bible-books.tsx, app/bible-chapters.tsx), reached via
+// router.push/back exactly like Reader always was. That used to be raw
+// window.history.pushState/back specifically to avoid remounting the whole
+// (tabs) tab shell (routing to '/bible' — this same screen's own path —
+// resolves right back to it). But Expo Router's own web history engine
+// (createMemoryHistory.js) reacts to ANY popstate, including the ones our
+// own raw window.history.back() triggered — it can't tell those apart from
+// the user's real browser back button — and respondsby resyncing its
+// internal state in a way that cascaded into remounting the entire (tabs)
+// navigator (confirmed by instrumenting window.history: WebBackGuard's and
+// this screen's own mount-only effects fired again on the very first Back
+// press). A genuinely different top-level route sidesteps that: pushing/
+// popping it never touches '/bible', so the (tabs) instance underneath
+// isn't a match for it and stays mounted — same mechanism bible-reader
+// already used successfully. BibleWebNavChrome recreates the sidebar/tab-bar
+// around Books/Chapters so browsing still looks like it's inside this tab's
+// own layout, even though it's technically a sibling screen now (see that
+// component's own comment); only the Reader stays a full-screen takeover
+// with no chrome, matching how it already looked before this split.
+interface NativeBibleNav {
   view: 'home' | 'books' | 'chapters';
   version?: string;
   bilingual: boolean;
-  testament: 'OT' | 'NT';
   bookId?: string;
 }
 
-const HOME_NAV: BibleNav = { view: 'home', bilingual: false, testament: 'OT' };
-
-// Web-only: mirrors BibleNav into the URL's query string via the raw History
-// API instead of expo-router's router.push(). TabShell.web.tsx's own
-// tab-switch fix explains why: router.push() to a route inside the (tabs)
-// group — which '/bible' still is, even just navigating within itself —
-// remounts the entire tab shell (a fresh Home/Videos/Bible/etc. instance on
-// top of whatever the previous one hadn't cleaned up yet). Browsing several
-// chapters in one sitting used to reproduce exactly the "gets slower the
-// longer you use it" degradation that fix targeted, just via this different
-// trigger. Reading/writing the URL directly keeps the original design's
-// goals (browser back works, refresh/deep-link lands on the right screen)
-// without ever calling router.push for same-tab navigation.
-function parseBibleSearch(search: string): BibleNav {
-  const p = new URLSearchParams(search);
-  const rawView = p.get('view');
-  return {
-    view: rawView === 'books' || rawView === 'chapters' ? rawView : 'home',
-    version: p.get('version') || undefined,
-    bilingual: p.get('bilingual') === '1',
-    testament: p.get('testament') === 'NT' ? 'NT' : 'OT',
-    bookId: p.get('bookId') || undefined,
-  };
-}
-
-function buildBibleUrl(nav: BibleNav): string {
-  const p = new URLSearchParams();
-  if (nav.view !== 'home') p.set('view', nav.view);
-  if (nav.version) p.set('version', nav.version);
-  if (nav.bilingual) p.set('bilingual', '1');
-  if (nav.testament) p.set('testament', nav.testament);
-  if (nav.bookId) p.set('bookId', nav.bookId);
-  const qs = p.toString();
-  return qs ? `/bible?${qs}` : '/bible';
-}
+const HOME_NAV: NativeBibleNav = { view: 'home', bilingual: false };
 
 interface SettingsModalProps {
   visible: boolean;
@@ -103,55 +93,21 @@ function SettingsModal({ visible, onClose, c, fontSize, setFontSize }: SettingsM
 
 export default function BibleScreen() {
   const router = useRouter();
-  // Web sources its own nav state from the URL directly (see parseBibleSearch
-  // above) — seeded from whatever the page actually loaded on (a fresh load,
-  // refresh, or deep link), then kept in sync by the popstate listener below
-  // for browser back/forward.
-  const [webNav, setWebNav] = useState<BibleNav>(() => (Platform.OS === 'web' ? parseBibleSearch(window.location.search) : HOME_NAV));
-  // Native: plain local state, not expo-router params/router.push. This tab
-  // is mounted as a single, persistent React component *inside*
-  // TabShell.tsx's PagerView (components/navigation/TabShell.tsx imports and
-  // renders <BibleScreen/> directly as one page) — it is never itself a
-  // routed Stack screen. But app/_layout.tsx's root Stack only ever
-  // registers "(tabs)" as a single top-level Stack.Screen (there is no
-  // separate "bible" entry — see its <Stack.Screen name="(tabs)" .../>), so
-  // calling router.push({ pathname: '/bible', ... }) — which this screen's
-  // own version/book/chapter navigation used to do, matching the pattern
-  // used for genuinely separate screens like bible-reader — resolves to
-  // that same "(tabs)" screen and pushes a *second, brand-new* instance of
-  // the entire tabs layout on top of the current one: a fresh TabShell,
-  // whose activeTab starts over at its initial value (0, Home). That's
-  // exactly the reported bug — selecting any Bible version immediately
-  // "returned to Home" — because a whole new Home-tab-first TabShell had
-  // just been pushed. Since this screen never actually leaves the (tabs)
-  // group, its own book/chapter browsing needs no navigation at all, only
-  // local state.
-  const [nativeNav, setNativeNav] = useState<BibleNav>(HOME_NAV);
-  const nav: BibleNav = Platform.OS === 'web' ? webNav : nativeNav;
+  const [nativeNav, setNativeNav] = useState<NativeBibleNav>(HOME_NAV);
   const { colors: c, theme, cycleTheme } = useTheme();
   const insets = useSafeAreaInsets();
-  const view = nav.view;
-  const isBilingual = nav.bilingual;
-  const testament = nav.testament;
-  // Only meaningful once the user has actually picked a version (books/
-  // chapters views, where it's always present in the URL) — 'home' falls
-  // back to the persisted last choice, which selectVersion below keeps
-  // updated for next time regardless of in-page navigation.
-  const version = nav.version || getMemBibleSettings().version;
-  const selectedBook = nav.bookId ? BOOKS.find(b => b.id === Number(nav.bookId)) : null;
+  const view = Platform.OS === 'web' ? 'home' : nativeNav.view;
+  const isBilingual = nativeNav.bilingual;
+  const version = nativeNav.version || getMemBibleSettings().version;
   const [fontSize, setFontSize] = useState(() => getMemBibleSettings().fontSize);
   const [showSettings, setShowSettings] = useState(false);
-  // Fixed 2/5-column grids only ever suited a phone-width screen — scale up
-  // on tablet/desktop instead of leaving a phone-narrow grid stranded in a
-  // much wider viewport.
-  const bookColumns = useResponsiveColumns({ mobile: 2, tablet: 3, desktop: 5 });
-  const chapterColumns = useResponsiveColumns({ mobile: 5, tablet: 7, desktop: 10 });
 
   const isEnglish = BIBLE_VERSIONS.find(v => v.code === version)?.lang === 'English';
 
   // Steps native's local nav state back one level: chapters -> books ->
-  // home. Shared by the hardware back handler below and the on-screen back
-  // arrows (see goBack further down).
+  // home. Shared by the hardware back handler below and BibleBooksView/
+  // BibleChaptersView's onClose. Web never calls this — its Books/Chapters
+  // are separate routes, popped via router.back() directly.
   const nativeGoBack = () => {
     setNativeNav(prev => {
       if (prev.view === 'chapters') return { ...prev, view: 'books', bookId: undefined };
@@ -161,117 +117,29 @@ export default function BibleScreen() {
   };
 
   useEffect(() => {
-    // Web has no hardware back key — the browser's own back button already
-    // works correctly here since every forward step is a real history
-    // entry (see goToBooks/goToChapters below). Native steps its own local
-    // nav state back instead of calling router.back() — this screen is
-    // never itself a routed stack entry (see nativeNav's own comment
-    // above), so there's nothing for expo-router to pop here. Left
-    // unhandled (return false) at 'home' so the OS's default behavior
-    // (whatever that resolves to for this tab) still applies there.
+    // Web has no hardware back key, and doesn't use this nav state at all
+    // (see NativeBibleNav's own comment) — nothing to step here.
     if (Platform.OS === 'web') return;
     const backAction = () => {
-      if (view === 'home') return false;
+      if (nativeNav.view === 'home') return false;
       nativeGoBack();
       return true;
     };
     const handler = BackHandler.addEventListener('hardwareBackPress', backAction);
     return () => handler.remove();
-  }, [view]);
-
-  // Browser back/forward within Bible's own browsing steps — mirrors
-  // TabShell.web.tsx's own popstate listener for tab switches, which this
-  // doesn't conflict with: TabShell's handler only reacts when its own
-  // `tghTab` marker is present, and otherwise just re-confirms the already-
-  // active tab from the pathname (still '/bible' either way) — a harmless
-  // no-op alongside this one syncing the actual view/version/testament/book.
-  useEffect(() => {
-    if (Platform.OS !== 'web') return;
-    const onPopState = () => setWebNav(parseBibleSearch(window.location.search));
-    window.addEventListener('popstate', onPopState);
-    return () => window.removeEventListener('popstate', onPopState);
-  }, []);
-
-  // Guarantees Back always has a full chain of stops to walk through —
-  // Home, then Books, then Chapters — even when this screen first mounts
-  // *already* on "books" or "chapters" (a page refresh, or a shared/
-  // bookmarked link straight into a chapter list), not just when reached by
-  // clicking through from Home normally. Reaching "books" that way used to
-  // have nothing but WebBackGuard's own site-exit padding sitting directly
-  // underneath it in history — since navigating *to* the Bible tab itself
-  // never pushes a Bible-specific entry, only whatever got the user to
-  // /bible in the first place (a tab switch, or nothing at all on a fresh
-  // load) did. One Back press from "books" then jumped straight past
-  // "Home" to the "Leave Theos Gospel Hall?" dialog instead of landing on
-  // Bible's own home screen.
-  //
-  // Only ever pushes forward here — never replaceState on the entry that
-  // was current when this effect runs. WebBackGuard mounts (and pushes its
-  // own two `tghBackGuard`-marked padding entries) before this effect does,
-  // since it's rendered ahead of <Stack> in app/_layout.tsx and effects fire
-  // in that same top-to-bottom order on a fresh page load. Replacing the
-  // then-current entry — as this used to do — silently overwrote the more
-  // recent of those two guard entries, quietly shrinking WebBackGuard's
-  // padding from two entries to one and putting a `tghBible`-marked entry
-  // where a `tghBackGuard`-marked one used to be. Pushing every synthesized
-  // level as a brand-new entry instead leaves WebBackGuard's own entries —
-  // and anything else already in history — completely untouched, at the
-  // cost of one harmless extra "back to the same screen" hop the first time
-  // Back is pressed right after a deep link/refresh straight into a
-  // non-home view. Runs only for a genuinely fresh mount into a non-home
-  // view, never for normal in-app navigation (which already pushes each
-  // level as it happens, via goToBooks/goToChapters below).
-  useEffect(() => {
-    if (Platform.OS !== 'web') return;
-    const initial = parseBibleSearch(window.location.search);
-    if (initial.view === 'home') return;
-    window.history.pushState(withRouterHistoryId({ tghBible: true }), '', '/bible');
-    if (initial.view === 'chapters') {
-      const booksNav: BibleNav = { view: 'books', version: initial.version, bilingual: initial.bilingual, testament: initial.testament };
-      window.history.pushState(withRouterHistoryId({ tghBible: true }), '', buildBibleUrl(booksNav));
-    }
-    window.history.pushState(withRouterHistoryId({ tghBible: true }), '', buildBibleUrl(initial));
-  }, []);
+  }, [nativeNav.view]);
 
   const goToBooks = (v: string, bilingual: boolean) => {
     if (!bilingual) saveBibleSettings({ version: v });
-    const next: BibleNav = { view: 'books', version: v, bilingual, testament: 'OT' };
     if (Platform.OS === 'web') {
-      window.history.pushState(withRouterHistoryId({ tghBible: true }), '', buildBibleUrl(next));
-      setWebNav(next);
-    } else {
-      setNativeNav(next);
+      router.push({ pathname: '/bible-books', params: { version: v, bilingual: bilingual ? '1' : '0' } });
+      return;
     }
-  };
-
-  const setTestament = (t: 'OT' | 'NT') => {
-    if (Platform.OS === 'web') {
-      // In place — switching OT/NT is a filter, not a navigation step, so it
-      // shouldn't add its own back-button stop.
-      const next: BibleNav = { ...nav, testament: t };
-      window.history.replaceState(withRouterHistoryId({ tghBible: true }), '', buildBibleUrl(next));
-      setWebNav(next);
-    } else {
-      setNativeNav(prev => ({ ...prev, testament: t }));
-    }
-  };
-
-  // Symmetric with pushState above for web — window.history.back() is what
-  // actually pops the raw entries goToBooks/goToChapters push. Native steps
-  // its own local nav state back the same way the hardware handler does.
-  const goBack = () => {
-    if (Platform.OS === 'web') window.history.back();
-    else nativeGoBack();
+    setNativeNav({ view: 'books', version: v, bilingual });
   };
 
   const goToChapters = (book: any) => {
-    const next: BibleNav = { view: 'chapters', version, bilingual: isBilingual, testament, bookId: String(book.id) };
-    if (Platform.OS === 'web') {
-      window.history.pushState(withRouterHistoryId({ tghBible: true }), '', buildBibleUrl(next));
-      setWebNav(next);
-    } else {
-      setNativeNav(next);
-    }
+    setNativeNav(prev => ({ ...prev, view: 'chapters', bookId: String(book.id) }));
   };
 
   const openChapter = (book: any, chapter: number) => {
@@ -287,167 +155,89 @@ export default function BibleScreen() {
     });
   };
 
-  const OTBooks = BOOKS.filter(b => b.id <= 39);
-  const NTBooks = BOOKS.filter(b => b.id >= 40);
-
   const tamilVersions = BIBLE_VERSIONS.filter(v => v.lang === 'Tamil');
   const englishVersions = BIBLE_VERSIONS.filter(v => v.lang === 'English');
-  const books = testament === 'OT' ? OTBooks : NTBooks;
-  const currentVersion = BIBLE_VERSIONS.find(v => v.code === version);
-  const otLabel = isEnglish ? 'Old Testament (OT)' : 'பழைய ஏற்பாடு (OT)';
-  const ntLabel = isEnglish ? 'New Testament (NT)' : 'புதிய ஏற்பாடு (NT)';
-  const selectLabel = isEnglish ? 'Select a book' : 'புத்தகம் தேர்வு செய்யுங்கள்';
-  const chapters = selectedBook ? Array.from({ length: selectedBook.chapters }, (_, i) => i + 1) : [];
-  const chapterTitle = selectedBook ? (isBilingual ? `${selectedBook.name} | ${selectedBook.tamil}` : isEnglish ? selectedBook.name : selectedBook.tamil) : '';
 
-  // A single persistent root, with the three "screens" swapped *inside* it,
-  // rather than each view returning (and thus mounting/unmounting) its own
-  // separate root <View style={{backgroundColor: c.bg}}>. Three separate
-  // early returns meant every view transition tore down the previous
-  // screen's themed background container and mounted a brand new one —
-  // harmless on native, but on web that's exactly the kind of unmount/
-  // remount that produces a visible flash (of whatever's behind it,
-  // typically the page's default background) between the old and new
-  // screen. Keeping one root mounted the whole time and only swapping what's
-  // inside it removes that flash entirely, matching the same "don't tear
-  // down a shared container to switch views" pattern already used for
-  // VideoModal elsewhere in this app.
+  if (view === 'books') {
+    return (
+      <BibleBooksView
+        version={version}
+        isBilingual={isBilingual}
+        onSelectBook={goToChapters}
+        onClose={nativeGoBack}
+      />
+    );
+  }
+
+  if (view === 'chapters' && nativeNav.bookId) {
+    return (
+      <BibleChaptersView
+        bookId={nativeNav.bookId}
+        version={version}
+        isBilingual={isBilingual}
+        onSelectChapter={(chapter) => openChapter(BOOKS.find(b => b.id === Number(nativeNav.bookId)), chapter)}
+        onClose={nativeGoBack}
+      />
+    );
+  }
+
   return (
     <View style={[styles.container, { backgroundColor: c.bg }]}>
-      {view === 'home' && (
-        <>
-          <StatusBar barStyle={theme === 'light' ? 'dark-content' : 'light-content'} />
-          <View style={[styles.header, { backgroundColor: c.headerBg, paddingRight: 16 + insets.right, paddingTop: insets.top + 12 }]}>
-            <View style={{ flex: 1 }}>
-              <Text style={[styles.headerTitle, { color: c.text }]}>📖 Bible</Text>
-              <Text style={[styles.headerSubtitle, { color: c.subtext }]}>5 versions available</Text>
-            </View>
-            <TouchableOpacity onPress={cycleTheme} style={styles.themeBtn}>
-              <ThemeToggleIcon theme={theme} size={22} color={c.text} />
-            </TouchableOpacity>
-            <TouchableOpacity onPress={() => setShowSettings(true)} style={styles.settingsBtn}>
-              <Ionicons name="settings-outline" size={22} color={c.text} />
-            </TouchableOpacity>
-          </View>
-          <ScrollView contentContainerStyle={{ padding: 16, width: '100%', maxWidth: CONTENT_MAX_WIDTH, alignSelf: 'center' }}>
-            <TouchableOpacity
-              style={[styles.bilingualCard, { backgroundColor: c.accent }]}
-              onPress={() => goToBooks(getMemBibleSettings().primaryVersion, true)}
-            >
-              <View style={{ flex: 1 }}>
-                <View style={styles.bilingualTitleRow}>
-                  <View style={styles.bilingualMark}>
-                    <Text style={styles.bilingualMarkText}>அ / A</Text>
-                  </View>
-                  <Text style={styles.bilingualTitle}>Bilingual Reading</Text>
-                </View>
-                <Text style={styles.bilingualDesc}>Tamil (top) + English (bottom) together</Text>
+      <StatusBar barStyle={theme === 'light' ? 'dark-content' : 'light-content'} />
+      <View style={[styles.header, { backgroundColor: c.headerBg, paddingRight: 16 + insets.right, paddingTop: insets.top + 12 }]}>
+        <View style={{ flex: 1 }}>
+          <Text style={[styles.headerTitle, { color: c.text }]}>📖 Bible</Text>
+          <Text style={[styles.headerSubtitle, { color: c.subtext }]}>5 versions available</Text>
+        </View>
+        <TouchableOpacity onPress={cycleTheme} style={styles.themeBtn}>
+          <ThemeToggleIcon theme={theme} size={22} color={c.text} />
+        </TouchableOpacity>
+        <TouchableOpacity onPress={() => setShowSettings(true)} style={styles.settingsBtn}>
+          <Ionicons name="settings-outline" size={22} color={c.text} />
+        </TouchableOpacity>
+      </View>
+      <ScrollView contentContainerStyle={{ padding: 16, width: '100%', maxWidth: CONTENT_MAX_WIDTH, alignSelf: 'center' }}>
+        <TouchableOpacity
+          style={[styles.bilingualCard, { backgroundColor: c.accent }]}
+          onPress={() => goToBooks(getMemBibleSettings().primaryVersion, true)}
+        >
+          <View style={{ flex: 1 }}>
+            <View style={styles.bilingualTitleRow}>
+              <View style={styles.bilingualMark}>
+                <Text style={styles.bilingualMarkText}>அ / A</Text>
               </View>
-              <Ionicons name="chevron-forward" size={24} color="#fff" />
-            </TouchableOpacity>
-            <Text style={[styles.sectionLabel, { color: c.subtext }]}>Tamil Versions</Text>
-            {tamilVersions.map(v => (
-              <TouchableOpacity key={v.code} style={[styles.versionCard, { backgroundColor: c.surface }]}
-                onPress={() => goToBooks(v.code, false)}>
-                <View style={[styles.versionIcon, { backgroundColor: c.accent }]}><Text style={styles.versionIconText}>த</Text></View>
-                <View style={{ flex: 1 }}>
-                  <Text style={[styles.versionName, { color: c.text }]}>{v.name}</Text>
-                  <Text style={[styles.versionShort, { color: c.subtext }]}>{v.short}</Text>
-                </View>
-                <Ionicons name="chevron-forward" size={18} color={c.subtext} />
-              </TouchableOpacity>
-            ))}
-            <Text style={[styles.sectionLabel, { color: c.subtext, marginTop: 16 }]}>English Versions</Text>
-            {englishVersions.map(v => (
-              <TouchableOpacity key={v.code} style={[styles.versionCard, { backgroundColor: c.surface }]}
-                onPress={() => goToBooks(v.code, false)}>
-                <View style={[styles.versionIcon, { backgroundColor: '#1a6b3a' }]}><Text style={styles.versionIconText}>E</Text></View>
-                <View style={{ flex: 1 }}>
-                  <Text style={[styles.versionName, { color: c.text }]}>{v.name}</Text>
-                  <Text style={[styles.versionShort, { color: c.subtext }]}>{v.short}</Text>
-                </View>
-                <Ionicons name="chevron-forward" size={18} color={c.subtext} />
-              </TouchableOpacity>
-            ))}
-          </ScrollView>
-          <SettingsModal visible={showSettings} onClose={() => setShowSettings(false)} c={c} fontSize={fontSize} setFontSize={setFontSize} />
-        </>
-      )}
-
-      {view === 'books' && (
-        <>
-          <View style={[styles.header, { backgroundColor: c.headerBg, paddingRight: 16 + insets.right, paddingTop: insets.top + 12 }]}>
-            <TouchableOpacity onPress={() => goBack()} style={styles.backBtn}>
-              <Ionicons name="arrow-back" size={22} color={c.text} />
-            </TouchableOpacity>
-            <View style={{ flex: 1 }}>
-              <Text style={[styles.headerTitle, { color: c.text }]}>{isBilingual ? 'Bilingual' : currentVersion?.name}</Text>
-              <Text style={[styles.headerSubtitle, { color: c.subtext }]}>{selectLabel}</Text>
+              <Text style={styles.bilingualTitle}>Bilingual Reading</Text>
             </View>
-            <TouchableOpacity onPress={cycleTheme} style={styles.themeBtn}>
-              <ThemeToggleIcon theme={theme} size={22} color={c.text} />
-            </TouchableOpacity>
+            <Text style={styles.bilingualDesc}>Tamil (top) + English (bottom) together</Text>
           </View>
-          <View style={[styles.testamentRow, { backgroundColor: c.surface }]}>
-            <TouchableOpacity style={[styles.testamentBtn, testament === 'OT' && { backgroundColor: c.accent }]} onPress={() => setTestament('OT')}>
-              <Text style={[styles.testamentText, { color: testament === 'OT' ? '#fff' : c.subtext }]}>{otLabel}</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={[styles.testamentBtn, testament === 'NT' && { backgroundColor: c.accent }]} onPress={() => setTestament('NT')}>
-              <Text style={[styles.testamentText, { color: testament === 'NT' ? '#fff' : c.subtext }]}>{ntLabel}</Text>
-            </TouchableOpacity>
-          </View>
-          <FlatList
-            data={books} key={`books-${testament}-${bookColumns}`}
-            keyExtractor={item => item.id.toString()} numColumns={bookColumns}
-            // Bounded list (max 39 books per testament) — render it in full
-            // rather than rely on FlatList's default initialNumToRender of 10,
-            // which combined with a multi-column grid meant only the first
-            // couple of rows appeared until scrolled (most noticeable on web,
-            // same underlying issue as the Bible reader's verse list).
-            initialNumToRender={books.length}
-            contentContainerStyle={{ padding: 12, width: '100%', maxWidth: CONTENT_MAX_WIDTH, alignSelf: 'center' }}
-            renderItem={({ item }) => (
-              <TouchableOpacity style={[styles.bookCard, { backgroundColor: c.surface }]}
-                onPress={() => goToChapters(item)}>
-                <Text style={[styles.bookName, { color: c.text }]}>{isBilingual ? item.name : isEnglish ? item.name : item.tamil}</Text>
-                {isBilingual && <Text style={[styles.bookTamil, { color: c.subtext }]}>{item.tamil}</Text>}
-                <Text style={[styles.bookChapters, { color: c.accent }]}>{item.chapters} chapters</Text>
-              </TouchableOpacity>
-            )}
-          />
-        </>
-      )}
-
-      {view === 'chapters' && selectedBook && (
-        <>
-          <View style={[styles.header, { backgroundColor: c.headerBg, paddingRight: 16 + insets.right, paddingTop: insets.top + 12 }]}>
-            <TouchableOpacity onPress={() => goBack()} style={styles.backBtn}>
-              <Ionicons name="arrow-back" size={22} color={c.text} />
-            </TouchableOpacity>
+          <Ionicons name="chevron-forward" size={24} color="#fff" />
+        </TouchableOpacity>
+        <Text style={[styles.sectionLabel, { color: c.subtext }]}>Tamil Versions</Text>
+        {tamilVersions.map(v => (
+          <TouchableOpacity key={v.code} style={[styles.versionCard, { backgroundColor: c.surface }]}
+            onPress={() => goToBooks(v.code, false)}>
+            <View style={[styles.versionIcon, { backgroundColor: c.accent }]}><Text style={styles.versionIconText}>த</Text></View>
             <View style={{ flex: 1 }}>
-              <Text style={[styles.headerTitle, { color: c.text }]}>{chapterTitle}</Text>
-              <Text style={[styles.headerSubtitle, { color: c.subtext }]}>{isEnglish || isBilingual ? 'Select chapter' : 'அதிகாரம் தேர்வு செய்யுங்கள்'}</Text>
+              <Text style={[styles.versionName, { color: c.text }]}>{v.name}</Text>
+              <Text style={[styles.versionShort, { color: c.subtext }]}>{v.short}</Text>
             </View>
-            <TouchableOpacity onPress={cycleTheme} style={styles.themeBtn}>
-              <ThemeToggleIcon theme={theme} size={22} color={c.text} />
-            </TouchableOpacity>
-          </View>
-          <FlatList
-            data={chapters} key={`chapters-${selectedBook.id}-${chapterColumns}`}
-            keyExtractor={item => item.toString()} numColumns={chapterColumns}
-            // Bounded list (max 150 chapters, Psalms) — same reasoning as the
-            // books grid above: render it in full instead of leaving it to
-            // FlatList's default initialNumToRender of 10.
-            initialNumToRender={chapters.length}
-            contentContainerStyle={{ padding: 12, width: '100%', maxWidth: CONTENT_MAX_WIDTH, alignSelf: 'center' }}
-            renderItem={({ item }) => (
-              <TouchableOpacity style={[styles.chapterBtn, { backgroundColor: c.surface }]} onPress={() => openChapter(selectedBook, item)}>
-                <Text style={[styles.chapterText, { color: c.accent }]}>{item}</Text>
-              </TouchableOpacity>
-            )}
-          />
-        </>
-      )}
+            <Ionicons name="chevron-forward" size={18} color={c.subtext} />
+          </TouchableOpacity>
+        ))}
+        <Text style={[styles.sectionLabel, { color: c.subtext, marginTop: 16 }]}>English Versions</Text>
+        {englishVersions.map(v => (
+          <TouchableOpacity key={v.code} style={[styles.versionCard, { backgroundColor: c.surface }]}
+            onPress={() => goToBooks(v.code, false)}>
+            <View style={[styles.versionIcon, { backgroundColor: '#1a6b3a' }]}><Text style={styles.versionIconText}>E</Text></View>
+            <View style={{ flex: 1 }}>
+              <Text style={[styles.versionName, { color: c.text }]}>{v.name}</Text>
+              <Text style={[styles.versionShort, { color: c.subtext }]}>{v.short}</Text>
+            </View>
+            <Ionicons name="chevron-forward" size={18} color={c.subtext} />
+          </TouchableOpacity>
+        ))}
+      </ScrollView>
+      <SettingsModal visible={showSettings} onClose={() => setShowSettings(false)} c={c} fontSize={fontSize} setFontSize={setFontSize} />
     </View>
   );
 }
@@ -461,7 +251,6 @@ const styles = StyleSheet.create({
   header: { padding: 16, flexDirection: 'row', alignItems: 'center', gap: 8 },
   headerTitle: { fontSize: 16, fontWeight: 'bold' },
   headerSubtitle: { fontSize: 11, marginTop: 2 },
-  backBtn: { padding: 4 },
   settingsBtn: { padding: 4 },
   themeBtn: { padding: 4 },
   bilingualCard: { borderRadius: 16, padding: 20, marginBottom: 20, flexDirection: 'row', alignItems: 'center', elevation: 4 },
@@ -483,15 +272,6 @@ const styles = StyleSheet.create({
   versionIconText: { color: '#fff', fontSize: 18, fontWeight: 'bold' },
   versionName: { fontSize: 15, fontWeight: 'bold' },
   versionShort: { fontSize: 12, marginTop: 2 },
-  testamentRow: { flexDirection: 'row', padding: 8, gap: 8 },
-  testamentBtn: { flex: 1, paddingVertical: 10, borderRadius: 10, alignItems: 'center' },
-  testamentText: { fontSize: 12, fontWeight: '600' },
-  bookCard: { flex: 1, margin: 6, borderRadius: 12, padding: 14, elevation: 2 },
-  bookName: { fontSize: 13, fontWeight: 'bold' },
-  bookTamil: { fontSize: 11, marginTop: 2 },
-  bookChapters: { fontSize: 10, marginTop: 6, fontWeight: '600' },
-  chapterBtn: { flex: 1, margin: 6, borderRadius: 10, padding: 14, alignItems: 'center', elevation: 2 },
-  chapterText: { fontSize: 16, fontWeight: 'bold' },
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' },
   // On tablet-up this becomes a centered floating dialog instead of a
   // full-bleed bottom sheet, matching the same pattern used in bible-reader.tsx.

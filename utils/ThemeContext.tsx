@@ -1,6 +1,6 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { createContext, ReactNode, useCallback, useContext, useEffect, useMemo, useState } from 'react';
-import { useColorScheme } from 'react-native';
+import { Platform, useColorScheme } from 'react-native';
 import { nextTheme, THEME_ORDER, THEMES, ThemeColors, ThemeName } from './theme';
 
 const STORAGE_KEY = 'tgh_app_theme';
@@ -41,6 +41,27 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
   const cycleTheme = useCallback(() => {
     setTheme(nextTheme(theme));
   }, [theme, setTheme]);
+
+  // Web only. The app's own themed background only exists on an inner
+  // View (rendered by each screen) — the actual <html>/<body> behind it
+  // has no background-color of its own, so it defaults to the browser's
+  // plain white canvas. That's invisible during a normal in-app navigation
+  // (React keeps existing content painted continuously, nothing ever
+  // uncovers the bare canvas underneath), but a genuine browser-native
+  // navigation — the physical/gesture Back button, not router.back() —
+  // has the browser itself, not React, drive the repaint, and can
+  // momentarily show that bare white canvas before the app's own themed
+  // view repaints over it. Reported as a brief white flash specifically on
+  // mobile web, specifically via the device Back button — exactly this
+  // gap. Keeping the root document's own background in sync with the
+  // current theme here removes the bare canvas entirely, regardless of
+  // which navigation path causes the repaint.
+  useEffect(() => {
+    if (Platform.OS !== 'web' || typeof document === 'undefined') return;
+    const bg = THEMES[theme].bg;
+    document.documentElement.style.backgroundColor = bg;
+    document.body.style.backgroundColor = bg;
+  }, [theme]);
 
   // ThemeProvider wraps the entire app (app/_layout.tsx), and useTheme() is
   // called from nearly every screen — an inline object literal here would

@@ -202,6 +202,8 @@ export default function RootLayout() {
             <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
             <Stack.Screen name="song-reader" options={{ headerShown: false }} />
             <Stack.Screen name="other-song-reader" options={{ headerShown: false }} />
+            <Stack.Screen name="bible-books" options={{ headerShown: false }} />
+            <Stack.Screen name="bible-chapters" options={{ headerShown: false }} />
             <Stack.Screen name="bible-reader" options={{ headerShown: false }} />
             <Stack.Screen name="admin" options={{ headerShown: false }} />
           </Stack>

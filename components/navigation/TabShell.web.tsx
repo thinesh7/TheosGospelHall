@@ -1,11 +1,13 @@
 import { Ionicons } from '@expo/vector-icons';
 import { usePathname } from 'expo-router';
-import { useEffect, useState } from 'react';
-import { Image, StyleSheet, TouchableOpacity, View } from 'react-native';
+import { useEffect, useRef, useState } from 'react';
+import { StyleSheet, TouchableOpacity, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Text } from '@/components/AppText';
 import LiveNowPopup from '@/components/LiveNowPopup';
+import AppBrandHeader from '@/components/navigation/AppBrandHeader';
 import { Sidebar, SidebarItem } from '@/components/layout/Sidebar';
+import { TAB_META, TAB_PATHS, pathToTabIndex } from '@/constants/tabs';
 import { useBreakpoint } from '@/hooks/use-breakpoint';
 import BibleScreen from '@/app/(tabs)/bible';
 import ContactScreen from '@/app/(tabs)/contact';
@@ -13,20 +15,10 @@ import HomeScreen from '@/app/(tabs)/index';
 import SongsHubScreen from '@/app/(tabs)/songs-hub';
 import VideosScreen from '@/app/(tabs)/videos';
 import { checkCurrentlyLive, LiveNowInfo } from '@/utils/liveStatus';
+import { consumePendingTabSwitch } from '@/utils/bibleWebNav';
 import { useTheme } from '@/utils/ThemeContext';
 import { useIsUpdateGateActive } from '@/utils/UpdateGateContext';
 import { withRouterHistoryId } from '@/utils/webHistory';
-
-// Route each tab corresponds to — index must line up 1:1 with TABS below.
-// Unlike the native shell (no URL concept), web needs this so a direct load,
-// refresh, or browser back/forward on e.g. /videos lands on the Videos tab
-// instead of always falling back to Home.
-const TAB_PATHS = ['/', '/videos', '/bible', '/songs-hub', '/contact'];
-
-function pathToTabIndex(pathname: string): number {
-  const idx = TAB_PATHS.indexOf(pathname);
-  return idx === -1 ? 0 : idx;
-}
 
 // sessionStorage rather than a plain module-level variable so it also
 // survives a page refresh within the same browser tab (cleared when the tab
@@ -56,18 +48,17 @@ function markLiveVideoDismissed(videoId: string) {
 // instead renders responsive chrome — a persistent Sidebar on desktop, a top-
 // adjacent tab bar on mobile/tablet web — around the SAME five screen
 // components the native shell uses.
-const TABS: (SidebarItem & { screen: () => React.ReactNode })[] = [
-  { key: '0', label: 'Home', icon: 'home', screen: () => <HomeScreen /> },
-  {
-    key: '1',
-    label: 'Videos',
-    icon: 'play-circle',
-    screen: () => null, // rendered specially below (needs autoPlayLive props)
-  },
-  { key: '2', label: 'Bible', icon: 'book', screen: () => <BibleScreen /> },
-  { key: '3', label: 'Songs', icon: 'musical-notes', screen: () => <SongsHubScreen /> },
-  { key: '4', label: 'Contact', icon: 'call', screen: () => <ContactScreen /> },
+// screen renderers keyed onto the shared TAB_META (see constants/tabs.ts) —
+// index/key order must line up 1:1 with it.
+const TAB_SCREENS: (() => React.ReactNode)[] = [
+  () => <HomeScreen />,
+  () => null, // Videos — rendered specially below (needs autoPlayLive props)
+  () => <BibleScreen />,
+  () => <SongsHubScreen />,
+  () => <ContactScreen />,
 ];
+const TABS: (SidebarItem & { screen: () => React.ReactNode })[] =
+  TAB_META.map((tab, i) => ({ ...tab, screen: TAB_SCREENS[i] }));
 
 export default function TabShell() {
   const { colors } = useTheme();
@@ -79,6 +70,11 @@ export default function TabShell() {
   const initialPathname = usePathname();
   const [activeTab, setActiveTab] = useState(() => pathToTabIndex(initialPathname));
   const [visitedTabs, setVisitedTabs] = useState<Set<number>>(() => new Set([pathToTabIndex(initialPathname)]));
+  // Lets onPopState below always read the latest activeTab without needing
+  // it in that effect's own dependency array (see that effect's own
+  // comment on why it stays mounted for this component's whole lifetime).
+  const activeTabRef = useRef(activeTab);
+  activeTabRef.current = activeTab;
 
   const [liveNowInfo, setLiveNowInfo] = useState<LiveNowInfo | null>(null);
   const [autoPlayLive, setAutoPlayLive] = useState<{ videoId: string; title: string } | null>(null);
@@ -135,13 +131,85 @@ export default function TabShell() {
   // Stack.Screen like bible-reader) is left alone.
   useEffect(() => {
     const onPopState = (e: PopStateEvent) => {
+      // BibleWebNavChrome (rendered on app/bible-books.tsx and
+      // app/bible-chapters.tsx) sets this before calling router.back() one
+      // or more times to jump straight to a different tab — those routes
+      // are separate Stack screens outside this (tabs) group, so switching
+      // tabs from inside them has to land back on *this* already-mounted
+      // instance first (reusing it, not remounting — see
+      // utils/bibleWebNav.ts) and only then flip activeTab, since there's
+      // no other channel to reach this component's own state from there.
+      const pendingTab = consumePendingTabSwitch();
+      if (pendingTab !== null) {
+        // The back() calls landed us on whatever URL the (tabs) instance
+        // was originally pushed with (e.g. still '/bible' if that's where
+        // Books/Chapters was entered from) — that's stale for the tab
+        // we're actually about to show. Without a fix-up, activeTab and the
+        // URL disagree: content renders correctly right now, but a refresh
+        // (which re-derives activeTab from the URL alone, see
+        // pathToTabIndex above) or the browser's own back button snaps back
+        // to the stale tab instead of the one the user actually navigated to
+        // (confirmed by reproducing it: reload right after using this path
+        // silently reverted to the Bible tab).
+        //
+        // Deferred one tick (setTimeout 0, not called inline here) because
+        // expo-router's own popstate listener for this same event — which
+        // resyncs the address bar to match its internal router state (still
+        // '/bible', since none of this ever went through router.push) —
+        // fires after this handler and clobbered an inline replaceState,
+        // silently reverting it back to '/bible' before the next repaint
+        // (confirmed by instrumenting: the inline write landed, then read
+        // back stripped of tghTab moments later). Running after that
+        // resync's own microtask/task instead of racing it makes this write
+        // the one that sticks. replaceState (not pushState) since we're
+        // correcting the entry we already landed on, not adding a new one.
+        setTimeout(() => {
+          window.history.replaceState(withRouterHistoryId({ tghTab: pendingTab }), '', TAB_PATHS[pendingTab]);
+        }, 0);
+        setActiveTab(pendingTab);
+        return;
+      }
       const tabIndex = (e.state as { tghTab?: number } | null)?.tghTab;
       if (tabIndex !== undefined) {
         setActiveTab(tabIndex);
         return;
       }
-      const pathTab = pathToTabIndex(window.location.pathname);
-      if (TAB_PATHS.includes(window.location.pathname)) setActiveTab(pathTab);
+      // No tghTab on this entry's state at all — not one of our own
+      // goToTab pushes (those always stamp one; the check above would have
+      // caught it). Every raw pushState this app makes for tab-switching
+      // (goToTab above, BibleWebNavChrome's tab-switch handoff above)
+      // shares the *same* Expo Router `id` — none of them are genuine
+      // router.push() navigations, so Expo Router sees every one of these
+      // tab entries as just the one (tabs)-group position. Whenever a real,
+      // router-tracked navigation (Bible's Books/Chapters/Reader routes)
+      // pushes on top of that position and later pops back to it, Expo
+      // Router's own history listener resyncs that shared entry to what
+      // *it* thinks the (tabs) group's current route is — which is never
+      // any of our tghTab-stamped paths, so it lands on '/' with the tghTab
+      // stripped, regardless of which tab was actually showing (confirmed
+      // by reproducing it: opening a Bible version and backing out once
+      // read the correct tghTab and worked; doing the exact same thing a
+      // second time landed on this branch instead, because the first
+      // round's resync had already corrupted the shared entry in the
+      // background — from here it silently fell back to whatever tab
+      // happened to be earlier in browser history, e.g. Home or Videos,
+      // not Bible).
+      //
+      // window.location.pathname is exactly what that resync just
+      // overwrote, so it's not trustworthy here either — trusting it is
+      // what produced the wrong-tab fallback above. activeTabRef is: it's
+      // our own state, and the only two things that ever change it
+      // (goToTab, the pendingTab branch above) both stamp their own tghTab
+      // when they do — so if we're in this branch at all, activeTab must
+      // already be showing whatever's actually still on screen. Re-stamp
+      // it (deferred one tick — same reasoning as the pendingTab branch
+      // above: writing inline races Expo Router's own resync for this
+      // exact popstate and loses) so this entry is self-healing: every
+      // subsequent pop back to it, corrupted again or not, keeps landing
+      // on the right tab instead of only the first one.
+      setTimeout(() => {
+        window.history.replaceState(withRouterHistoryId({ tghTab: activeTabRef.current }), '', TAB_PATHS[activeTabRef.current]);
+      }, 0);
     };
     window.addEventListener('popstate', onPopState);
     return () => window.removeEventListener('popstate', onPopState);
@@ -195,17 +263,7 @@ export default function TabShell() {
           activeKey={String(activeTab)}
           onSelect={key => goToTab(Number(key))}
           width={260}
-          header={
-            <View style={[styles.sidebarHeader, { borderBottomColor: colors.divider }]}>
-              <View style={styles.brandRow}>
-                <Image source={require('../../assets/images/logo.png')} style={styles.brandLogo} resizeMode="contain" />
-                <View style={styles.brandTextCol}>
-                  <Text style={[styles.brandTitle, { color: colors.text }]}>Theos Gospel Hall</Text>
-                  <Text style={[styles.brandSubtitle, { color: colors.subtext }]}>Proclaiming the Word of God</Text>
-                </View>
-              </View>
-            </View>
-          }
+          header={<AppBrandHeader />}
         />
         <View style={styles.desktopContent}>{content}</View>
         <LiveNowPopup visible={!!liveNowInfo} onWatch={handleWatchLiveNow} onSkip={dismissLiveNow} />
@@ -248,10 +306,4 @@ const styles = StyleSheet.create({
   tab: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingVertical: 10 },
   tabLabel: { fontSize: 10, marginTop: 2 },
   tabLabelActive: { fontWeight: 'bold' },
-  sidebarHeader: { paddingHorizontal: 20, paddingBottom: 20, marginBottom: 12, borderBottomWidth: 1 },
-  brandRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
-  brandLogo: { width: 36, height: 36, borderRadius: 8 },
-  brandTextCol: { flex: 1 },
-  brandTitle: { fontSize: 18, fontWeight: '700' },
-  brandSubtitle: { fontSize: 12, marginTop: 4, fontStyle: 'italic' },
 });

@@ -44,6 +44,31 @@ const SONGS_PLAYLIST_ID = 'PLKm9fFPbrDuw';
 const FALLBACK_LIVE_IDS = ['PLZISpWbe8RUidyhPJNs5xa8-WOnHq-NLj'];
 const PROGRESS_STORAGE_KEY = 'video_progress_v1';
 const COMPLETION_THRESHOLD = 0.98;
+// Desktop-only horizontal budget reserved to the right of the video for
+// the action-icon rail (VideoModal's desktopPlayerRow, and Shorts'
+// equivalent stage layout), so the video never overlaps it.
+// RAIL_TO_VIDEO_GAP is the real visual gap between video and rail;
+// RAIL_MAX_WIDTH is a safe upper bound on the rail's own rendered width
+// (its 52px icon circle, or the "Copy Link" label under it if that's
+// wider — see actionStyles.iconCircle/iconLabel).
+//
+// The Prev/Next arrow's own position is deliberately NOT derived from
+// this budget for Shorts, whose desktop arrows are positioned from the
+// rail's REAL on-screen position (captured via onLayout, see the
+// onRailLayout prop on ShortsPlayerItemInner and shortsRailRight in
+// VideosScreenContent) after repeated formula-based guesses were
+// reported wrong. VideoModal's own Songs arrows had the same treatment
+// at one point, but were reverted back to a simple static position by
+// request — see the hasSongNav render block below.
+const RAIL_TO_VIDEO_GAP = 24;
+const RAIL_MAX_WIDTH = 90;
+const DESKTOP_RESERVED_WIDTH = RAIL_TO_VIDEO_GAP + RAIL_MAX_WIDTH;
+// Gap from the rail's real (measured) right edge to the arrow, and the
+// arrow's own minimum margin from the window's right edge (a safety
+// clamp only, for narrow desktop windows — not a layout reservation).
+// Only Shorts uses these now (see above).
+const NAV_ARROW_CLEARANCE = 24;
+const NAV_ARROW_EDGE_MARGIN = 12;
 // Ideal card width the desktop grid tries to hit — numColumns is derived by
 // dividing the available width by this and clamping to [3, 5] columns.
 const TARGET_CARD_WIDTH = 300;
@@ -520,7 +545,20 @@ function VideoActions({ videoId, title, absolute = false, direction = 'row' }: {
   const youtubeUrl = `https://www.youtube.com/watch?v=${videoId}`;
   const [linkCopied, setLinkCopied] = useState(false);
 
+  // vnd.youtube:// is a native-app URL scheme — meaningless on web. There,
+  // react-native-web's Linking.openURL hands it to window.open(), which
+  // fails to do anything with an unrecognized scheme but — critically —
+  // doesn't throw either, so the returned promise resolves rather than
+  // rejects. The .catch()-based fallback to the real URL this used to rely
+  // on for that never actually ran, leaving the button silently do nothing
+  // on web (confirmed by reproducing it: no new tab, no navigation, no
+  // error). Native keeps the original scheme-first behavior, where it's
+  // correctly meant to hand off to the real YouTube app.
   const openYouTube = () => {
+    if (Platform.OS === 'web') {
+      Linking.openURL(youtubeUrl);
+      return;
+    }
     Linking.openURL(`vnd.youtube://${videoId}`)
       .catch(() => Linking.openURL(youtubeUrl));
   };
@@ -533,10 +571,24 @@ function VideoActions({ videoId, title, absolute = false, direction = 'row' }: {
   // ancestor it can't guarantee everywhere it's used).
   const shareVideo = async () => {
     if (Platform.OS === 'web') {
+      // navigator.clipboard requires a secure context (HTTPS, or
+      // localhost) — on a plain http:// origin (e.g. testing over the LAN
+      // via a bare IP address, which browsers show as "Not secure") it's
+      // undefined entirely. expo-clipboard's own setStringAsync already
+      // falls back to a document.execCommand('copy') implementation for
+      // that case — the actual bug was here, not there: this always
+      // treated a resolved promise as success without checking the
+      // boolean it resolves with, so "Copied!" showed regardless of
+      // whether setStringAsync's own fallback actually succeeded
+      // (confirmed by reproducing it on an insecure LAN origin: the label
+      // still flipped to "Copied!" with navigator.clipboard confirmed
+      // unavailable).
       try {
-        await Clipboard.setStringAsync(youtubeUrl);
-        setLinkCopied(true);
-        setTimeout(() => setLinkCopied(false), 1500);
+        const copied = await Clipboard.setStringAsync(youtubeUrl);
+        if (copied) {
+          setLinkCopied(true);
+          setTimeout(() => setLinkCopied(false), 1500);
+        }
       } catch {}
       return;
     }
@@ -1042,7 +1094,23 @@ function VideoModal({ visible, videoId, title, isLive, onClose, onPrev, onNext, 
   return (
     <Modal visible={visible} animationType="slide" statusBarTranslucent onRequestClose={() => { if (!locked) onClose(); }}>
       <View
-        style={[styles.videoModal, Platform.OS === 'web' && isTabletUp && styles.videoModalDesktopCenter, isLandscape && styles.videoModalLandscape]}
+        style={[
+          styles.videoModal,
+          Platform.OS === 'web' && isTabletUp && styles.videoModalDesktopCenter,
+          isLandscape && styles.videoModalLandscape,
+          // Web + mobile only (matches the panHandlers condition below):
+          // without this, a left/right swipe here is ambiguous to the
+          // browser itself, not just our own PanResponder — Safari/Chrome's
+          // own edge-swipe-to-go-back gesture can fire on the same drag,
+          // navigating the browser (not just this modal) out from under the
+          // app. Combined with how fragile this app's own web history
+          // already is around unexpected navigations (see TabShell.web.tsx's
+          // own history-desync comments), that reads as "the app crashed" —
+          // exactly what was reported. touch-action:none hands the browser's
+          // native gesture handling off entirely so only our own
+          // navPanResponder below ever sees these touches.
+          hasSongNav && Platform.OS === 'web' && !isTabletUp && ({ touchAction: 'none' } as any),
+        ]}
         onLayout={e => setMeasuredWidth(e.nativeEvent.layout.width)}
         {...(hasSongNav && (Platform.OS !== 'web' || !isTabletUp) ? navPanResponder.panHandlers : {})}
       >
@@ -1084,13 +1152,12 @@ function VideoModal({ visible, videoId, title, isLive, onClose, onPrev, onNext, 
             // (not stacked in a row below it, like mobile), so only the
             // title needs reserving room for, and the rail's own width is
             // reserved out of the horizontal budget so it doesn't overflow.
-            const ACTIONS_RAIL_WIDTH = 110;
             const maxDesktopVideoH = isTabletUp ? height - 130 : Infinity;
-            const maxDesktopVideoW = isTabletUp ? width - ACTIONS_RAIL_WIDTH - 24 : width;
+            const maxDesktopVideoW = isTabletUp ? width - DESKTOP_RESERVED_WIDTH : width;
             // Deliberately two separate formulas, not one shared calc — main
             // (the original Android app) never had tablet/desktop-width
             // capping at all: no isTabletUp, no CONTENT_MAX_WIDTH, no
-            // ACTIONS_RAIL_WIDTH budget. Every attempt to keep native on the
+            // DESKTOP_RESERVED_WIDTH budget. Every attempt to keep native on the
             // *same* capped formula as web (even with isTabletUp always false
             // in practice on a phone) still visibly reproduced the migrated
             // app's cropped/zoomed/off-center player on-device (see
@@ -1169,7 +1236,12 @@ function VideoModal({ visible, videoId, title, isLive, onClose, onPrev, onNext, 
             // keeps the same YoutubePlayer instance mounted regardless.
             return (
               <View style={Platform.OS === 'web' && isTabletUp ? styles.desktopPlayerRow : undefined}>
-                <View>
+                {/* Explicit width (desktop web only) — see the matching
+                    comment on ShortsPlayerItemInner's own column wrapper for
+                    why: same unstyled-column + width:'100%'-title shape,
+                    same Yoga ambiguity, same per-title-length centering
+                    drift without it. */}
+                <View style={Platform.OS === 'web' && isTabletUp ? { width: videoW } : undefined}>
                   {videoBlock}
                   {!isLandscape && <Text style={styles.videoModalTitle} numberOfLines={3}>{title}</Text>}
                 </View>
@@ -1212,7 +1284,7 @@ function VideoModal({ visible, videoId, title, isLive, onClose, onPrev, onNext, 
         {playerReady && (
           <ResumePrompt visible={showResume} onResume={handleResume} onStartOver={handleStartOver} />
         )}
-        <View style={[styles.topRightRow, isLandscape && styles.topRightRowLandscape]}>
+        <View style={[styles.topRightRow, isLandscape && styles.topRightRowLandscape, Platform.OS === 'web' && isTabletUp && styles.topRightRowDesktop]}>
           {/* Screen-lock guards against accidental touches (e.g. in a
               pocket, or during fullscreen landscape) — not a concern with
               mouse-based desktop input, so it's mobile/tablet only. */}
@@ -1221,15 +1293,22 @@ function VideoModal({ visible, videoId, title, isLive, onClose, onPrev, onNext, 
               <Ionicons name="lock-open-outline" size={24} color="#fff" />
             </TouchableOpacity>
           )}
-          <TouchableOpacity style={styles.roundIconBtn} onPress={onClose}>
-            <Ionicons name="close" size={26} color="#fff" />
+          <TouchableOpacity style={[styles.roundIconBtn, Platform.OS === 'web' && isTabletUp && styles.roundIconBtnDesktop]} onPress={onClose}>
+            <Ionicons name="close" size={Platform.OS === 'web' && isTabletUp ? 30 : 26} color="#fff" />
           </TouchableOpacity>
         </View>
         {hasSongNav && !isLandscape && (
           Platform.OS === 'web' && isTabletUp ? (
-            // Desktop: unchanged, buttons over the video (rail layout
-            // means the icons are beside it, not below, so there's no
-            // "align with the icons" row to match here).
+            // Desktop: static, screen-edge-anchored positions. Several
+            // rounds of trying to dynamically position these relative to
+            // the video/action-icon rail (to sit closer to the video on
+            // wide windows) kept landing wrong — overlapping the YouTube/
+            // Copy Link icons, or stranded far from everything — despite
+            // different approaches (computed estimates, then real
+            // on-screen measurement). Removed by request in favor of this
+            // simple, unconditionally correct fallback: it can't overlap
+            // anything since it never depends on the rail's size or
+            // position at all.
             <>
               <TouchableOpacity
                 style={[styles.videoModalNavBtn, styles.videoModalNavBtnLeft]}
@@ -1305,18 +1384,17 @@ function useStagePlayerSize() {
     return { containerW: w, containerH: h, videoW: w, videoH: w * 9 / 16 };
   }
   // Reserves the same horizontal budget as Songs' desktop rail
-  // (ACTIONS_RAIL_WIDTH in VideoModal) so the action icons sit in a column
-  // beside the video instead of overflowing the viewport, matching that
-  // layout exactly.
-  const ACTIONS_RAIL_WIDTH = 110;
+  // (DESKTOP_RESERVED_WIDTH in VideoModal) so the action icons sit in a
+  // column beside the video, with room for the Prev/Next arrow past them,
+  // instead of overflowing the viewport, matching that layout exactly.
   const maxVideoH = height - 140; // leaves room for the title below
-  const maxVideoW = width - ACTIONS_RAIL_WIDTH - 24;
+  const maxVideoW = width - DESKTOP_RESERVED_WIDTH;
   const videoW = Math.min(420, maxVideoW * 0.9, (maxVideoH * 9) / 16);
   const videoH = (videoW * 16) / 9;
   return { containerW: width, containerH: height, videoW, videoH };
 }
 
-function ShortsPlayerItemInner({ item, index, isActive, onEnd, onClose, total, onScrollLockChange, hasPrev, hasNext, onPrev, onNext }: any) {
+function ShortsPlayerItemInner({ item, index, isActive, onEnd, onClose, total, onScrollLockChange, hasPrev, hasNext, onPrev, onNext, onRailLayout }: any) {
   const [shortReady, setShortReady] = useState(false);
   const [progressLoaded, setProgressLoaded] = useState(false);
   const [loadError, setLoadError] = useState(false);
@@ -1439,8 +1517,25 @@ function ShortsPlayerItemInner({ item, index, isActive, onEnd, onClose, total, o
           present, only styles/props vary by isTabletUp — never swapping to
           a structurally different subtree, which avoids a remount (and the
           player restarting) if isTabletUp flips transiently. */}
-      <View style={Platform.OS === 'web' && isTabletUp ? styles.desktopPlayerRow : undefined}>
-        <View>
+      <View
+        style={Platform.OS === 'web' && isTabletUp ? styles.desktopPlayerRow : undefined}
+        onLayout={Platform.OS === 'web' && isTabletUp ? (e) => onRailLayout?.(e.nativeEvent.layout.x + e.nativeEvent.layout.width) : undefined}
+      >
+        {/* Explicit width here (desktop web only) pins this column to
+            exactly the video's own width — without it, this View has no
+            width of its own (a plain flex-row child sized by content) while
+            videoModalTitle's Text sibling asks for width:'100%', an
+            indeterminate/circular case Yoga resolves inconsistently per
+            title (longer titles pulled the column — and so the video inside
+            it — wider than its neighbor's, throwing off how far left/right
+            of the row's own (correctly centered) midpoint the video itself
+            landed). Confirmed by reproducing it: the same short reopened
+            with a different title measured a different horizontal offset
+            from center each time, purely from title-length variance, with
+            everything else on screen identical. Mobile web doesn't need
+            this — its equivalent parent already stretches to a definite,
+            title-independent width via the default flex behavior. */}
+        <View style={Platform.OS === 'web' && isTabletUp ? { width: videoW } : undefined}>
           {isActive && progressLoaded ? (
             <YoutubePlayer
               ref={playerRef}
@@ -1525,8 +1620,8 @@ function ShortsPlayerItemInner({ item, index, isActive, onEnd, onClose, total, o
           </View>
         )}
       </View>
-      <TouchableOpacity style={styles.modalClose} onPress={onClose}>
-        <Ionicons name="close" size={26} color="#fff" />
+      <TouchableOpacity style={[styles.modalClose, Platform.OS === 'web' && isTabletUp && styles.modalCloseDesktop]} onPress={onClose}>
+        <Ionicons name="close" size={Platform.OS === 'web' && isTabletUp ? 30 : 26} color="#fff" />
       </TouchableOpacity>
       {/* Native mobile only — mobile web gets the inline buttons above
           instead, since there's no swipe/scroll gesture happening there
@@ -1542,6 +1637,76 @@ function ShortsPlayerItemInner({ item, index, isActive, onEnd, onClose, total, o
   );
 }
 
+// Web-only persistent cache for the Shorts/Videos/Songs lists. Mobile
+// browsers (Safari especially) aggressively reload a backgrounded tab to
+// reclaim memory — unlike a native app's long-lived process, which is what
+// "returning to Videos" means on Android. That reload wipes every in-memory
+// React state AND the ytFetch response cache (deliberately session-only —
+// see youtubeProxy.ts's own comment on why), so the tab landed back on a
+// genuinely blank slate and re-ran the full loading sequence every time,
+// even though nothing about the underlying data had changed.
+//
+// localStorage, not AsyncStorage: this needs to be read *synchronously*
+// during the very first render (the useState lazy initializers below) so
+// there's no blank-then-populated flash — AsyncStorage's API is async even
+// on web, which can't satisfy that. Platform.OS!=='web' short-circuits both
+// functions to a no-op/null, so native's fetchShorts/fetchVideos/fetchSongs
+// and their mount effects behave exactly as before this — this cache
+// literally doesn't exist there.
+const LIST_CACHE_PREFIX = 'tgh_videos_cache_';
+// Still shown past this age (better than a blank loader while revalidating
+// in the background), just no longer trusted to stay silently stale forever.
+const LIST_CACHE_MAX_AGE_MS = 24 * 60 * 60 * 1000;
+
+function loadListCache(key: string): { items: any[]; nextToken: string } | null {
+  if (Platform.OS !== 'web') return null;
+  try {
+    const raw = window.localStorage.getItem(LIST_CACHE_PREFIX + key);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    if (!parsed || !Array.isArray(parsed.items)) return null;
+    if (Date.now() - (parsed.cachedAt || 0) > LIST_CACHE_MAX_AGE_MS) return null;
+    return { items: parsed.items, nextToken: parsed.nextToken || '' };
+  } catch {
+    return null;
+  }
+}
+
+function saveListCache(key: string, items: any[], nextToken: string) {
+  if (Platform.OS !== 'web') return;
+  try {
+    window.localStorage.setItem(LIST_CACHE_PREFIX + key, JSON.stringify({ items, nextToken, cachedAt: Date.now() }));
+  } catch {}
+}
+
+// Module-level (not component state), on purpose — survives exactly the
+// case React state can't: VideosScreenContent getting torn down and
+// recreated as a *new* instance while the page itself never reloads.
+//
+// The video-modal-close flow pushes its own raw history entry so the web
+// Back button can double as "close the video" (see the effect on
+// videoModalVisible further down), matching how song-reader/bible-reader
+// already do this for their own in-app back handling. Popping back off of
+// it — whether via that Back button or this screen's own Close button,
+// which also pops it programmatically — lands back on the same shared,
+// non-router-tracked history entry every tab-switch in this app pushes to
+// (see TabShell.web.tsx's own goToTab comment). Expo Router's own history
+// listener doesn't recognize that pop as one of its own, and its recovery
+// from that — confirmed by reproducing it with a marked, tracked DOM node
+// that did not survive — tears down and recreates the entire (tabs) tree,
+// this screen included. Every other piece of this screen's own state
+// (the shorts/videos/songs lists themselves) already survives that exact
+// scenario via loadListCache/saveListCache above; a fresh instance's
+// activeTab/selectedCategory just fell back to their plain useState
+// defaults ('shorts', null) instead — reachable from any section, not
+// just where the list-cache fix applies, which is why closing a video
+// from Songs/Live/Playlists/etc. always specifically landed back on
+// Shorts. Restoring from here alongside the list-cache rehydration closes
+// that gap the same way, regardless of whether this particular remount
+// happens to fire or not.
+let lastActiveSubTab: Tab | null = null;
+let lastSelectedCategory: { id: string; title: string; itemCount: number } | null = null;
+
 interface VideosScreenProps {
   autoPlayLive?: { videoId: string; title: string } | null;
   onAutoPlayLiveConsumed?: () => void;
@@ -1550,6 +1715,12 @@ interface VideosScreenProps {
 
 function VideosScreenContent({ autoPlayLive, onAutoPlayLiveConsumed, isActive }: VideosScreenProps = {}) {
   const { colors } = useTheme();
+  const insets = useSafeAreaInsets();
+  // Same stage-sizing ShortsPlayerItemInner itself uses — reused here
+  // (not re-derived) purely to position the desktop Shorts Prev/Next
+  // buttons against the video's own edges instead of the screen's; see
+  // that usage below for why.
+  const { containerW: shortsStageW, videoW: shortsStageVideoW } = useStagePlayerSize();
   const { isMobile, isTablet, isTabletUp, width: bpWidth } = useBreakpoint();
   // On desktop web, bpWidth is the full browser window width — but the
   // actual content area is narrower than that once the persistent sidebar
@@ -1585,7 +1756,12 @@ function VideosScreenContent({ autoPlayLive, onAutoPlayLiveConsumed, isActive }:
   // this for native removes any dependency on that value being right).
   const shortsNumColumns = Platform.OS !== 'web' ? 2 : isMobile ? 2 : isTablet ? 3 : Math.max(3, Math.min(6, Math.round((Math.min(gridWidth, WIDE_CONTENT_MAX_WIDTH) - GRID_GAP * 2) / TARGET_SHORT_CARD_WIDTH)));
 
-  const [activeTab, setActiveTab] = useState<Tab>('shorts');
+  // See lastActiveSubTab's own comment — hydrates from whatever was active
+  // before this exact instance was created, in the one specific case
+  // (VideosScreenContent recreated without a page reload) a plain 'shorts'
+  // default can't tell apart from a genuine first visit.
+  const [activeTab, setActiveTab] = useState<Tab>(() => lastActiveSubTab || 'shorts');
+  useEffect(() => { lastActiveSubTab = activeTab; }, [activeTab]);
   const [search, setSearch] = useState('');
   const [searching, setSearching] = useState(false);
   const [searchResults, setSearchResults] = useState<any[]>([]);
@@ -1594,24 +1770,36 @@ function VideosScreenContent({ autoPlayLive, onAutoPlayLiveConsumed, isActive }:
   const tabLayoutsRef = useRef<Record<string, { x: number; width: number }>>({});
   const tabsViewportWidthRef = useRef(0);
 
-  const [shorts, setShorts] = useState<any[]>([]);
-  const [shortsLoaded, setShortsLoaded] = useState(false);
+  // See loadListCache's own comment — web-only, instantly hydrates from the
+  // last successful fetch (if any) so a fresh mount (including one caused
+  // by a mobile browser reloading a backgrounded tab) can paint real
+  // content immediately instead of an empty/loading state, while fetchShorts
+  // below still revalidates in the background. Native's loadListCache always
+  // returns null, so these are exactly the same `[]`/false/'' as before there.
+  const [shorts, setShorts] = useState<any[]>(() => loadListCache('shorts')?.items || []);
+  const [shortsLoaded, setShortsLoaded] = useState(() => !!loadListCache('shorts'));
   const [shortsError, setShortsError] = useState(false);
-  const [shortsNextToken, setShortsNextToken] = useState('');
+  const [shortsNextToken, setShortsNextToken] = useState(() => loadListCache('shorts')?.nextToken || '');
   const [loadingShorts, setLoadingShorts] = useState(false);
   const [loadingMoreShorts, setLoadingMoreShorts] = useState(false);
 
-  const [videos, setVideos] = useState<any[]>([]);
-  const [videosLoaded, setVideosLoaded] = useState(false);
+  const [videos, setVideos] = useState<any[]>(() => loadListCache('videos')?.items || []);
+  const [videosLoaded, setVideosLoaded] = useState(() => !!loadListCache('videos'));
   const [videosError, setVideosError] = useState(false);
-  const [videosNextToken, setVideosNextToken] = useState('');
+  const [videosNextToken, setVideosNextToken] = useState(() => loadListCache('videos')?.nextToken || '');
   const [loadingVideos, setLoadingVideos] = useState(false);
   const [loadingMoreVideos, setLoadingMoreVideos] = useState(false);
+  // Separate from videosLoaded/songsLoaded (render-facing, can start true
+  // from cache) — these gate whether the lazy per-tab fetch below has
+  // actually run yet *this session*, so cached data still gets revalidated
+  // once instead of being trusted forever.
+  const videosFetchedRef = useRef(false);
+  const songsFetchedRef = useRef(false);
 
-  const [songs, setSongs] = useState<any[]>([]);
-  const [songsLoaded, setSongsLoaded] = useState(false);
+  const [songs, setSongs] = useState<any[]>(() => loadListCache('songs')?.items || []);
+  const [songsLoaded, setSongsLoaded] = useState(() => !!loadListCache('songs'));
   const [songsError, setSongsError] = useState(false);
-  const [songsNextToken, setSongsNextToken] = useState('');
+  const [songsNextToken, setSongsNextToken] = useState(() => loadListCache('songs')?.nextToken || '');
   const [loadingSongs, setLoadingSongs] = useState(false);
   const [loadingMoreSongs, setLoadingMoreSongs] = useState(false);
   // Songs open into the same single-video VideoModal used by the Videos tab
@@ -1643,7 +1831,8 @@ function VideosScreenContent({ autoPlayLive, onAutoPlayLiveConsumed, isActive }:
   const [loadingCategories, setLoadingCategories] = useState(false);
   const [loadingMoreCategories, setLoadingMoreCategories] = useState(false);
 
-  const [selectedCategory, setSelectedCategory] = useState<{ id: string; title: string; itemCount: number } | null>(null);
+  const [selectedCategory, setSelectedCategory] = useState<{ id: string; title: string; itemCount: number } | null>(() => lastSelectedCategory);
+  useEffect(() => { lastSelectedCategory = selectedCategory; }, [selectedCategory]);
   const [categoryVideos, setCategoryVideos] = useState<any[]>([]);
   const [categoryVideosLoaded, setCategoryVideosLoaded] = useState(false);
   const [categoryVideosError, setCategoryVideosError] = useState(false);
@@ -1661,6 +1850,11 @@ function VideosScreenContent({ autoPlayLive, onAutoPlayLiveConsumed, isActive }:
   const [shortsScrollEnabled, setShortsScrollEnabled] = useState(true);
   const [currentShortIndex, setCurrentShortIndex] = useState(0);
   const [playingShortId, setPlayingShortId] = useState<string | null>(null);
+  // Real, measured right edge of the desktop action-icon rail, reported
+  // up from ShortsPlayerItemInner's own onLayout via onRailLayout — see
+  // VideoModal's matching railRight state for why this replaced a
+  // computed/assumed position.
+  const [shortsRailRight, setShortsRailRight] = useState<number | null>(null);
 
   const shortsListRef = useRef<FlatList>(null);
   const shortsNextRef = useRef('');
@@ -1740,11 +1934,16 @@ function VideosScreenContent({ autoPlayLive, onAutoPlayLiveConsumed, isActive }:
   useEffect(() => {
     if (activeTab === 'videos') {
       if (videosError) { setVideosError(false); fetchVideos('', true); }
-      else if (!videosLoaded) fetchVideos();
+      // videosFetchedRef (not videosLoaded) gates this — videosLoaded can
+      // already be true on the very first visit this session, hydrated
+      // straight from the web cache (see loadListCache's own comment), and
+      // that cached data still needs revalidating in the background rather
+      // than being trusted forever.
+      else if (!videosFetchedRef.current) { videosFetchedRef.current = true; fetchVideos(); }
     }
     if (activeTab === 'songs') {
       if (songsError) { setSongsError(false); fetchSongs('', true); }
-      else if (!songsLoaded) fetchSongs();
+      else if (!songsFetchedRef.current) { songsFetchedRef.current = true; fetchSongs(); }
     }
     if (activeTab === 'live') {
       if (liveError) { setLiveError(false); loadLiveAndFetch(); }
@@ -1887,12 +2086,24 @@ function VideosScreenContent({ autoPlayLive, onAutoPlayLiveConsumed, isActive }:
 
   const fetchShorts = async (pageToken = '', forceLoad = false) => {
     try {
-      if (!pageToken || forceLoad) { setLoadingShorts(true); setShortsError(false); setShortsLoaded(false); setQuotaExhausted(false); } else setLoadingMoreShorts(true);
+      if (!pageToken || forceLoad) {
+        setLoadingShorts(true); setShortsError(false); setQuotaExhausted(false);
+        // A forced refresh (explicit retry/pull-to-refresh) always shows the
+        // loading state, matching existing behavior. A passive call (mount
+        // effect, tab switch) only does when there's nothing cached to show
+        // yet — with cached items already on screen, this becomes a silent
+        // background revalidation instead of hiding them behind a spinner.
+        if (forceLoad || shorts.length === 0) setShortsLoaded(false);
+      } else setLoadingMoreShorts(true);
       const data = await ytFetch('playlistItems', { playlistId: SHORTS_PLAYLIST_ID, part: 'snippet', maxResults: '50', ...(pageToken ? { pageToken } : {}) }, forceLoad ? 0 : undefined);
       const enriched = await enrichDates(mapItems(data.items || []), forceLoad ? 0 : undefined);
       if (pageToken) {
         setShorts(prev => { const s = new Set(prev.map((v: any) => v.snippet.resourceId.videoId)); return [...prev, ...enriched.filter((v: any) => !s.has(v.snippet.resourceId.videoId))]; });
-      } else { setShorts(dedupeById(enriched)); }
+      } else {
+        const deduped = dedupeById(enriched);
+        setShorts(deduped);
+        saveListCache('shorts', deduped, data.nextPageToken || '');
+      }
       setShortsNextToken(data.nextPageToken || '');
       setShortsLoaded(true);
     } catch (e) {
@@ -1903,12 +2114,20 @@ function VideosScreenContent({ autoPlayLive, onAutoPlayLiveConsumed, isActive }:
 
   const fetchVideos = async (pageToken = '', forceLoad = false) => {
     try {
-      if (!pageToken || forceLoad) { setLoadingVideos(true); setVideosError(false); setVideosLoaded(false); setQuotaExhausted(false); } else setLoadingMoreVideos(true);
+      if (!pageToken || forceLoad) {
+        setLoadingVideos(true); setVideosError(false); setQuotaExhausted(false);
+        // See fetchShorts' own comment on this condition.
+        if (forceLoad || videos.length === 0) setVideosLoaded(false);
+      } else setLoadingMoreVideos(true);
       const data = await ytFetch('playlistItems', { playlistId: VIDEOS_PLAYLIST_ID, part: 'snippet', maxResults: '50', ...(pageToken ? { pageToken } : {}) }, forceLoad ? 0 : undefined);
       const enriched = (await enrichDates(mapItems(data.items || []), forceLoad ? 0 : undefined)).sort(byDateDesc);
       if (pageToken) {
         setVideos(prev => { const s = new Set(prev.map((v: any) => v.snippet.resourceId.videoId)); return [...prev, ...enriched.filter((v: any) => !s.has(v.snippet.resourceId.videoId))].sort(byDateDesc); });
-      } else { setVideos(dedupeById(enriched)); }
+      } else {
+        const deduped = dedupeById(enriched);
+        setVideos(deduped);
+        saveListCache('videos', deduped, data.nextPageToken || '');
+      }
       setVideosNextToken(data.nextPageToken || '');
       setVideosLoaded(true);
     } catch (e) {
@@ -1919,12 +2138,20 @@ function VideosScreenContent({ autoPlayLive, onAutoPlayLiveConsumed, isActive }:
 
   const fetchSongs = async (pageToken = '', forceLoad = false) => {
     try {
-      if (!pageToken || forceLoad) { setLoadingSongs(true); setSongsError(false); setSongsLoaded(false); setQuotaExhausted(false); } else setLoadingMoreSongs(true);
+      if (!pageToken || forceLoad) {
+        setLoadingSongs(true); setSongsError(false); setQuotaExhausted(false);
+        // See fetchShorts' own comment on this condition.
+        if (forceLoad || songs.length === 0) setSongsLoaded(false);
+      } else setLoadingMoreSongs(true);
       const data = await ytFetch('playlistItems', { playlistId: SONGS_PLAYLIST_ID, part: 'snippet', maxResults: '50', ...(pageToken ? { pageToken } : {}) }, forceLoad ? 0 : undefined);
       const enriched = await enrichDates(mapItems(data.items || []), forceLoad ? 0 : undefined);
       if (pageToken) {
         setSongs(prev => { const s = new Set(prev.map((v: any) => v.snippet.resourceId.videoId)); return [...prev, ...enriched.filter((v: any) => !s.has(v.snippet.resourceId.videoId))]; });
-      } else { setSongs(dedupeById(enriched)); }
+      } else {
+        const deduped = dedupeById(enriched);
+        setSongs(deduped);
+        saveListCache('songs', deduped, data.nextPageToken || '');
+      }
       setSongsNextToken(data.nextPageToken || '');
       setSongsLoaded(true);
     } catch (e) {
@@ -2067,6 +2294,17 @@ function VideosScreenContent({ autoPlayLive, onAutoPlayLiveConsumed, isActive }:
     setCategoryVideosError(false);
     setCategoryVideosNextToken('');
   };
+
+  // selectedCategory can now start non-null on mount — restored via
+  // lastSelectedCategory (see its own comment) — but categoryVideos itself
+  // is plain component state, not restorable the same way (the per-category
+  // cache it would otherwise come from, categoryVideosCacheRef, is a ref on
+  // this same instance and is just as gone). Mount-only fetch to repopulate
+  // it for whichever category was actually restored.
+  useEffect(() => {
+    if (selectedCategory) fetchCategoryVideos(selectedCategory.id, '', true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const doSearch = async (query: string) => {
     try {
@@ -2449,6 +2687,7 @@ function VideosScreenContent({ autoPlayLive, onAutoPlayLiveConsumed, isActive }:
                   hasNext={shortHasNext}
                   onPrev={handleShortPrevClick}
                   onNext={handleShortNextClick}
+                  onRailLayout={setShortsRailRight}
                 />
               </Animated.View>
             )
@@ -2475,29 +2714,48 @@ function VideosScreenContent({ autoPlayLive, onAutoPlayLiveConsumed, isActive }:
               original position. Mobile web gets its own Prev/Next buttons
               instead, rendered inline inside ShortsPlayerItemInner (aligned
               with the YouTube/Copy icon row, same as Songs); native mobile
-              gets the vertical swipe-up hint rendered there too. */}
-          {isTabletUp && (
+              gets the vertical swipe-up hint rendered there too. Positioned
+              from the video's own edges (same reasoning as VideoModal's own
+              desktop arrows above) rather than the static
+              videoModalNavBtnLeft/Right, which sat at the screen's edges
+              regardless of how much narrower the actual centered portrait
+              video was. */}
+          {isTabletUp && (() => {
+            // See the matching comment on VideoModal's own desktop arrows
+            // for why this uses shortsRailRight (the rail's real, measured
+            // position, reported up from ShortsPlayerItemInner via
+            // onRailLayout) instead of a position computed from an assumed
+            // rail width.
+            const sideMargin = Math.max(0, (shortsStageW - (shortsStageVideoW + DESKTOP_RESERVED_WIDTH)) / 2);
+            const leftPos = Math.max(12, sideMargin - 64);
+            const fallbackRailRight = sideMargin + shortsStageVideoW + RAIL_TO_VIDEO_GAP + RAIL_MAX_WIDTH;
+            const rightArrowLeftPos = Math.min(
+              (shortsRailRight ?? fallbackRailRight) + NAV_ARROW_CLEARANCE,
+              shortsStageW - 44 - NAV_ARROW_EDGE_MARGIN,
+            );
+            return (
             <>
               <TouchableOpacity
-                style={[styles.videoModalNavBtn, styles.videoModalNavBtnLeft]}
+                style={[styles.videoModalNavBtn, { left: leftPos }]}
                 disabled={!shortHasPrev}
                 onPress={handleShortPrevClick}
               >
                 <Ionicons name="chevron-back" size={22} color={shortHasPrev ? '#fff' : 'rgba(255,255,255,0.3)'} />
               </TouchableOpacity>
               <TouchableOpacity
-                style={[styles.videoModalNavBtn, styles.videoModalNavBtnRight]}
+                style={[styles.videoModalNavBtn, { left: rightArrowLeftPos }]}
                 disabled={!shortHasNext}
                 onPress={handleShortNextClick}
               >
                 <Ionicons name="chevron-forward" size={22} color={shortHasNext ? '#fff' : 'rgba(255,255,255,0.3)'} />
               </TouchableOpacity>
             </>
-          )}
+            );
+          })()}
         </View>
       </Modal>
 
-      <View style={[styles.searchRow, { backgroundColor: colors.surfaceAlt, borderColor: colors.divider }]}>
+      <View style={[styles.searchRow, { backgroundColor: colors.surfaceAlt, borderColor: colors.divider, marginTop: insets.top + 12 }]}>
         <TouchableOpacity onPress={() => doSearch(search)} disabled={!search.trim()} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
           <Ionicons name="search" size={20} color={search.trim() ? colors.accent : colors.subtext} />
         </TouchableOpacity>
@@ -2548,19 +2806,26 @@ function VideosScreenContent({ autoPlayLive, onAutoPlayLiveConsumed, isActive }:
       )}
 
       {!isSearching && activeTab === 'shorts' && (
-        loadingShorts ? <TabLoadingState tab="shorts" />
+        // shorts.length === 0 alongside loadingShorts specifically — with
+        // cached items already showing (see loadListCache's own comment),
+        // a background revalidation only needs the FlatList's own
+        // refreshing={loadingShorts} spinner below, not this full-screen
+        // takeover hiding content that's already on screen.
+        loadingShorts && shorts.length === 0 ? <TabLoadingState tab="shorts" />
         : shortsError ? <VideoErrorState onRetry={() => { setShortsLoaded(false); fetchShorts('', true); }} />
         : <FlatList key={`shorts-grid-${shortsNumColumns}`} data={padGridRow(shorts, shortsNumColumns)} keyExtractor={(i, idx) => isGridFiller(i) ? `filler-${idx}` : i.snippet.resourceId.videoId} refreshing={loadingShorts} onRefresh={() => fetchShorts('', true)} renderItem={({ item, index }) => isGridFiller(item) ? <View style={styles.gridFillerCell} /> : <ShortCard item={item} index={index} />} numColumns={shortsNumColumns} contentContainerStyle={Platform.OS === 'web' ? styles.list : styles.shortsListNative} columnWrapperStyle={Platform.OS === 'web' ? styles.shortsColumnWrapper : styles.shortsColumnWrapperNative} ListEmptyComponent={<Text style={[styles.empty, { color: colors.subtext }]}>No shorts found</Text>} ListFooterComponent={<LoadMore token={shortsNextToken} loading={loadingMoreShorts} onPress={() => fetchShorts(shortsNextToken)} />} />
       )}
 
       {!isSearching && activeTab === 'videos' && (
-        loadingVideos ? <TabLoadingState tab="videos" />
+        // See the matching comment on the Shorts tab above.
+        loadingVideos && videos.length === 0 ? <TabLoadingState tab="videos" />
         : videosError ? <VideoErrorState onRetry={() => { setVideosLoaded(false); fetchVideos('', true); }} />
         : <FlatList key={gridKey} {...gridColumnProps} data={padGridRow(videos, numColumns)} keyExtractor={(i, idx) => isGridFiller(i) ? `filler-${idx}` : i.snippet.resourceId.videoId} refreshing={loadingVideos} onRefresh={() => fetchVideos('', true)} renderItem={({ item }) => isGridFiller(item) ? <View style={styles.gridFillerCell} /> : <VideoCard item={item} />} contentContainerStyle={styles.list} ListEmptyComponent={<Text style={[styles.empty, { color: colors.subtext }]}>No videos found</Text>} ListFooterComponent={<LoadMore token={videosNextToken} loading={loadingMoreVideos} onPress={() => fetchVideos(videosNextToken)} />} />
       )}
 
       {!isSearching && activeTab === 'songs' && (
-        loadingSongs ? <TabLoadingState tab="songs" />
+        // See the matching comment on the Shorts tab above.
+        loadingSongs && songs.length === 0 ? <TabLoadingState tab="songs" />
         : songsError ? <VideoErrorState onRetry={() => { setSongsLoaded(false); fetchSongs('', true); }} />
         : <FlatList key={gridKey} {...gridColumnProps} data={padGridRow(songs, numColumns)} keyExtractor={(i, idx) => isGridFiller(i) ? `filler-${idx}` : i.snippet.resourceId.videoId} refreshing={loadingSongs} onRefresh={() => fetchSongs('', true)} renderItem={({ item, index }) => isGridFiller(item) ? <View style={styles.gridFillerCell} /> : <SongCard item={item} index={index} />} contentContainerStyle={styles.list} ListEmptyComponent={<Text style={[styles.empty, { color: colors.subtext }]}>No songs found</Text>} ListFooterComponent={<LoadMore token={songsNextToken} loading={loadingMoreSongs} onPress={() => fetchSongs(songsNextToken)} />} />
       )}
@@ -2622,7 +2887,12 @@ export default function VideosScreen(props: VideosScreenProps = {}) {
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
-  searchRow: { flexDirection: 'row', alignItems: 'center', margin: 12, marginTop: 50, borderRadius: radii.pill, borderWidth: 1, paddingHorizontal: 16, paddingVertical: 10, gap: 10 },
+  // marginTop is overridden inline (insets.top + 12) — insets.top is the
+  // real device safe-area/status-bar height (~0 on web, where the hardcoded
+  // 50 this used to be left a large dead gap above the search bar, since
+  // this screen has no header of its own above it), rather than a guessed
+  // constant. Same pattern as the Bible screens' own header padding.
+  searchRow: { flexDirection: 'row', alignItems: 'center', margin: 12, borderRadius: radii.pill, borderWidth: 1, paddingHorizontal: 16, paddingVertical: 10, gap: 10 },
   searchInput: { flex: 1, fontSize: 15 },
   tabsScroll: { flexShrink: 0, flexGrow: 0, maxHeight: 60 },
   tabsRow: { flexDirection: 'row', paddingHorizontal: 12, paddingTop: 4, paddingBottom: 10, gap: 8, alignItems: 'center' },
@@ -2725,13 +2995,26 @@ const styles = StyleSheet.create({
   // beside it — alignItems:'center' is what actually centers that rail
   // against the video+title column's height, no extra centering needed on
   // VideoActions itself.
-  desktopPlayerRow: { flexDirection: 'row', alignItems: 'center', gap: 24 },
+  desktopPlayerRow: { flexDirection: 'row', alignItems: 'center', gap: RAIL_TO_VIDEO_GAP },
   videoModalTitle: { color: '#fff', fontSize: 15, fontWeight: '600', padding: 20, lineHeight: 22, width: '100%', maxWidth: 700, alignSelf: 'center' },
   modalClose: { position: 'absolute', top: 50, right: 16, backgroundColor: 'rgba(0,0,0,0.5)', borderRadius: 20, padding: 8, zIndex: 10 },
+  // Desktop only (see its own usage) — slightly larger hit target/icon
+  // than the phone-sized default above, which read as small and easy to
+  // miss on a mouse-driven desktop view. top/right nudge it in from
+  // modalClose's own 50/16 — a first attempt (58/26) was reported as
+  // still reading too close to the corner, so this moves it in further.
+  modalCloseDesktop: { padding: 11, borderRadius: 24, top: 66, right: 44 },
   modalCloseLandscape: { top: 16, right: 16 },
   topRightRow: { position: 'absolute', top: 50, right: 16, flexDirection: 'row', gap: 10, zIndex: 10 },
+  // See modalCloseDesktop's own comment — same inward nudge for
+  // VideoModal's own close button, whose position comes from this
+  // container rather than roundIconBtn itself.
+  topRightRowDesktop: { top: 66, right: 44 },
   topRightRowLandscape: { top: 16 },
   roundIconBtn: { backgroundColor: 'rgba(0,0,0,0.5)', borderRadius: 20, padding: 8 },
+  // See modalCloseDesktop's own comment — same treatment for VideoModal's
+  // own close button (Songs/Videos/Live/etc.).
+  roundIconBtnDesktop: { padding: 11, borderRadius: 24 },
   lockToggleBtn: { backgroundColor: '#7c83e5', borderRadius: 22, padding: 10, elevation: 5, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.35, shadowRadius: 4 },
   // Desktop/tablet Prev/Next for VideoModal's Songs nav mode — horizontal,
   // one button centered on each edge, matching the swipe-hint's left/right
