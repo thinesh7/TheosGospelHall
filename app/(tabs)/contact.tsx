@@ -31,6 +31,8 @@ export default function AboutScreen() {
 
   const tapCountRef = useRef(0);
   const tapTimerRef = useRef<any>(null);
+  const scrollRef = useRef<ScrollView>(null);
+  const pendingScrollToEndRef = useRef(false);
 
   const [isAdminAuthenticated, setIsAdminAuthenticated] = useState(false);
   const [showLogin, setShowLogin] = useState(false);
@@ -56,17 +58,30 @@ export default function AboutScreen() {
     return () => unsubscribe();
   }, []);
 
+  // The login screen is a separate top-level render branch (see `if
+  // (showLogin) return ...` below), so the moment Cancel/back sets
+  // showLogin false, the main Contacts ScrollView hasn't (re)mounted yet —
+  // scrollRef.current is still null. Waiting for the state change to
+  // actually commit (via this effect) before scrolling is what makes it
+  // land on the freshly-mounted view instead of silently no-op'ing.
+  useEffect(() => {
+    if (pendingScrollToEndRef.current && !showLogin && !showAdmin) {
+      pendingScrollToEndRef.current = false;
+      requestAnimationFrame(() => {
+        scrollRef.current?.scrollToEnd({ animated: false });
+      });
+    }
+  }, [showLogin, showAdmin]);
+
   useFocusEffect(
     useCallback(() => {
       const onBackPress = () => {
         if (showLogin) {
-          setShowLogin(false);
-          setEmail('');
-          setPassword('');
+          closeLogin();
           return true;
         }
         if (showAdmin) {
-          setShowAdmin(false);
+          closeAdmin();
           return true;
         }
         return false;
@@ -75,6 +90,19 @@ export default function AboutScreen() {
       return () => subscription.remove();
     }, [showLogin, showAdmin])
   );
+
+  const closeAdmin = () => {
+    pendingScrollToEndRef.current = true;
+    setShowAdmin(false);
+  };
+
+  const closeLogin = () => {
+    pendingScrollToEndRef.current = true;
+    setShowLogin(false);
+    setEmail('');
+    setPassword('');
+    setShowPassword(false);
+  };
 
   const handleFooterTap = () => {
     tapCountRef.current += 1;
@@ -164,7 +192,7 @@ export default function AboutScreen() {
             </TouchableOpacity>
             <TouchableOpacity
               style={styles.loginCancelBtn}
-              onPress={() => { setShowLogin(false); setEmail(''); setPassword(''); setShowPassword(false); }}
+              onPress={closeLogin}
             >
               <Text style={[styles.loginCancelText, { color: colors.subtext }]}>Cancel</Text>
             </TouchableOpacity>
@@ -175,7 +203,7 @@ export default function AboutScreen() {
   }
 
   return (
-    <ScrollView style={[styles.container, { backgroundColor: colors.bg }]}>
+    <ScrollView ref={scrollRef} style={[styles.container, { backgroundColor: colors.bg }]}>
       <LinearGradient colors={['#1a1a2e', '#16213e', '#0f3460']} style={styles.header}>
         <Text style={styles.churchName}>Theos Gospel Hall</Text>
         <Text style={styles.tagline}>"Proclaiming the Word of God"</Text>
@@ -228,7 +256,7 @@ export default function AboutScreen() {
 
       <AdminPanel
         visible={showAdmin}
-        onClose={() => setShowAdmin(false)}
+        onClose={closeAdmin}
         onEventsUpdated={() => {}}
       />
     </ScrollView>

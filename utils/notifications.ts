@@ -5,6 +5,7 @@ import * as Device from 'expo-device';
 import { doc, increment, setDoc, updateDoc } from 'firebase/firestore';
 import { Alert, Linking, Platform } from 'react-native';
 import { db } from '../firebaseConfig';
+import { COLLECTIONS } from './testMode';
 
 const isExpoGo = Constants.appOwnership === 'expo';
 const TOKEN_KEY = 'tgh_push_token';
@@ -145,7 +146,7 @@ async function saveTokenToFirestore(token: string) {
     ? deviceId
     : `${deviceId}_${token.replace(/[^a-zA-Z0-9]/g, '').slice(-12)}`;
   await setDoc(
-    doc(db, 'pushTokens', docId),
+    doc(db, COLLECTIONS.pushTokens, docId),
     {
       token,
       platform: Platform.OS,

@@ -11,6 +11,7 @@ import {
   isValidVersionFormat,
   saveVersionConfig,
 } from '../../utils/appUpdate';
+import { addNotification } from '../../utils/notificationCenterSync';
 import { sendPushNotificationToAll } from '../../utils/pushNotify';
 import { formatTimestampIST } from '../../utils/registrations';
 import { AdminScreenHandle } from './SpecialMeetingsAdmin';
@@ -128,6 +129,9 @@ const AppUpdateAdmin = forwardRef<AdminScreenHandle, {}>((_, ref) => {
         type: 'app_update',
         url: androidStoreUrl.trim(),
       });
+      try {
+        await addNotification({ message: trimmed, link: androidStoreUrl.trim() || null, source: 'app_update' });
+      } catch {}
       setShowNotifyModal(false);
       if (result.failedCount > 0) {
         Alert.alert(

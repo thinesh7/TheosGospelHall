@@ -13,6 +13,8 @@ import {
 import { Text } from '../AppText';
 import { TextInput } from '../AppTextInput';
 import { db } from '../../firebaseConfig';
+import { addNotification } from '../../utils/notificationCenterSync';
+import { COLLECTIONS, NOTIFICATION_TEST_MODE } from '../../utils/testMode';
 
 type NumberOfDays = '' | '1' | 'multiple';
 
@@ -80,7 +82,7 @@ const SpecialMeetingsAdmin = forwardRef<AdminScreenHandle, Props>(({ onEventsUpd
   const loadMeetings = async () => {
     setLoadingAdmin(true);
     try {
-      const q = query(collection(db, 'events'), orderBy('order', 'asc'));
+      const q = query(collection(db, COLLECTIONS.events), orderBy('order', 'asc'));
       const snap = await getDocs(q);
       const list: SpecialMeeting[] = snap.docs.map(d => ({
         id: d.id,
@@ -96,7 +98,7 @@ const SpecialMeetingsAdmin = forwardRef<AdminScreenHandle, Props>(({ onEventsUpd
 
   const refreshCache = async () => {
     try {
-      const q = query(collection(db, 'events'), orderBy('order', 'asc'));
+      const q = query(collection(db, COLLECTIONS.events), orderBy('order', 'asc'));
       const snap = await getDocs(q);
       const list: SpecialMeeting[] = snap.docs.map(d => ({
         id: d.id,
@@ -105,14 +107,19 @@ const SpecialMeetingsAdmin = forwardRef<AdminScreenHandle, Props>(({ onEventsUpd
       }));
       setAdminMeetings(list);
       const active = list.filter(m => m.isActive);
-      await AsyncStorage.setItem('tgh_special_meetings', JSON.stringify(active));
+      // Skipped in test mode: this key is what UpcomingEvents.tsx (the real
+      // Home screen widget) primes its initial render from, and it must
+      // never see test-collection data, even transiently on this device.
+      if (!NOTIFICATION_TEST_MODE) {
+        await AsyncStorage.setItem('tgh_special_meetings', JSON.stringify(active));
+      }
       onEventsUpdated();
     } catch (e) {}
   };
 
   const sendNotificationToAll = async (meeting: Omit<SpecialMeeting, 'id'>) => {
     try {
-      const snap = await getDocs(collection(db, 'pushTokens'));
+      const snap = await getDocs(collection(db, COLLECTIONS.pushTokens));
       const tokenDocs = snap.docs
         .map(d => ({ id: d.id, token: d.data().token, model: d.data().model ?? 'unknown' }))
         .filter(d => d.token && typeof d.token === 'string' && d.token.startsWith('ExponentPushToken'));
@@ -140,7 +147,7 @@ const SpecialMeetingsAdmin = forwardRef<AdminScreenHandle, Props>(({ onEventsUpd
           sound: 'default',
           channelId: 'tgh-default',
           priority: 'high',
-          data: { screen: 'home' },
+          data: { type: 'special_meeting' },
         }));
 
         const res = await fetch('https://exp.host/--/api/v2/push/send', {
@@ -183,7 +190,7 @@ const SpecialMeetingsAdmin = forwardRef<AdminScreenHandle, Props>(({ onEventsUpd
       const _rand = Math.random().toString(36).substring(2, 5).toUpperCase();
       const logDocId = `${_month}_${_year}_${_day}_${_ampm}_${_h12}_${_min}_${_sec}_${_rand}`;
 
-      await setDoc(doc(db, 'notificationLogs', logDocId), {
+      await setDoc(doc(db, COLLECTIONS.notificationLogs, logDocId), {
         title: meeting.title,
         body,
         sentAt,
@@ -194,6 +201,14 @@ const SpecialMeetingsAdmin = forwardRef<AdminScreenHandle, Props>(({ onEventsUpd
         ticketIds: successTickets.map(t => t.ticketId),
         failures: failedTickets.map(t => ({ token: t.token.slice(-10), model: t.model, error: t.error })),
       });
+
+      try {
+        await addNotification({
+          message: [meeting.title, body].filter(Boolean).join('\n'),
+          link: meeting.youtubeLink?.trim() || meeting.mapLink?.trim() || null,
+          source: 'special_meeting',
+        });
+      } catch {}
 
       if (failedTickets.length > 0) {
         Alert.alert(
@@ -252,13 +267,13 @@ const SpecialMeetingsAdmin = forwardRef<AdminScreenHandle, Props>(({ onEventsUpd
       };
 
       if (editingId) {
-        await updateDoc(doc(db, 'events', editingId), {
+        await updateDoc(doc(db, COLLECTIONS.events, editingId), {
           ...payload,
           modifiedBy: currentUser,
           modifiedAt: serverTimestamp(),
         });
       } else {
-        await addDoc(collection(db, 'events'), {
+        await addDoc(collection(db, COLLECTIONS.events), {
           ...payload,
           createdBy: currentUser,
           createdAt: serverTimestamp(),
@@ -299,7 +314,7 @@ const SpecialMeetingsAdmin = forwardRef<AdminScreenHandle, Props>(({ onEventsUpd
         text: 'Delete', style: 'destructive',
         onPress: async () => {
           try {
-            await deleteDoc(doc(db, 'events', meeting.id));
+            await deleteDoc(doc(db, COLLECTIONS.events, meeting.id));
             await refreshCache();
             Alert.alert('Deleted', 'Meeting removed.');
           } catch (e) {
@@ -313,7 +328,7 @@ const SpecialMeetingsAdmin = forwardRef<AdminScreenHandle, Props>(({ onEventsUpd
   const toggleActive = async (meeting: SpecialMeeting) => {
     try {
       const currentUser = getAuth().currentUser?.email ?? 'unknown';
-      await updateDoc(doc(db, 'events', meeting.id), {
+      await updateDoc(doc(db, COLLECTIONS.events, meeting.id), {
         isActive: !meeting.isActive,
         modifiedBy: currentUser,
         modifiedAt: serverTimestamp(),

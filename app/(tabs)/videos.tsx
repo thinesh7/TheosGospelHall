@@ -585,7 +585,13 @@ function VideoModal({ visible, videoId, title, isLive, onClose }: VideoModalProp
   }, [visible, videoId, isLive]);
 
   useEffect(() => {
-    if (!playerReady || !videoId) return;
+    // Skipped while isLive: getCurrentTime()/getDuration() both report
+    // elapsed-time-since-broadcast-start for an actively airing stream, not
+    // a real position/duration — saving them here converges position≈duration
+    // within minutes, which permanently reads back as "already finished"
+    // (see COMPLETION_THRESHOLD below) even after the stream ends and becomes
+    // a normal past broadcast with a real duration.
+    if (!playerReady || !videoId || isLive) return;
     if (progressIntervalRef.current) clearInterval(progressIntervalRef.current);
     progressIntervalRef.current = setInterval(async () => {
       if (!mountedRef.current || !playing) return;
@@ -599,7 +605,7 @@ function VideoModal({ visible, videoId, title, isLive, onClose }: VideoModalProp
       } catch {}
     }, 5000);
     return () => { if (progressIntervalRef.current) clearInterval(progressIntervalRef.current); };
-  }, [playerReady, playing, videoId]);
+  }, [playerReady, playing, videoId, isLive]);
 
   const fsTransitionRef = useRef(false);
 

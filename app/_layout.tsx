@@ -1,7 +1,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { DarkTheme, DefaultTheme, ThemeProvider as NavThemeProvider } from '@react-navigation/native';
 import Constants from 'expo-constants';
-import { Stack } from 'expo-router';
+import { router, Stack } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
 import { useEffect, useRef, useState } from 'react';
@@ -34,11 +34,15 @@ SplashScreen.preventAutoHideAsync().catch(() => {});
 // A tapped "app update available" notification carries a Play Store url in
 // its data payload (set in AppUpdateAdmin.tsx) — open that directly instead
 // of just foregrounding the app, so the user lands straight on the update.
+// Every other notification (admin broadcast, special meeting) opens the
+// in-app Notification Center instead.
 function handleNotificationResponse(response: any) {
   const data = response?.notification?.request?.content?.data;
   if (data?.type === 'app_update' && typeof data.url === 'string' && data.url) {
     Linking.openURL(data.url).catch(() => {});
+    return;
   }
+  router.push('/notification-center');
 }
 
 type AppState = 'checking' | 'welcome' | 'ready';
@@ -190,6 +194,7 @@ export default function RootLayout() {
             <Stack.Screen name="song-reader" options={{ headerShown: false }} />
             <Stack.Screen name="other-song-reader" options={{ headerShown: false }} />
             <Stack.Screen name="bible-reader" options={{ headerShown: false }} />
+            <Stack.Screen name="notification-center" options={{ headerShown: false }} />
           </Stack>
         )}
         {updateStatus === 'mandatory' && updateConfig && (

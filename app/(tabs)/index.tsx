@@ -1,20 +1,32 @@
+import NotificationBell from '@/components/NotificationBell';
 import Paragraphs from '@/components/Paragraphs';
 import UpcomingEvents from '@/components/UpcomingEvents';
+import { Ionicons } from '@expo/vector-icons';
+import { useRouter } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useEffect, useRef, useState } from 'react';
 import {
   AppState,
   Image,
+  Modal,
+  Platform,
   ScrollView,
+  StatusBar,
   StyleSheet,
+  TouchableOpacity,
   View,
 } from 'react-native';
 import { Text } from '../../components/AppText';
 import { useTheme } from '../../utils/ThemeContext';
 import { getCachedHomeContent, getMemoryCachedHomeContent, HomeContent, subscribeHomeContent } from '../../utils/homeContentSync';
+import { THEME_ORDER, THEMES, ThemeName } from '../../utils/theme';
+
+const THEME_LABELS: Record<ThemeName, string> = { light: 'Light', dark: 'Dark', sepia: 'Sepia' };
 
 export default function HomeScreen() {
-  const { colors } = useTheme();
+  const { theme, colors, setTheme } = useTheme();
+  const router = useRouter();
+  const [showThemeMenu, setShowThemeMenu] = useState(false);
 
   const appStateRef = useRef(AppState.currentState);
   const upcomingEventsRef = useRef<{ reload: () => void }>(null);
@@ -38,6 +50,25 @@ export default function HomeScreen() {
     return unsubscribe;
   }, []);
 
+  // On a cold app launch, the root layout's `<StatusBar style="auto" />`
+  // (expo-status-bar) can briefly apply its own style right after this
+  // mounts, stomping the one below — only visible on Home because its header
+  // is the one screen with a fixed (always-blue) background instead of one
+  // that tracks the in-app theme. A second pass after the initial startup
+  // churn settles (splash/appearance listeners) wins that race deterministically,
+  // matching what already happens naturally when switching tabs and back.
+  useEffect(() => {
+    const applyStatusBar = () => {
+      StatusBar.setBarStyle('light-content', true);
+      if (Platform.OS === 'android') {
+        StatusBar.setBackgroundColor('#1a1a2e', true);
+      }
+    };
+    applyStatusBar();
+    const timer = setTimeout(applyStatusBar, 400);
+    return () => clearTimeout(timer);
+  }, []);
+
   const pastorName = content?.pastorName?.trim();
   const pastorDesignation = content?.pastorDesignation?.trim();
   const aboutPastorEnglish = content?.aboutPastorEnglish?.trim();
@@ -51,9 +82,60 @@ export default function HomeScreen() {
   return (
     <ScrollView style={[styles.container, { backgroundColor: colors.bg }]}>
       <LinearGradient colors={['#1a1a2e', '#16213e', '#0f3460']} style={styles.header}>
+        <View style={styles.settingsWrap}>
+          <TouchableOpacity
+            onPress={() => setShowThemeMenu(true)}
+            style={styles.headerIconBtn}
+            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+          >
+            <Ionicons name="settings-outline" size={22} color="#fff" />
+          </TouchableOpacity>
+        </View>
+        <View style={styles.bellWrap}>
+          <NotificationBell color="#fff" onPress={() => router.push('/notification-center')} />
+        </View>
         <Text style={styles.churchName}>Theos Gospel Hall</Text>
         <Text style={styles.tagline}>"The Word of God is Living and Active"</Text>
       </LinearGradient>
+
+      <Modal
+        visible={showThemeMenu}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowThemeMenu(false)}
+      >
+        <TouchableOpacity
+          style={styles.themeMenuBackdrop}
+          activeOpacity={1}
+          onPress={() => setShowThemeMenu(false)}
+        >
+          <View style={[styles.themeMenuCard, { backgroundColor: colors.surface }]}>
+            <Text style={[styles.themeMenuTitle, { color: colors.text }]}>App Theme</Text>
+            {THEME_ORDER.map(t => {
+              const isActive = theme === t;
+              return (
+                <TouchableOpacity
+                  key={t}
+                  style={[styles.themeMenuRow, isActive && { backgroundColor: colors.raised }]}
+                  onPress={() => {
+                    setTheme(t);
+                    setShowThemeMenu(false);
+                  }}
+                >
+                  <View
+                    style={[
+                      styles.themeSwatch,
+                      { backgroundColor: THEMES[t].bg, borderColor: THEMES[t].accent },
+                    ]}
+                  />
+                  <Text style={[styles.themeMenuLabel, { color: colors.text }]}>{THEME_LABELS[t]}</Text>
+                  {isActive && <Ionicons name="checkmark" size={18} color={colors.accent} />}
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+        </TouchableOpacity>
+      </Modal>
 
       <View style={[styles.pastorCard, { backgroundColor: colors.surface }]}>
         <View style={styles.pastorAvatar}>
@@ -81,6 +163,9 @@ export default function HomeScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1 },
   header: { padding: 40, alignItems: 'center', paddingTop: 60 },
+  settingsWrap: { position: 'absolute', top: 56, left: 16, zIndex: 2 },
+  bellWrap: { position: 'absolute', top: 56, right: 16, zIndex: 2 },
+  headerIconBtn: { padding: 4 },
   churchName: { fontSize: 26, fontWeight: 'bold', color: '#fff', textAlign: 'center' },
   tagline: { fontSize: 14, color: '#ffffff', marginTop: 8, fontStyle: 'italic', fontWeight: '600', letterSpacing: 0.5, textAlign: 'center', width: '100%' },
   pastorCard: { margin: 16, borderRadius: 16, padding: 20, alignItems: 'center', elevation: 4 },
@@ -90,4 +175,29 @@ const styles = StyleSheet.create({
   pastorTitle: { fontSize: 14, marginTop: 4, lineHeight: 20, textAlign: 'center' },
   divider: { height: 1, width: '100%', marginVertical: 14 },
   pastorAboutText: { textAlign: 'center' },
+  themeMenuBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'flex-start',
+    alignItems: 'flex-start',
+    paddingTop: 102,
+    paddingLeft: 16,
+  },
+  themeMenuCard: {
+    width: 200,
+    borderRadius: 16,
+    padding: 10,
+    elevation: 8,
+  },
+  themeMenuTitle: { fontSize: 13, fontWeight: '700', paddingHorizontal: 10, paddingVertical: 8 },
+  themeMenuRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingHorizontal: 10,
+    paddingVertical: 10,
+    borderRadius: 10,
+  },
+  themeSwatch: { width: 18, height: 18, borderRadius: 9, borderWidth: 2 },
+  themeMenuLabel: { flex: 1, fontSize: 14, fontWeight: '600' },
 });

@@ -1,6 +1,7 @@
 import { getAuth } from 'firebase/auth';
 import { addDoc, collection, getDocs, serverTimestamp } from 'firebase/firestore';
 import { db } from '../firebaseConfig';
+import { COLLECTIONS } from './testMode';
 
 export interface PushSendResult {
   totalDevices: number;
@@ -15,7 +16,7 @@ export async function sendPushNotificationToAll(
 ): Promise<PushSendResult> {
   if (!body?.trim()) throw new Error('Notification message cannot be empty.');
 
-  const snap = await getDocs(collection(db, 'pushTokens'));
+  const snap = await getDocs(collection(db, COLLECTIONS.pushTokens));
   const tokenDocs = snap.docs
     .map(d => ({ token: d.data().token, model: d.data().model ?? 'unknown' }))
     .filter(d => d.token && typeof d.token === 'string' && d.token.startsWith('ExponentPushToken'));
@@ -65,7 +66,7 @@ export async function sendPushNotificationToAll(
   const successTickets = allTickets.filter(t => t.ticketId);
   const failedTickets = allTickets.filter(t => t.error);
 
-  await addDoc(collection(db, 'notificationLogs'), {
+  await addDoc(collection(db, COLLECTIONS.notificationLogs), {
     title,
     body: body.trim(),
     sentAt: serverTimestamp(),
