@@ -230,7 +230,14 @@ export default function BibleScreen() {
           contentContainerStyle={{ padding: 12 }}
           renderItem={({ item }) => (
             <TouchableOpacity style={[styles.chapterBtn, { backgroundColor: c.surface }]} onPress={() => openChapter(selectedBook, item)}>
-              <Text style={[styles.chapterText, { color: c.accent }]}>{item}</Text>
+              <Text
+                style={[styles.chapterText, { color: c.accent }]}
+                numberOfLines={1}
+                adjustsFontSizeToFit
+                minimumFontScale={0.5}
+              >
+                {item}
+              </Text>
             </TouchableOpacity>
           )}
         />
@@ -275,8 +282,8 @@ const styles = StyleSheet.create({
   bookName: { fontSize: 13, fontWeight: 'bold' },
   bookTamil: { fontSize: 11, marginTop: 2 },
   bookChapters: { fontSize: 10, marginTop: 6, fontWeight: '600' },
-  chapterBtn: { flex: 1, margin: 6, borderRadius: 10, padding: 14, alignItems: 'center', elevation: 2 },
-  chapterText: { fontSize: 16, fontWeight: 'bold' },
+  chapterBtn: { flex: 1, margin: 4, minWidth: 0, borderRadius: 10, paddingVertical: 14, paddingHorizontal: 4, alignItems: 'center', elevation: 2 },
+  chapterText: { fontSize: 16, fontWeight: 'bold', width: '100%', textAlign: 'center' },
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' },
   modalCard: { borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 24, paddingBottom: 40 },
   modalTitle: { fontSize: 18, fontWeight: 'bold', marginBottom: 20, textAlign: 'center' },

@@ -517,20 +517,27 @@ export default function BibleReaderScreen() {
                   { borderColor: isSelected ? c.accent : c.divider },
                   isSelected && { borderWidth: 2, backgroundColor: c.accent + '15' },
                 ]}>
-                  <View style={[styles.verseNumBadge, { backgroundColor: isSelected ? c.accent : c.accent }]}>
+                  <View style={[styles.verseNumBadge, { backgroundColor: c.accent, borderTopLeftRadius: 11, borderTopRightRadius: 11 }]}>
                     <Text style={styles.verseNumBadgeText}>{verseNum}</Text>
                     {isSelected && <Ionicons name="checkmark" size={13} color="#fff" />}
                   </View>
                   {primaryVerses[i] && (
-                    <View style={[styles.tamilSection, { backgroundColor: c.surface, borderBottomWidth: 1, borderBottomColor: c.divider }]}>
+                    <View style={[
+                      styles.tamilSection,
+                      { backgroundColor: c.surface, borderBottomWidth: 1, borderBottomColor: c.divider },
+                      !secondaryVerses[i] && { borderBottomLeftRadius: 11, borderBottomRightRadius: 11 },
+                    ]}>
                       <Text style={[styles.versionTag, { color: c.accent }]}>{primaryVersionInfo?.short}</Text>
-                      {renderVerseText(primaryVerses[i], { fontSize, color: c.text, lineHeight: fontSize * 1.7 })}
+                      {renderVerseText(primaryVerses[i], { fontSize, color: c.text, lineHeight: fontSize * 1.7, flexShrink: 1 })}
                     </View>
                   )}
                   {secondaryVerses[i] && (
-                    <View style={[styles.englishSection, { backgroundColor: c.bg }]}>
+                    <View style={[
+                      styles.englishSection,
+                      { backgroundColor: c.bg, borderBottomLeftRadius: 11, borderBottomRightRadius: 11 },
+                    ]}>
                       <Text style={[styles.versionTag, { color: c.subtext }]}>{secVersionInfo?.short}</Text>
-                      {renderVerseText(secondaryVerses[i], { fontSize, color: c.text, lineHeight: fontSize * 1.7 })}
+                      {renderVerseText(secondaryVerses[i], { fontSize, color: c.text, lineHeight: fontSize * 1.7, flexShrink: 1 })}
                     </View>
                   )}
                 </View>
@@ -681,8 +688,8 @@ const styles = StyleSheet.create({
   verseNumberWrap: { alignItems: 'center', minWidth: 26, marginTop: 2, gap: 2 },
   verseRow: { flexDirection: 'row', marginBottom: 12, gap: 8, paddingBottom: 12, borderBottomWidth: 0.5, alignItems: 'flex-start' },
   verseNumber: { fontWeight: 'bold', minWidth: 26, marginTop: 2 },
-  verseText: { flex: 1 },
-  bilingualVerseBlock: { marginBottom: 12, borderRadius: 12, overflow: 'hidden', borderWidth: 1, elevation: 2 },
+  verseText: { flex: 1, flexShrink: 1 },
+  bilingualVerseBlock: { marginBottom: 12, borderRadius: 12, borderWidth: 1, elevation: 2 },
   verseNumBadge: { paddingHorizontal: 12, paddingVertical: 6, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   verseNumBadgeText: { color: '#fff', fontWeight: 'bold', fontSize: 13 },
   longPressHint: { color: 'rgba(255,255,255,0.5)', fontSize: 10 },
