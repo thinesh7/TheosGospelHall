@@ -9,6 +9,7 @@ import {
   StatusBar,
   StyleSheet,
   TouchableOpacity,
+  useWindowDimensions,
   View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -55,6 +56,11 @@ export default function BibleScreen() {
   const router = useRouter();
   const { colors: c, theme, cycleTheme } = useTheme();
   const insets = useSafeAreaInsets();
+  const { width: windowWidth } = useWindowDimensions();
+  // Fixed item width (rather than flex:1) so a partially-filled last row — e.g. chapters
+  // 26-27 of a 27-chapter book — keeps the same box size instead of stretching to fill it.
+  const CHAPTER_COLUMNS = 5;
+  const chapterItemWidth = (windowWidth - 12 * 2 - CHAPTER_COLUMNS * (4 * 2)) / CHAPTER_COLUMNS;
   const [version, setVersion] = useState(() => getMemBibleSettings().version);
   const [selectedBook, setSelectedBook] = useState<any>(null);
   const [view, setView] = useState<'home' | 'books' | 'chapters'>('home');
@@ -107,7 +113,7 @@ export default function BibleScreen() {
         <View style={[styles.header, { backgroundColor: c.headerBg, paddingRight: 16 + insets.right }]}>
           <View style={{ flex: 1 }}>
             <Text style={[styles.headerTitle, { color: c.text }]}>📖 Bible</Text>
-            <Text style={[styles.headerSubtitle, { color: c.subtext }]}>5 versions available</Text>
+            <Text style={[styles.headerSubtitle, { color: c.subtext }]}>{BIBLE_VERSIONS.length} versions available</Text>
           </View>
           <TouchableOpacity onPress={cycleTheme} style={styles.themeBtn}>
             <ThemeToggleIcon theme={theme} size={22} color={c.text} />
@@ -229,7 +235,7 @@ export default function BibleScreen() {
           keyExtractor={item => item.toString()} numColumns={5}
           contentContainerStyle={{ padding: 12 }}
           renderItem={({ item }) => (
-            <TouchableOpacity style={[styles.chapterBtn, { backgroundColor: c.surface }]} onPress={() => openChapter(selectedBook, item)}>
+            <TouchableOpacity style={[styles.chapterBtn, { backgroundColor: c.surface, width: chapterItemWidth }]} onPress={() => openChapter(selectedBook, item)}>
               <Text
                 style={[styles.chapterText, { color: c.accent }]}
                 numberOfLines={1}
@@ -282,7 +288,7 @@ const styles = StyleSheet.create({
   bookName: { fontSize: 13, fontWeight: 'bold' },
   bookTamil: { fontSize: 11, marginTop: 2 },
   bookChapters: { fontSize: 10, marginTop: 6, fontWeight: '600' },
-  chapterBtn: { flex: 1, margin: 4, minWidth: 0, borderRadius: 10, paddingVertical: 14, paddingHorizontal: 4, alignItems: 'center', elevation: 2 },
+  chapterBtn: { margin: 4, borderRadius: 10, paddingVertical: 14, paddingHorizontal: 4, alignItems: 'center', elevation: 2 },
   chapterText: { fontSize: 16, fontWeight: 'bold', width: '100%', textAlign: 'center' },
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' },
   modalCard: { borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 24, paddingBottom: 40 },

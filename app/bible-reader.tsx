@@ -3,6 +3,7 @@ import * as Clipboard from 'expo-clipboard';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import { MutableRefObject, useEffect, useRef, useState } from 'react';
 import {
+  ActivityIndicator,
   BackHandler,
   FlatList,
   Modal,
@@ -18,7 +19,50 @@ import { Text } from '../components/AppText';
 import ThemeToggleIcon from '../components/ThemeToggleIcon';
 import { BIBLE_ASSETS, BIBLE_VERSIONS, BOOKS, cleanText } from '../utils/bibleData';
 import { getMemBibleSettings, saveBibleSettings } from '../utils/bibleSettings';
+import { describeFetchError, fetchAndCacheChapter, getCachedChapterVerses } from '../utils/bibleRemote';
+import {
+  pause as pauseTTS,
+  playChapter as playChapterTTS,
+  resume as resumeTTS,
+  stop as stopTTS,
+  subscribe as subscribeTTS,
+  TTSLanguage,
+  TTSPlaybackState,
+} from '../utils/bibleTTS';
 import { useTheme } from '../utils/ThemeContext';
+
+/** Loads one version's verses for a book/chapter, dispatching to the bundled in-memory
+ * lookup or the remote fetch+cache layer depending on the version's `source`. Used both
+ * by the main chapter loader and by the bilingual version pickers/defensive re-syncs. */
+async function applyVersionVerses(
+  ver: string,
+  book: any,
+  chapterNum: number,
+  setter: (v: any[]) => void
+): Promise<void> {
+  const meta = BIBLE_VERSIONS.find(v => v.code === ver);
+  if (!meta || !book) {
+    setter([]);
+    return;
+  }
+  if (meta.source === 'bundled') {
+    try {
+      const data = BIBLE_ASSETS[ver]?.[book.id];
+      setter(data ? data[String(chapterNum)] || [] : []);
+    } catch {
+      setter([]);
+    }
+    return;
+  }
+  const cached = await getCachedChapterVerses(ver, book.id, chapterNum);
+  if (cached) setter(cached);
+  try {
+    const fresh = await fetchAndCacheChapter(ver, book.id, chapterNum);
+    setter(fresh);
+  } catch {
+    if (!cached) setter([]);
+  }
+}
 
 interface SettingsModalProps {
   visible: boolean;
@@ -47,7 +91,7 @@ function SettingsModal({
   isBilingual, bilingualEligible, setIsBilingual,
   secondaryVersion, setSecondaryVersion, secondaryVersionRef,
   version, setVersion, versionRef,
-  selectedBook, selectedChapter, setSecondaryVerses, setPrimaryVerses, isEnglish,
+  selectedBook, selectedChapter, setSecondaryVerses, setPrimaryVerses,
 }: SettingsModalProps) {
   return (
     <Modal visible={visible} transparent animationType="slide">
@@ -98,8 +142,7 @@ function SettingsModal({
                           versionRef.current = v.code;
                           saveBibleSettings({ primaryVersion: v.code });
                           if (selectedBook && selectedChapter) {
-                            const priData = BIBLE_ASSETS[v.code]?.[selectedBook.id];
-                            if (priData) setPrimaryVerses(priData[String(selectedChapter)] || []);
+                            applyVersionVerses(v.code, selectedBook, selectedChapter, setPrimaryVerses);
                           }
                         }}
                       >
@@ -122,8 +165,7 @@ function SettingsModal({
                           secondaryVersionRef.current = v.code;
                           saveBibleSettings({ secondaryVersion: v.code });
                           if (selectedBook && selectedChapter) {
-                            const secData = BIBLE_ASSETS[v.code]?.[selectedBook.id];
-                            if (secData) setSecondaryVerses(secData[String(selectedChapter)] || []);
+                            applyVersionVerses(v.code, selectedBook, selectedChapter, setSecondaryVerses);
                           }
                         }}
                       >
@@ -237,9 +279,24 @@ export default function BibleReaderScreen() {
   const [showSettings, setShowSettings] = useState(false);
   const [showBookModal, setShowBookModal] = useState(false);
   const [bookModalTestament, setBookModalTestament] = useState<'OT' | 'NT'>('OT');
+  // Only meaningful for remote (non-bundled) versions with nothing cached yet — bundled
+  // versions never touch these, so their reading experience is unchanged.
+  const [chapterLoading, setChapterLoading] = useState(false);
+  const [chapterError, setChapterError] = useState<string | null>(null);
+  const [ttsState, setTtsState] = useState<TTSPlaybackState>('idle');
+  const [ttsVerseIndex, setTtsVerseIndex] = useState(0);
+  const [ttsError, setTtsError] = useState<string | null>(null);
   const versesListRef = useRef<FlatList>(null);
   const verseBarRef = useRef<ScrollView>(null);
   const pendingScrollRef = useRef<number | null>(null);
+  const chapterLoadTokenRef = useRef(0);
+  // Always points at the latest "advance to next chapter and keep reading" logic, so the
+  // chapter-completion callback handed to bibleTTS (captured once per playChapter call)
+  // never acts on stale book/chapter/version closures.
+  const chapterCompleteRef = useRef<() => void>(() => {});
+  // Set when the user presses Stop, so an in-flight auto-continue (e.g. a remote chapter
+  // still fetching) knows not to resume playback once it finishes loading.
+  const userStoppedTTSRef = useRef(false);
   const VERSE_BTN_WIDTH = 40;
 
   const isEnglish = BIBLE_VERSIONS.find(v => v.code === version)?.lang === 'English';
@@ -254,16 +311,52 @@ export default function BibleReaderScreen() {
   // Defensive re-fetch: catches any edge case where secondary verses didn't load
   useEffect(() => {
     if (!isBilingual || isEnglish || !secondaryVersion || !selectedBook) return;
-    const secData = BIBLE_ASSETS[secondaryVersion]?.[selectedBook.id];
-    if (secData) setSecondaryVerses(secData[String(selectedChapter)] || []);
+    applyVersionVerses(secondaryVersion, selectedBook, selectedChapter, setSecondaryVerses);
   }, [secondaryVersion, selectedChapter, selectedBook?.id, isBilingual]);
 
   // Defensive re-fetch: catches any edge case where primary (Tamil) verses didn't load
   useEffect(() => {
     if (!isBilingual || isEnglish || !version || !selectedBook) return;
-    const priData = BIBLE_ASSETS[version]?.[selectedBook.id];
-    if (priData) setPrimaryVerses(priData[String(selectedChapter)] || []);
+    applyVersionVerses(version, selectedBook, selectedChapter, setPrimaryVerses);
   }, [version, selectedChapter, selectedBook?.id, isBilingual]);
+
+  // Runs after every render so it always closes over the latest book/chapter/bilingual
+  // state, regardless of when bibleTTS eventually invokes it.
+  useEffect(() => {
+    chapterCompleteRef.current = () => {
+      if (userStoppedTTSRef.current || !selectedBook) return;
+      const totalChapters = selectedBook.chapters;
+      let nextBook = selectedBook;
+      let nextChapter = selectedChapter;
+      if (selectedChapter < totalChapters) {
+        nextChapter = selectedChapter + 1;
+      } else {
+        const nb = BOOKS.find(b => b.id === selectedBook.id + 1);
+        if (!nb) return; // Revelation 22 finished — the whole reading sequence is complete.
+        nextBook = nb;
+        nextChapter = 1;
+      }
+      setSelectedBook(nextBook);
+      setSelectedChapter(nextChapter);
+      loadChapterData(nextBook, nextChapter, versionRef.current, isBilingual, secondaryVersionRef.current, true);
+    };
+  });
+
+  // Stop any in-progress TTS playback when the reader unmounts (navigating away).
+  useEffect(() => {
+    const unsubscribe = subscribeTTS((state, idx) => {
+      setTtsState(state);
+      setTtsVerseIndex(idx);
+      if (state === 'playing') {
+        syncVerseBar(idx);
+        try { versesListRef.current?.scrollToIndex({ index: idx, animated: true, viewPosition: 0.3 }); } catch {}
+      }
+    });
+    return () => {
+      unsubscribe();
+      stopTTS();
+    };
+  }, []);
 
   useEffect(() => {
     const handler = BackHandler.addEventListener('hardwareBackPress', () => {
@@ -274,26 +367,94 @@ export default function BibleReaderScreen() {
     return () => handler.remove();
   }, [showBookModal]);
 
-  const loadChapterData = (book: any, chapter: number, ver: string, bilingual: boolean, secVer: string) => {
-    const versionIsEnglish = BIBLE_VERSIONS.find(v => v.code === ver)?.lang === 'English';
-    try {
-      const bookData = BIBLE_ASSETS[ver]?.[book.id];
-      if (bookData) setPrimaryVerses(bookData[String(chapter)] || []);
-      if (bilingual && !versionIsEnglish) {
-        const secData = BIBLE_ASSETS[secVer]?.[book.id];
-        if (secData) setSecondaryVerses(secData[String(chapter)] || []);
-        else setSecondaryVerses([]);
-      } else {
-        setSecondaryVerses([]);
-      }
-      setSelectedVerses(new Set());
+  const loadChapterData = async (
+    book: any,
+    chapter: number,
+    ver: string,
+    bilingual: boolean,
+    secVer: string,
+    autoContinueTTS?: boolean
+  ) => {
+    const token = ++chapterLoadTokenRef.current;
+    if (!autoContinueTTS) {
+      // A normal (manual) chapter load always stops any TTS in progress. When this call
+      // is itself the automatic continuation of a finished chapter, TTS is already idle
+      // (bibleTTS stopped it before invoking the completion callback), so skipping this
+      // avoids a redundant reset right before we start reading the new chapter below.
+      stopTTS();
+      setTtsError(null);
+    }
+    const verMeta = BIBLE_VERSIONS.find(v => v.code === ver);
+    const versionIsEnglish = verMeta?.lang === 'English';
+    setSelectedVerses(new Set());
     setActiveVerse(0);
-      pendingScrollRef.current = null;
-      setTimeout(() => {
-        versesListRef.current?.scrollToOffset({ offset: 0, animated: false });
-        verseBarRef.current?.scrollTo({ x: 0, animated: false });
-      }, 100);
-    } catch (e) {}
+    pendingScrollRef.current = null;
+
+    // Tracks the verses actually loaded, independent of React's async state batching,
+    // so auto-continue can hand them straight to bibleTTS without reading stale state.
+    let finalVerses: any[] = [];
+
+    if (verMeta?.source === 'bundled') {
+      // Unchanged path: bundled versions are always in memory, so this stays synchronous
+      // with no loading state — identical behavior to before this feature was added.
+      try {
+        const bookData = BIBLE_ASSETS[ver]?.[book.id];
+        finalVerses = bookData ? bookData[String(chapter)] || [] : [];
+        setPrimaryVerses(finalVerses);
+      } catch {}
+      setChapterLoading(false);
+      setChapterError(null);
+    } else {
+      // Remote version: show cached content instantly if present (no spinner), refresh
+      // in the background, and only surface a loading/error state when nothing is cached.
+      const cached = await getCachedChapterVerses(ver, book.id, chapter);
+      if (chapterLoadTokenRef.current !== token) return;
+      if (cached) {
+        finalVerses = cached;
+        setPrimaryVerses(cached);
+        setChapterLoading(false);
+        setChapterError(null);
+      } else {
+        setPrimaryVerses([]);
+        setChapterLoading(true);
+        setChapterError(null);
+      }
+      try {
+        const fresh = await fetchAndCacheChapter(ver, book.id, chapter);
+        if (chapterLoadTokenRef.current !== token) return;
+        finalVerses = fresh;
+        setPrimaryVerses(fresh);
+        setChapterLoading(false);
+        setChapterError(null);
+      } catch (e) {
+        if (chapterLoadTokenRef.current !== token) return;
+        setChapterLoading(false);
+        if (!cached) setChapterError(describeFetchError(e));
+        // If cached content already exists it stays on screen (finalVerses already holds
+        // it) — a background refresh failure never replaces usable content with an error.
+      }
+    }
+
+    if (bilingual && !versionIsEnglish) {
+      await applyVersionVerses(secVer, book, chapter, setSecondaryVerses);
+    } else {
+      setSecondaryVerses([]);
+    }
+    if (chapterLoadTokenRef.current !== token) return;
+
+    setTimeout(() => {
+      versesListRef.current?.scrollToOffset({ offset: 0, animated: false });
+      verseBarRef.current?.scrollTo({ x: 0, animated: false });
+    }, 100);
+
+    if (autoContinueTTS && !userStoppedTTSRef.current && finalVerses.length > 0) {
+      const language: TTSLanguage = versionIsEnglish ? 'English' : 'Tamil';
+      playChapterTTS(finalVerses, language, cleanText, {
+        startIndex: 0,
+        onError: (message) => setTtsError(message),
+        onChapterComplete: () => chapterCompleteRef.current(),
+      });
+    }
   };
 
   const navigateChapter = (dir: 'next' | 'prev') => {
@@ -415,6 +576,37 @@ export default function BibleReaderScreen() {
     return <Text style={style}>{cleanText(verse?.text)}</Text>;
   };
 
+  const handleTtsToggle = () => {
+    setTtsError(null);
+    if (ttsState === 'playing') { pauseTTS(); return; }
+    if (ttsState === 'paused') { resumeTTS(); return; }
+    if (!primaryVerses || primaryVerses.length === 0) return;
+    userStoppedTTSRef.current = false;
+    const language: TTSLanguage = isEnglish ? 'English' : 'Tamil';
+    // Start from a tap-selected verse if there is one, otherwise from whatever verse is
+    // currently in view (e.g. after a manual jump/scroll); default to the first verse.
+    let startIndex = 0;
+    if (selectedVerses.size > 0) {
+      const startVerseNum = Math.min(...Array.from(selectedVerses));
+      const found = primaryVerses.findIndex((v: any) => v.verse === startVerseNum);
+      if (found >= 0) startIndex = found;
+      clearSelection();
+    } else if (activeVerse > 0 && activeVerse < primaryVerses.length) {
+      startIndex = activeVerse;
+    }
+    playChapterTTS(primaryVerses, language, cleanText, {
+      startIndex,
+      onError: (message) => setTtsError(message),
+      onChapterComplete: () => chapterCompleteRef.current(),
+    });
+  };
+
+  const handleTtsStop = () => {
+    userStoppedTTSRef.current = true;
+    stopTTS();
+    setTtsError(null);
+  };
+
   const showBilingual = isBilingual && !isEnglish && secondaryVerses.length > 0;
   const maxVerses = Math.max(primaryVerses.length, showBilingual ? secondaryVerses.length : 0);
   const primaryVersionInfo = BIBLE_VERSIONS.find(v => v.code === version);
@@ -426,7 +618,7 @@ export default function BibleReaderScreen() {
 
   return (
     <View style={[styles.container, { backgroundColor: c.bg }]} {...panResponder.panHandlers}>
-      <Stack.Screen options={{ headerShown: false }} />
+      <Stack.Screen options={{ headerShown: false, contentStyle: { backgroundColor: c.bg } }} />
 
       <View style={[styles.header, { backgroundColor: c.headerBg, paddingRight: 16 + insets.right }]}>
         <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
@@ -459,6 +651,28 @@ export default function BibleReaderScreen() {
         </TouchableOpacity>
       </View>
 
+      <View style={[styles.ttsBar, { backgroundColor: c.surface, borderBottomColor: c.divider }]}>
+        <TouchableOpacity
+          onPress={handleTtsToggle}
+          disabled={primaryVerses.length === 0}
+          style={[styles.ttsBtn, { backgroundColor: c.accent }, primaryVerses.length === 0 && { opacity: 0.4 }]}
+        >
+          <Ionicons name={ttsState === 'playing' ? 'pause' : 'play'} size={16} color="#fff" />
+        </TouchableOpacity>
+        {ttsState !== 'idle' && (
+          <TouchableOpacity onPress={handleTtsStop} style={[styles.ttsBtn, { backgroundColor: c.raised }]}>
+            <Ionicons name="stop" size={16} color={c.text} />
+          </TouchableOpacity>
+        )}
+        <Text style={[styles.ttsStatusText, { color: ttsError ? '#c0392b' : c.subtext }]} numberOfLines={1}>
+          {ttsError
+            ? ttsError
+            : ttsState === 'idle'
+              ? (isEnglish || isBilingual ? 'Listen to this chapter' : 'இந்த அதிகாரத்தைக் கேளுங்கள்')
+              : `${ttsState === 'paused' ? 'Paused' : 'Reading'} • verse ${ttsVerseIndex + 1}`}
+        </Text>
+      </View>
+
       <View style={[styles.verseJumpBar, { backgroundColor: c.surface, borderBottomColor: c.divider }]}>
         <ScrollView ref={verseBarRef} horizontal showsHorizontalScrollIndicator={false}
           contentContainerStyle={{ paddingHorizontal: 8, gap: 4 }}>
@@ -487,13 +701,31 @@ export default function BibleReaderScreen() {
         </View>
       )}
 
-      {showBilingual ? (
+      {chapterLoading ? (
+        <View style={styles.chapterStatusWrap}>
+          <ActivityIndicator size="small" color={c.accent} />
+          <Text style={[styles.chapterStatusText, { color: c.subtext }]}>
+            {isEnglish || isBilingual ? 'Loading chapter…' : 'அதிகாரம் ஏற்றப்படுகிறது…'}
+          </Text>
+        </View>
+      ) : chapterError ? (
+        <View style={styles.chapterStatusWrap}>
+          <Ionicons name="cloud-offline-outline" size={28} color={c.subtext} />
+          <Text style={[styles.chapterStatusText, { color: c.subtext }]}>{chapterError}</Text>
+          <TouchableOpacity
+            style={[styles.retryBtn, { backgroundColor: c.accent }]}
+            onPress={() => loadChapterData(selectedBook, selectedChapter, versionRef.current, isBilingual, secondaryVersionRef.current)}
+          >
+            <Text style={styles.retryBtnText}>Retry</Text>
+          </TouchableOpacity>
+        </View>
+      ) : showBilingual ? (
         <FlatList
           ref={versesListRef}
           data={Array.from({ length: maxVerses }, (_, i) => i)}
           key="bilingual"
           keyExtractor={i => i.toString()}
-          contentContainerStyle={{ padding: 16, paddingBottom: 100 }}
+          contentContainerStyle={{ padding: 16, paddingBottom: 140 + insets.bottom }}
           onViewableItemsChanged={({ viewableItems }) => {
             if (viewableItems.length > 0) {
               const idx = viewableItems[0].index ?? 0;
@@ -506,6 +738,8 @@ export default function BibleReaderScreen() {
           renderItem={({ item: i }) => {
             const verseNum = i + 1;
             const isSelected = selectedVerses.has(verseNum);
+            const isTtsActive = ttsState !== 'idle' && ttsVerseIndex === i;
+            const highlighted = isSelected || isTtsActive;
             return (
               <TouchableOpacity
                 activeOpacity={0.7}
@@ -514,12 +748,24 @@ export default function BibleReaderScreen() {
               >
                 <View style={[
                   styles.bilingualVerseBlock,
-                  { borderColor: isSelected ? c.accent : c.divider },
-                  isSelected && { borderWidth: 2, backgroundColor: c.accent + '15' },
+                  { borderColor: highlighted ? c.accent + '40' : c.divider },
+                  highlighted && {
+                    borderWidth: 1.5,
+                    backgroundColor: c.accent + '0d',
+                    shadowColor: c.accent,
+                    shadowOffset: { width: 0, height: 2 },
+                    shadowRadius: 6,
+                    shadowOpacity: 0.18,
+                    elevation: 2,
+                  },
                 ]}>
                   <View style={[styles.verseNumBadge, { backgroundColor: c.accent, borderTopLeftRadius: 11, borderTopRightRadius: 11 }]}>
                     <Text style={styles.verseNumBadgeText}>{verseNum}</Text>
-                    {isSelected && <Ionicons name="checkmark" size={13} color="#fff" />}
+                    {isTtsActive ? (
+                      <Ionicons name="volume-high" size={13} color="#fff" />
+                    ) : isSelected ? (
+                      <Ionicons name="checkmark" size={13} color="#fff" />
+                    ) : null}
                   </View>
                   {primaryVerses[i] && (
                     <View style={[
@@ -551,7 +797,7 @@ export default function BibleReaderScreen() {
           data={primaryVerses}
           key="single"
           keyExtractor={(_, i) => i.toString()}
-          contentContainerStyle={{ padding: 16, paddingBottom: 100 }}
+          contentContainerStyle={{ padding: 16, paddingBottom: 140 + insets.bottom }}
           onViewableItemsChanged={({ viewableItems }) => {
             if (viewableItems.length > 0) {
               const idx = viewableItems[0].index ?? 0;
@@ -561,36 +807,33 @@ export default function BibleReaderScreen() {
           }}
           viewabilityConfig={{ itemVisiblePercentThreshold: 50 }}
           onScrollToIndexFailed={handleScrollToIndexFailed}
-          renderItem={({ item }) => {
+          renderItem={({ item, index }) => {
             const isSelected = selectedVerses.has(item.verse);
+            const isTtsActive = ttsState !== 'idle' && ttsVerseIndex === index;
+            const highlighted = isSelected || isTtsActive;
             return (
               <TouchableOpacity
                 activeOpacity={0.7}
                 onPress={() => toggleVerseSelection(item.verse)}
                 onLongPress={() => toggleVerseSelection(item.verse)}
               >
-                {isSelected ? (
-                  <View style={{
-                    marginBottom: 12,
-                    borderRadius: 12,
-                    borderWidth: 2,
-                    borderColor: c.accent,
-                    backgroundColor: c.accent + '15',
-                  }}>
-                    <View style={{
-                      backgroundColor: c.accent,
-                      paddingHorizontal: 12,
-                      paddingVertical: 6,
-                      flexDirection: 'row',
-                      alignItems: 'center',
-                      justifyContent: 'space-between',
-                    }}>
-                      <Text style={{ color: '#fff', fontWeight: 'bold', fontSize: 13 }}>{item.verse}</Text>
-                      <Ionicons name="checkmark" size={13} color="#fff" />
+                {highlighted ? (
+                  <View style={[
+                    styles.highlightCard,
+                    {
+                      backgroundColor: c.accent + '14',
+                      borderColor: c.accent + '30',
+                      borderLeftColor: c.accent,
+                      shadowColor: c.accent,
+                    },
+                  ]}>
+                    <View style={styles.highlightHeaderRow}>
+                      <View style={[styles.highlightVerseBadge, { backgroundColor: c.accent }]}>
+                        <Text style={styles.highlightVerseBadgeText}>{item.verse}</Text>
+                      </View>
+                      <Ionicons name={isTtsActive ? 'volume-high' : 'checkmark-circle'} size={17} color={c.accent} />
                     </View>
-                    <View style={{ padding: 12 }}>
-                      {renderVerseText(item, { fontSize, color: c.text, lineHeight: fontSize * 1.7 })}
-                    </View>
+                    {renderVerseText(item, { fontSize, color: c.text, lineHeight: fontSize * 1.7 })}
                   </View>
                 ) : (
                   <View style={[styles.verseRow, { borderBottomColor: c.divider }]}>
@@ -677,6 +920,13 @@ const styles = StyleSheet.create({
   settingsBtn: { padding: 4 },
   fontQuickBtn: { backgroundColor: 'rgba(150,150,150,0.2)', borderRadius: 6, paddingHorizontal: 7, paddingVertical: 4 },
   fontQuickText: { fontWeight: 'bold', fontSize: 11 },
+  ttsBar: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 16, paddingVertical: 8, borderBottomWidth: 1 },
+  ttsBtn: { width: 30, height: 30, borderRadius: 15, alignItems: 'center', justifyContent: 'center' },
+  ttsStatusText: { flex: 1, fontSize: 12, fontWeight: '600' },
+  chapterStatusWrap: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 10, padding: 24 },
+  chapterStatusText: { fontSize: 13, textAlign: 'center' },
+  retryBtn: { borderRadius: 10, paddingHorizontal: 20, paddingVertical: 10, marginTop: 4 },
+  retryBtnText: { color: '#fff', fontWeight: '700', fontSize: 13 },
   verseJumpBar: { borderBottomWidth: 1, paddingVertical: 6 },
   verseJumpBtn: { height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center' },
   verseJumpText: { fontSize: 13, fontWeight: '700' },
@@ -689,6 +939,21 @@ const styles = StyleSheet.create({
   verseRow: { flexDirection: 'row', marginBottom: 12, gap: 8, paddingBottom: 12, borderBottomWidth: 0.5, alignItems: 'flex-start' },
   verseNumber: { fontWeight: 'bold', minWidth: 26, marginTop: 2 },
   verseText: { flex: 1, flexShrink: 1 },
+  highlightCard: {
+    borderRadius: 14,
+    borderWidth: 1,
+    borderLeftWidth: 3,
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+    marginBottom: 14,
+    shadowOffset: { width: 0, height: 2 },
+    shadowRadius: 6,
+    shadowOpacity: 0.18,
+    elevation: 2,
+  },
+  highlightHeaderRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 },
+  highlightVerseBadge: { width: 24, height: 24, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
+  highlightVerseBadgeText: { color: '#fff', fontWeight: '700', fontSize: 12 },
   bilingualVerseBlock: { marginBottom: 12, borderRadius: 12, borderWidth: 1, elevation: 2 },
   verseNumBadge: { paddingHorizontal: 12, paddingVertical: 6, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   verseNumBadgeText: { color: '#fff', fontWeight: 'bold', fontSize: 13 },

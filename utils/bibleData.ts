@@ -1,9 +1,95 @@
-export const BIBLE_VERSIONS = [
-  { code: 'TAMOVR', name: 'Tamil Bible (OV)', short: 'OV', lang: 'Tamil' },
-  { code: 'TAMBL98', name: 'Tamil Bible (ERV)', short: 'ERV', lang: 'Tamil' },
-  { code: 'NIV', name: 'English (NIV)', short: 'NIV', lang: 'English' },
-  { code: 'ERV', name: 'English (ERV)', short: 'ERV', lang: 'English' },
-  { code: 'KJV', name: 'English (KJV)', short: 'KJV', lang: 'English' },
+/** 'bundled' = shipped in the JS bundle via require() (assets/bible/*.json), no network needed.
+ *  'bolls' = fetched on demand (chapter-level) from the bolls.life API and cached locally. */
+export type BibleVersionSource = 'bundled' | 'bolls';
+
+/** 'public-domain' / 'cc-by-sa-4.0' are cleared for redistribution and offline caching.
+ *  'proprietary-unverified' marks pre-existing bundled content whose redistribution license
+ *  was not independently confirmed as part of this work — see README/legal notes. */
+export type BibleLicenseType = 'public-domain' | 'cc-by-sa-4.0' | 'proprietary-unverified';
+
+export interface BibleLicenseInfo {
+  type: BibleLicenseType;
+  holder?: string;
+  notes: string;
+}
+
+export interface BibleVersionMeta {
+  code: string;
+  name: string;
+  short: string;
+  lang: 'English' | 'Tamil';
+  source: BibleVersionSource;
+  /** Translation code to use when querying the bolls.life API, if different from `code`. */
+  bollsCode?: string;
+  license: BibleLicenseInfo;
+  offlineCachingAllowed: boolean;
+}
+
+/**
+ * Adding a new version = add one entry here (+ a bollsCode if it's on bolls.life, or
+ * bundle assets/bible/{code}_{book}.json files for a 'bundled' source). No other file
+ * needs to change: the version-selection UI, reader, cache, and bilingual pickers all
+ * derive from this list.
+ */
+export const BIBLE_VERSIONS: BibleVersionMeta[] = [
+  // --- Pre-existing bundled versions ---
+  {
+    code: 'TAMOVR', name: 'Tamil Bible (OV)', short: 'OV', lang: 'Tamil', source: 'bundled',
+    license: { type: 'proprietary-unverified', notes: 'Bundled prior to this work; provenance/redistribution rights not independently confirmed. Flagged for legal follow-up.' },
+    offlineCachingAllowed: true,
+  },
+  {
+    code: 'TAMBL98', name: 'Tamil Bible (ERV)', short: 'ERV', lang: 'Tamil', source: 'bundled',
+    license: { type: 'proprietary-unverified', holder: 'World Bible Translation Center / Bible League International (Easy-to-Read Version)', notes: 'Bundled prior to this work; ERV is a copyrighted translation and no redistribution license was confirmed. Flagged for legal follow-up.' },
+    offlineCachingAllowed: true,
+  },
+  {
+    code: 'NIV', name: 'English (NIV)', short: 'NIV', lang: 'English', source: 'bundled',
+    license: { type: 'proprietary-unverified', holder: 'Biblica', notes: 'Bundled prior to this work. NIV is copyrighted by Biblica; commercial app redistribution normally requires a paid license (confirmed NOT available for free commercial use via API.Bible). Flagged for legal follow-up — consider replacing with a public-domain version.' },
+    offlineCachingAllowed: true,
+  },
+  {
+    code: 'ERV', name: 'English (ERV)', short: 'ERV', lang: 'English', source: 'bundled',
+    license: { type: 'proprietary-unverified', holder: 'World Bible Translation Center / Bible League International', notes: 'Bundled prior to this work; ERV is a copyrighted translation and no redistribution license was confirmed. Flagged for legal follow-up.' },
+    offlineCachingAllowed: true,
+  },
+  {
+    code: 'KJV', name: 'English (KJV)', short: 'KJV', lang: 'English', source: 'bundled',
+    license: { type: 'public-domain', notes: 'King James Version (1769) is public domain outside the UK (Crown copyright applies only within the UK, where free/non-commercial use is customarily permitted).' },
+    offlineCachingAllowed: true,
+  },
+
+  // --- New: public-domain English versions, fetched chapter-by-chapter from bolls.life and cached ---
+  {
+    code: 'WEB', name: 'World English Bible', short: 'WEB', lang: 'English', source: 'bolls', bollsCode: 'WEB',
+    license: { type: 'public-domain', holder: 'Rainbow Missions, Inc.', notes: 'Explicitly dedicated to the public domain; no restrictions on redistribution or caching.' },
+    offlineCachingAllowed: true,
+  },
+  {
+    code: 'ASV', name: 'American Standard Version', short: 'ASV', lang: 'English', source: 'bolls', bollsCode: 'ASV',
+    license: { type: 'public-domain', notes: 'Published 1901; copyright has expired.' },
+    offlineCachingAllowed: true,
+  },
+  {
+    code: 'YLT', name: "Young's Literal Translation", short: 'YLT', lang: 'English', source: 'bolls', bollsCode: 'YLT',
+    license: { type: 'public-domain', notes: 'Published 1898 by Robert Young; copyright has expired.' },
+    offlineCachingAllowed: true,
+  },
+  {
+    code: 'BSB', name: 'Berean Standard Bible', short: 'BSB', lang: 'English', source: 'bolls', bollsCode: 'BSB',
+    license: { type: 'public-domain', holder: 'Bible Hub / Berean Bible', notes: 'Explicitly dedicated to the public domain on April 30, 2023; no license required for any use.' },
+    offlineCachingAllowed: true,
+  },
+  {
+    code: 'DRB', name: 'Douay-Rheims Bible', short: 'DRB', lang: 'English', source: 'bolls', bollsCode: 'DRB',
+    license: { type: 'public-domain', notes: '1899 Challoner revision; copyright has expired.' },
+    offlineCachingAllowed: true,
+  },
+  {
+    code: 'GNV', name: 'Geneva Bible (1599)', short: 'GNV', lang: 'English', source: 'bolls', bollsCode: 'GNV',
+    license: { type: 'public-domain', notes: 'Published 1599; copyright has expired.' },
+    offlineCachingAllowed: true,
+  },
 ];
 
 export const BOOKS = [

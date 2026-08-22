@@ -22,7 +22,7 @@ import {
   setupNotificationListeners,
   setupTokenRefreshListener,
 } from '@/utils/notifications';
-import { ThemeProvider as AppThemeProvider } from '@/utils/ThemeContext';
+import { ThemeProvider as AppThemeProvider, useTheme } from '@/utils/ThemeContext';
 import { UpdateGateProvider } from '@/utils/UpdateGateContext';
 
 export const unstable_settings = { anchor: '(tabs)' };
@@ -46,6 +46,26 @@ function handleNotificationResponse(response: any) {
 }
 
 type AppState = 'checking' | 'welcome' | 'ready';
+
+/** react-native-screens gives the "(tabs)" route its own native screen container with a
+ *  default (white) background, independent of any JS view inside it. On a back/pop
+ *  transition out of a stacked screen (e.g. bible-reader), that native container is what
+ *  briefly becomes visible as it's uncovered — before this fix, nothing set its color, so
+ *  it flashed white in Dark/Sepia (Light's own background is close enough to white that
+ *  the same flash isn't visible there). Rendered inside AppThemeProvider so it can read
+ *  the current app theme, independent of the global React Navigation theme. */
+function AppStack() {
+  const { colors } = useTheme();
+  return (
+    <Stack>
+      <Stack.Screen name="(tabs)" options={{ headerShown: false, contentStyle: { backgroundColor: colors.bg } }} />
+      <Stack.Screen name="song-reader" options={{ headerShown: false }} />
+      <Stack.Screen name="other-song-reader" options={{ headerShown: false }} />
+      <Stack.Screen name="bible-reader" options={{ headerShown: false }} />
+      <Stack.Screen name="notification-center" options={{ headerShown: false }} />
+    </Stack>
+  );
+}
 
 export default function RootLayout() {
   const colorScheme = useColorScheme();
@@ -189,13 +209,7 @@ export default function RootLayout() {
             setAppState('ready');
           }} />
         ) : (
-          <Stack>
-            <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-            <Stack.Screen name="song-reader" options={{ headerShown: false }} />
-            <Stack.Screen name="other-song-reader" options={{ headerShown: false }} />
-            <Stack.Screen name="bible-reader" options={{ headerShown: false }} />
-            <Stack.Screen name="notification-center" options={{ headerShown: false }} />
-          </Stack>
+          <AppStack />
         )}
         {updateStatus === 'mandatory' && updateConfig && (
           <ForceUpdateScreen message={updateConfig.updateMessage} storeUrl={updateConfig.androidStoreUrl} />

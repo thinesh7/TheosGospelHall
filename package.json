@@ -1,7 +1,7 @@
 {
   "name": "theosgospelhall",
   "main": "expo-router/entry",
-  "version": "1.4.0",
+  "version": "1.5.0",
   "scripts": {
     "start": "expo start",
     "reset-project": "node ./scripts/reset-project.js",
@@ -36,6 +36,7 @@
     "expo-router": "~6.0.23",
     "expo-screen-orientation": "~9.0.9",
     "expo-sharing": "~14.0.8",
+    "expo-speech": "~14.0.8",
     "expo-splash-screen": "~31.0.13",
     "expo-status-bar": "~3.0.9",
     "expo-symbols": "~1.0.8",

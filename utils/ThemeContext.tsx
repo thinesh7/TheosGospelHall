@@ -1,4 +1,5 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import * as SystemUI from 'expo-system-ui';
 import { createContext, ReactNode, useContext, useEffect, useState } from 'react';
 import { useColorScheme } from 'react-native';
 import { nextTheme, THEME_ORDER, THEMES, ThemeColors, ThemeName } from './theme';
@@ -32,6 +33,17 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
       setIsLoaded(true);
     });
   }, []);
+
+  // app.json pins userInterfaceStyle to "light", which fixes the native Android window/
+  // activity background used during react-native-screens' Fragment-based push/pop
+  // transitions — a layer no JS-level style (e.g. a screen's contentStyle) can reach.
+  // This keeps that actual native background in sync with the app's own theme (which is
+  // independent of the OS light/dark setting), eliminating the white flash a mismatch
+  // causes mid-transition in Dark/Sepia — Light was never visibly affected since its
+  // background is already close to the native default.
+  useEffect(() => {
+    SystemUI.setBackgroundColorAsync(THEMES[theme].bg).catch(() => {});
+  }, [theme]);
 
   const setTheme = (t: ThemeName) => {
     setThemeState(t);
