@@ -9,10 +9,10 @@ import { useTheme } from '../utils/ThemeContext';
 import {
   getCachedNotifications,
   getMemoryCachedNotifications,
+  getMemoryReadIds,
   getReadIds,
   groupNotifications,
   markAllRead,
-  markNotificationRead,
   NotificationItem,
   subscribeNotifications,
   subscribeReadIds,
@@ -59,6 +59,14 @@ function splitMessage(message: string): { title: string; body: string } {
   return { title: message.slice(0, idx), body: message.slice(idx + 1).trim() };
 }
 
+// Exact 3-line wrapping can't be measured without a layout pass, so this is
+// a deliberately cheap proxy: explicit line breaks or a long run of text are
+// the only ways a body actually exceeds the 3-line clamp in this row width.
+function isBodyTruncated(body: string): boolean {
+  if (!body) return false;
+  return body.split('\n').length > 3 || body.length > 140;
+}
+
 function formatItemTime(ts: number): string {
   if (!ts) return '';
   const d = new Date(ts);
@@ -76,8 +84,11 @@ export default function NotificationCenterScreen() {
   const { colors: c } = useTheme();
   const insets = useSafeAreaInsets();
   const [items, setItems] = useState<NotificationItem[]>(() => getMemoryCachedNotifications());
-  const [readIds, setReadIds] = useState<Set<string>>(new Set());
+  const [readIds, setReadIds] = useState<Set<string>>(() => getMemoryReadIds());
+  const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
   const glowAnim = useRef(new Animated.Value(0.15)).current;
+  const itemsRef = useRef(items);
+  itemsRef.current = items;
 
   useEffect(() => {
     Animated.loop(
@@ -99,18 +110,28 @@ export default function NotificationCenterScreen() {
     };
   }, []);
 
-  // Simply having the list on screen is what marks it read — not a tap on
-  // each row — so the Home bell's badge/shake clears as soon as this screen
-  // is opened, and stays cleared if a new item streams in while it's open.
+  // Unread dots and the bell count stay visible for as long as this screen
+  // is open; only leaving the screen marks everything read, in one shot,
+  // via the current item list captured in itemsRef.
   useEffect(() => {
-    if (items.length) markAllRead(items.map(i => i.id));
-  }, [items]);
+    return () => {
+      if (itemsRef.current.length) markAllRead(itemsRef.current.map(i => i.id));
+    };
+  }, []);
 
-  const handleOpen = (item: NotificationItem) => {
-    markNotificationRead(item.id);
+  const handleOpenLink = (item: NotificationItem) => {
     if (item.link) {
       Linking.openURL(item.link).catch(() => {});
     }
+  };
+
+  const toggleExpand = (item: NotificationItem) => {
+    setExpandedIds(prev => {
+      const next = new Set(prev);
+      if (next.has(item.id)) next.delete(item.id);
+      else next.add(item.id);
+      return next;
+    });
   };
 
   const sections = groupNotifications(items);
@@ -156,11 +177,12 @@ export default function NotificationCenterScreen() {
           )}
           renderItem={({ item }) => {
             const isUnread = !readIds.has(item.id);
+            const isExpanded = expandedIds.has(item.id);
             const { title, body } = splitMessage(item.message);
             return (
               <TouchableOpacity
                 style={[styles.row, { backgroundColor: c.surface, borderColor: c.divider }]}
-                onPress={() => handleOpen(item)}
+                onPress={() => toggleExpand(item)}
                 activeOpacity={0.7}
               >
                 <View style={[styles.dot, { backgroundColor: isUnread ? c.accent : c.divider }]} />
@@ -177,15 +199,36 @@ export default function NotificationCenterScreen() {
                     <Text style={[styles.time, { color: c.subtext }]}>{formatItemTime(item.createdAt)}</Text>
                   </View>
                   {!!body && (
-                    <Text style={[styles.body, { color: c.subtext }]} numberOfLines={3}>
-                      {body}
-                    </Text>
+                    <>
+                      <Text
+                        style={[styles.body, { color: c.subtext }]}
+                        numberOfLines={isExpanded ? undefined : 3}
+                      >
+                        {body}
+                      </Text>
+                      {isBodyTruncated(body) && (
+                        <View style={styles.readMoreRow}>
+                          <Text style={[styles.readMoreText, { color: c.accent }]}>
+                            {isExpanded ? 'Show less' : 'Read more'}
+                          </Text>
+                          <Ionicons
+                            name={isExpanded ? 'chevron-up' : 'chevron-down'}
+                            size={13}
+                            color={c.accent}
+                          />
+                        </View>
+                      )}
+                    </>
                   )}
                   {!!item.link && (
-                    <View style={styles.linkRow}>
-                      <Ionicons name="link" size={13} color={c.accent} />
-                      <Text style={[styles.linkText, { color: c.accent }]}>{linkLabel(item)}</Text>
-                    </View>
+                    <TouchableOpacity
+                      style={[styles.ctaButton, { backgroundColor: c.accent }]}
+                      onPress={() => handleOpenLink(item)}
+                      hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                    >
+                      <Text style={styles.ctaText}>{linkLabel(item)}</Text>
+                      <Ionicons name="arrow-forward" size={14} color="#fff" />
+                    </TouchableOpacity>
                   )}
                 </View>
               </TouchableOpacity>
@@ -247,6 +290,18 @@ const styles = StyleSheet.create({
   title: { flex: 1, fontSize: 15, fontWeight: '700', lineHeight: 20 },
   time: { fontSize: 11, marginTop: 2 },
   body: { fontSize: 13, lineHeight: 19, marginTop: 4 },
-  linkRow: { flexDirection: 'row', alignItems: 'center', gap: 5, marginTop: 10 },
-  linkText: { fontSize: 13, fontWeight: '700' },
+  readMoreRow: { flexDirection: 'row', alignItems: 'center', gap: 3, marginTop: 4 },
+  readMoreText: { fontSize: 12, fontWeight: '700' },
+  ctaButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    alignSelf: 'flex-start',
+    gap: 6,
+    marginTop: 12,
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+    borderRadius: 20,
+    elevation: 1,
+  },
+  ctaText: { fontSize: 13, fontWeight: '700', color: '#fff' },
 });

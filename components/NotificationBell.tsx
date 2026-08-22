@@ -5,6 +5,7 @@ import { Text } from './AppText';
 import {
   getCachedNotifications,
   getMemoryCachedNotifications,
+  getMemoryReadIds,
   getUnreadCount,
   NotificationItem,
   subscribeNotifications,
@@ -19,7 +20,7 @@ interface Props {
 
 export default function NotificationBell({ color, onPress, size = 24 }: Props) {
   const [items, setItems] = useState<NotificationItem[]>(() => getMemoryCachedNotifications());
-  const [readIds, setReadIds] = useState<Set<string>>(new Set());
+  const [readIds, setReadIds] = useState<Set<string>>(() => getMemoryReadIds());
   const shakeAnim = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
