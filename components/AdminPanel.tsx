@@ -15,6 +15,7 @@ import AdminDashboard, { AdminModule } from './admin/AdminDashboard';
 import ApiKeysAdmin from './admin/ApiKeysAdmin';
 import AppManagementMenu, { AppManagementModule } from './admin/AppManagementMenu';
 import AppUpdateAdmin from './admin/AppUpdateAdmin';
+import ChurchMembersAdmin from './admin/ChurchMembersAdmin';
 import GeethangalumAdmin from './admin/GeethangalumAdmin';
 import HomeContentAdmin from './admin/HomeContentAdmin';
 import LivePlaylistsAdmin from './admin/LivePlaylistsAdmin';
@@ -51,6 +52,7 @@ type ViewKey =
   | 'registrationsManageMenu'
   | 'registrationsManageYouth'
   | 'registrationsManageAcademy'
+  | 'churchMembers'
   | 'appUpdate';
 
 interface ViewMeta {
@@ -78,6 +80,7 @@ const VIEW_META: Record<ViewKey, ViewMeta> = {
   registrationsManageMenu: { title: '⚙️ Manage Registrations', subtitle: 'Choose a registration type to manage' },
   registrationsManageYouth: { title: '🔥 Manage Youth Program', subtitle: 'Status, closed message & visibility' },
   registrationsManageAcademy: { title: '🎓 Manage TGH Academy', subtitle: 'Status, closed message & visibility' },
+  churchMembers: { title: '👥 Church Members', subtitle: 'Manage church members and families across all branches' },
   appUpdate: { title: '⬆️ App Update Settings', subtitle: 'Manage force/optional update rollout' },
 };
 
@@ -131,6 +134,7 @@ export default function AdminPanel({ visible, onClose, onEventsUpdated }: Props)
     else if (module === 'songsMenu') pushView('songsMenu');
     else if (module === 'homeContent') pushView('homeContent');
     else if (module === 'registrations') pushView('registrationsTopMenu');
+    else if (module === 'churchMembers') pushView('churchMembers');
     else if (module === 'appManagement') pushView('appManagementMenu');
   };
 
@@ -266,6 +270,10 @@ export default function AdminPanel({ visible, onClose, onEventsUpdated }: Props)
 
             {currentView === 'registrationsManageAcademy' && (
               <RegistrationManagementAdmin ref={activeScreenRef} programId="academy" />
+            )}
+
+            {currentView === 'churchMembers' && (
+              <ChurchMembersAdmin ref={activeScreenRef} />
             )}
 
             {currentView === 'appUpdate' && (

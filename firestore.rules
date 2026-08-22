@@ -1,0 +1,191 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function isAdmin() {
+      return request.auth != null
+        && request.auth.token.firebase.sign_in_provider == 'password';
+    }
+
+    match /events/{document=**} {
+      allow read: if true;
+      allow write: if request.auth != null
+                   && request.auth.token.firebase.sign_in_provider == 'password';
+    }
+
+    match /pushTokens/{document=**} {
+      allow create, update: if request.resource.data.token is string
+        && request.resource.data.token.matches('ExponentPushToken\\[.*\\]');
+      allow read, delete: if request.auth != null
+        && request.auth.token.firebase.sign_in_provider == 'password';
+    }
+
+    match /tokenErrors/{document=**} {
+      allow write: if true;
+      allow read: if request.auth != null
+        && request.auth.token.firebase.sign_in_provider == 'password';
+      allow delete: if request.auth != null
+        && request.auth.token.firebase.sign_in_provider == 'password';
+    }
+
+    match /notificationLogs/{document=**} {
+      allow read, write: if request.auth != null
+        && request.auth.token.firebase.sign_in_provider == 'password';
+    }
+
+    match /GeethangalumKeerthanaigal/{document=**} {
+      allow read: if true;
+      allow write: if request.auth != null
+                   && request.auth.token.firebase.sign_in_provider == 'password';
+    }
+
+    match /OtherSongs/{document=**} {
+      allow read: if true;
+      allow write: if request.auth != null
+                   && request.auth.token.firebase.sign_in_provider == 'password';
+    }
+
+    match /LivePlaylists/{document=**} {
+      allow read: if true;
+      allow write: if request.auth != null
+                   && request.auth.token.firebase.sign_in_provider == 'password';
+    }
+
+    match /HomeContent/{document=**} {
+      allow read: if true;
+      allow write: if request.auth != null
+                   && request.auth.token.firebase.sign_in_provider == 'password';
+    }
+
+    match /YoutubeApiKeys/{document=**} {
+  		allow read: if true;
+  		allow write: if request.auth != null
+               && request.auth.token.firebase.sign_in_provider == 'password';
+		}
+
+    match /youthProgramRegistrations/{document} {
+      allow read: if request.auth != null
+                  && request.auth.token.firebase.sign_in_provider == 'password';
+      allow create: if request.resource.data.status == 'registered'
+                    && request.resource.data.isDeleted == false
+                    && request.resource.data.name is string && request.resource.data.name.size() > 0
+                    && request.resource.data.phone is string && request.resource.data.phone.size() > 0;
+      allow update, delete: if request.auth != null
+                            && request.auth.token.firebase.sign_in_provider == 'password';
+    }
+
+    match /academyRegistrations/{document} {
+      allow read: if request.auth != null
+                  && request.auth.token.firebase.sign_in_provider == 'password';
+      allow create: if request.resource.data.status == 'registered'
+                    && request.resource.data.isDeleted == false
+                    && request.resource.data.name is string && request.resource.data.name.size() > 0
+                    && request.resource.data.phone is string && request.resource.data.phone.size() > 0;
+      allow update, delete: if request.auth != null
+                            && request.auth.token.firebase.sign_in_provider == 'password';
+    }
+
+    match /appConfig/{document} {
+      allow read: if true;
+      allow write: if request.auth != null
+                   && request.auth.token.firebase.sign_in_provider == 'password';
+    }
+
+    match /registrationManagement/{document} {
+      allow read: if true;
+      allow write: if request.auth != null
+                   && request.auth.token.firebase.sign_in_provider == 'password';
+    }
+
+    match /siteMaintenance/{document} {
+      allow read: if true;
+      allow write: if request.auth != null
+                   && request.auth.token.firebase.sign_in_provider == 'password';
+    }
+
+    match /notifications/{document=**} {
+      allow read: if true;
+      allow write: if request.auth != null
+                   && request.auth.token.firebase.sign_in_provider == 'password';
+    }
+
+    // NOTIFICATION_TEST_MODE is true in utils/testMode.ts)
+    match /test_notifications/{document=**} {
+      allow read: if true;
+      allow write: if request.auth != null
+                   && request.auth.token.firebase.sign_in_provider == 'password';
+    }
+
+    match /test_pushTokens/{document=**} {
+      allow create, update: if request.resource.data.token is string
+        && request.resource.data.token.matches('ExponentPushToken\\[.*\\]');
+      allow read, delete: if request.auth != null
+        && request.auth.token.firebase.sign_in_provider == 'password';
+    }
+
+    match /test_notificationLogs/{document=**} {
+      allow read, write: if request.auth != null
+        && request.auth.token.firebase.sign_in_provider == 'password';
+    }
+
+    match /test_events/{document=**} {
+      allow read: if true;
+      allow write: if request.auth != null
+                   && request.auth.token.firebase.sign_in_provider == 'password';
+    }
+
+    // ─────────────────────────────────────────────────────────────────
+    // Church Members Management — admin-only, matching the same
+    // email/password sign-in check used by every other admin-write
+    // collection above. Nothing here is readable or writable by
+    // unauthenticated app users.
+    // ─────────────────────────────────────────────────────────────────
+
+    function hasRequiredMemberFields(data) {
+      return data.keys().hasAll(['name', 'gender', 'branchId', 'membershipType', 'membershipStatus'])
+        && data.name is string && data.name.size() > 0
+        && data.gender in ['MALE', 'FEMALE']
+        && data.branchId is string && data.branchId.size() > 0
+        && data.membershipType in ['FAMILY', 'SINGLE']
+        && data.membershipStatus in ['ACTIVE', 'INACTIVE', 'TRANSFERRED'];
+    }
+
+    function hasRequiredFamilyFields(data) {
+      return data.keys().hasAll(['familyName', 'branchId', 'status'])
+        && data.familyName is string && data.familyName.size() > 0
+        && data.branchId is string && data.branchId.size() > 0
+        && data.status in ['ACTIVE', 'INACTIVE'];
+    }
+
+    // Fixed reference data (Tirupur, Coimbatore, Udumalaipettai, Kanyakumari),
+    // seeded by the app on first load of the Church Members admin screen.
+    match /branches/{branchId} {
+      allow read: if isAdmin();
+      allow create, update: if isAdmin();
+      allow delete: if false; // branches are never deleted, only deactivated
+    }
+
+    match /families/{familyId} {
+      allow read: if isAdmin();
+      allow create: if isAdmin() && hasRequiredFamilyFields(request.resource.data);
+      allow update: if isAdmin() && hasRequiredFamilyFields(request.resource.data);
+      allow delete: if false; // families are deactivated (status = INACTIVE), never deleted
+    }
+
+    match /members/{memberId} {
+      allow read: if isAdmin();
+      allow create: if isAdmin() && hasRequiredMemberFields(request.resource.data);
+      allow update: if isAdmin() && hasRequiredMemberFields(request.resource.data);
+      allow delete: if false; // members are deactivated (membershipStatus = INACTIVE), never deleted
+    }
+
+    // Append-only audit trail: admins can add and read entries, but
+    // existing entries can never be edited or removed.
+    match /adminAuditLogs/{logId} {
+      allow read: if isAdmin();
+      allow create: if isAdmin();
+      allow update, delete: if false;
+    }
+
+  }
+}
