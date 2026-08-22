@@ -5,6 +5,12 @@ All notable changes to the Theos Gospel Hall app are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [1.5.1] - 2026-08-22
+
+### Changed
+- **Notification Center**: a long notification body now shows a "Read more"/"Show less" toggle instead of silently clipping at three lines — tapping the row expands or collapses it. Notification links (e.g. "Update Now", "Join Meeting") now render as a filled CTA button instead of a plain icon-and-text row.
+- **Notification Center read tracking**: unread dots and the bell's unread count now stay visible for as long as the panel is open, and clear together only once the user leaves the screen — no need to tap each notification individually.
+
 ## [1.5.0] - 2026-08-22
 
 ### Added
