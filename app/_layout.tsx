@@ -18,6 +18,7 @@ import { getCachedHomeContent } from '@/utils/homeContentSync';
 import {
   configureNotificationHandler,
   getLastNotificationResponse,
+  isDuplicateNotificationResponse,
   registerForPushNotifications,
   setupNotificationListeners,
   setupTokenRefreshListener,
@@ -36,7 +37,20 @@ SplashScreen.preventAutoHideAsync().catch(() => {});
 // of just foregrounding the app, so the user lands straight on the update.
 // Every other notification (admin broadcast, special meeting) opens the
 // in-app Notification Center instead.
-function handleNotificationResponse(response: any) {
+//
+// Both callers below (the cold-start getLastNotificationResponse() check and
+// the live addNotificationResponseReceivedListener) route through here.
+async function handleNotificationResponse(response: any) {
+  // On Android, resuming a killed app's Task from Recents can hand back a
+  // response object that LOOKS like a notification tap but isn't one — every
+  // field (identifier, title, date) comes back null/empty/0, confirmed via
+  // on-device debug logging. A genuine tap always carries a real identifier
+  // and a real delivery timestamp; reject anything missing either before
+  // acting on it, rather than trying to dedupe something with no ID to key on.
+  const id = response?.notification?.request?.identifier;
+  const notifDate = response?.notification?.date;
+  if (!id || !notifDate) return;
+  if (await isDuplicateNotificationResponse(response)) return;
   const data = response?.notification?.request?.content?.data;
   if (data?.type === 'app_update' && typeof data.url === 'string' && data.url) {
     Linking.openURL(data.url).catch(() => {});

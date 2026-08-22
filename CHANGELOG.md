@@ -5,6 +5,11 @@ All notable changes to the Theos Gospel Hall app are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [1.5.2] - 2026-08-22
+
+### Fixed
+- **Cold-start routing bug**: opening the app fresh (or reopening it after fully closing it) could land on the Notification Center instead of Home. On Android, resuming a killed app's Task from Recents could hand back an empty, non-genuine "notification response" object with no real identifier or delivery timestamp, which was mistaken for an actual notification tap. Responses missing either field are now rejected outright before any navigation happens, and a genuinely handled notification's ID is also persisted (surviving process restarts) so it's never acted on twice.
+
 ## [1.5.1] - 2026-08-22
 
 ### Changed

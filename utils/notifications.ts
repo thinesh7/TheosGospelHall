@@ -14,6 +14,7 @@ const TOKEN_MAX_AGE_MS = 30 * 24 * 60 * 60 * 1000;
 const CHANNEL_ID = 'tgh-default';
 
 const DEVICE_UUID_KEY = 'tgh_device_uuid';
+const LAST_HANDLED_RESPONSE_KEY = 'tgh_last_handled_notification_id';
 
 async function getStableDeviceId(): Promise<{ id: string; isGuaranteedUnique: boolean }> {
   const androidId = Platform.OS === 'android'
@@ -291,6 +292,29 @@ export async function getLastNotificationResponse(): Promise<any | null> {
     return response;
   } catch {
     return null;
+  }
+}
+
+// On Android, if the process is killed for memory but the app's Task stays
+// in Recents, reopening the app can resume that Task from its ORIGINAL
+// launch Intent — the one from whenever a notification was last tapped —
+// so the same response can resurface via getLastNotificationResponseAsync()
+// (above) AND/OR the live addNotificationResponseReceivedListener on every
+// subsequent "fresh" launch, regardless of clearing expo-notifications' own
+// cache. This is the single guard both call sites route through: it tracks
+// the last identifier actually acted on in AsyncStorage (durable across
+// process death, unlike an in-memory flag) and reports back whether this
+// exact response has already been handled, so it's only acted on once.
+export async function isDuplicateNotificationResponse(response: any): Promise<boolean> {
+  const id = response?.notification?.request?.identifier;
+  if (!id) return false;
+  try {
+    const lastHandledId = await AsyncStorage.getItem(LAST_HANDLED_RESPONSE_KEY);
+    if (lastHandledId === id) return true;
+    await AsyncStorage.setItem(LAST_HANDLED_RESPONSE_KEY, id);
+    return false;
+  } catch {
+    return false;
   }
 }
 
