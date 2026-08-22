@@ -1,3 +1,4 @@
+import { Ionicons } from '@expo/vector-icons';
 import { useState } from 'react';
 import { Alert, ScrollView, StyleSheet, TouchableOpacity, View } from 'react-native';
 import { Text } from '../../AppText';
@@ -9,7 +10,7 @@ import {
   MemberFormInput,
 } from '../../../utils/churchMembers';
 import MemberFormFields from './MemberFormFields';
-import { DropdownField } from './shared';
+import { DropdownField, styles as shared } from './shared';
 
 interface Props {
   branches: Branch[];
@@ -41,16 +42,28 @@ export default function AddSingleMemberScreen({ branches, defaultBranchId, onCan
         <TouchableOpacity onPress={onCancel}>
           <Text style={localStyles.backText}>← Back</Text>
         </TouchableOpacity>
-        <Text style={localStyles.title}>Add Single Member</Text>
+        <Text style={localStyles.title}>Add Individual Member</Text>
       </View>
       <ScrollView contentContainerStyle={{ padding: 16 }} keyboardShouldPersistTaps="handled">
-        <DropdownField
-          label="Branch *"
-          placeholder="Select branch"
-          value={branchId}
-          onChange={setBranchId}
-          options={branches.map(b => ({ value: b.id, label: b.name }))}
-        />
+        {defaultBranchId ? (
+          <View style={shared.formField}>
+            <Text style={shared.formLabel}>Branch *</Text>
+            <View style={localStyles.lockedField}>
+              <Text style={localStyles.lockedFieldText}>
+                {branches.find(b => b.id === defaultBranchId)?.name ?? defaultBranchId}
+              </Text>
+              <Ionicons name="lock-closed" size={15} color="#999" />
+            </View>
+          </View>
+        ) : (
+          <DropdownField
+            label="Branch *"
+            placeholder="Select branch"
+            value={branchId}
+            onChange={setBranchId}
+            options={branches.map(b => ({ value: b.id, label: b.name }))}
+          />
+        )}
 
         <MemberFormFields value={form} onChange={u => setForm(prev => ({ ...prev, ...u }))} showAddress />
 
@@ -68,4 +81,16 @@ const localStyles = StyleSheet.create({
   title: { fontSize: 15, fontWeight: 'bold', color: '#1a1a2e' },
   saveBtn: { backgroundColor: '#0f3460', borderRadius: 14, padding: 16, alignItems: 'center', marginBottom: 24, elevation: 3 },
   saveBtnText: { color: '#fff', fontWeight: 'bold', fontSize: 15 },
+  lockedField: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: '#f2f2f2',
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 12,
+    borderWidth: 1,
+    borderColor: '#e5e5e5',
+  },
+  lockedFieldText: { fontSize: 15, color: '#555', fontWeight: '600' },
 });

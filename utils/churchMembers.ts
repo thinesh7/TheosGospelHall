@@ -2,6 +2,7 @@ import { getAuth } from 'firebase/auth';
 import {
   addDoc,
   collection,
+  deleteDoc,
   doc,
   getDoc,
   onSnapshot,
@@ -19,7 +20,7 @@ import { db } from '../firebaseConfig';
 
 export type Gender = 'MALE' | 'FEMALE';
 export type MembershipType = 'FAMILY' | 'SINGLE';
-export type MembershipStatus = 'ACTIVE' | 'INACTIVE' | 'TRANSFERRED';
+export type MembershipStatus = 'ACTIVE' | 'INACTIVE';
 export type MaritalStatus = 'SINGLE' | 'MARRIED' | 'WIDOWED' | 'DIVORCED';
 export type Relationship =
   | 'FAMILY_HEAD'
@@ -27,6 +28,7 @@ export type Relationship =
   | 'WIFE'
   | 'SON'
   | 'DAUGHTER'
+  | 'MOTHER'
   | 'BROTHER'
   | 'SISTER'
   | 'GRANDFATHER'
@@ -41,9 +43,10 @@ export interface Address {
   city: string;
   state: string;
   pincode: string;
+  mapLink: string;
 }
 
-export const EMPTY_ADDRESS: Address = { addressLine1: '', addressLine2: '', city: '', state: '', pincode: '' };
+export const EMPTY_ADDRESS: Address = { addressLine1: '', addressLine2: '', city: '', state: '', pincode: '', mapLink: '' };
 
 export interface Branch {
   id: string;
@@ -106,7 +109,9 @@ export type AuditAction =
   | 'DEACTIVATE_FAMILY'
   | 'REACTIVATE_FAMILY'
   | 'ADD_FAMILY_MEMBER'
-  | 'REMOVE_FAMILY_MEMBER';
+  | 'REMOVE_FAMILY_MEMBER'
+  | 'PERMANENT_DELETE_MEMBER'
+  | 'PERMANENT_DELETE_FAMILY';
 export type AuditEntityType = 'MEMBER' | 'FAMILY';
 
 // Form-facing shape: dates as JS Date (converted to Timestamp on write),
@@ -178,25 +183,21 @@ export const SEED_BRANCHES: { id: string; name: string; code: string }[] = [
 export const MEMBERSHIP_STATUS_LABELS: Record<MembershipStatus, string> = {
   ACTIVE: 'Active',
   INACTIVE: 'Inactive',
-  TRANSFERRED: 'Transferred',
 };
 
 export const MEMBERSHIP_STATUS_COLORS: Record<MembershipStatus, string> = {
   ACTIVE: '#1e9e50',
   INACTIVE: '#e65100',
-  TRANSFERRED: '#1565c0',
 };
 
 export const MEMBERSHIP_STATUS_BG: Record<MembershipStatus, string> = {
   ACTIVE: '#e6f7ec',
   INACTIVE: '#fff3e0',
-  TRANSFERRED: '#e3f0fd',
 };
 
 export const MEMBERSHIP_STATUS_DOT: Record<MembershipStatus, string> = {
   ACTIVE: '🟢',
   INACTIVE: '🟠',
-  TRANSFERRED: '🔵',
 };
 
 export const GENDER_LABELS: Record<Gender, string> = { MALE: 'Male', FEMALE: 'Female' };
@@ -210,6 +211,14 @@ export function nameWithHonorific(name: string, gender: Gender): string {
   return `${GENDER_HONORIFIC[gender]} ${name}`;
 }
 
+// Display title for a family card/list, e.g. "Bro. Kumar Family" — built
+// from the family head's honorific + name, not the raw stored familyName.
+// Falls back to the stored familyName if the family has no head yet.
+export function familyDisplayName(family: Family, head: Member | undefined): string {
+  if (!head) return family.familyName;
+  return `${nameWithHonorific(head.name, head.gender)} Family`;
+}
+
 export const MARITAL_STATUS_LABELS: Record<MaritalStatus, string> = {
   SINGLE: 'Single',
   MARRIED: 'Married',
@@ -218,11 +227,12 @@ export const MARITAL_STATUS_LABELS: Record<MaritalStatus, string> = {
 };
 
 export const RELATIONSHIP_LABELS: Record<Relationship, string> = {
-  FAMILY_HEAD: 'Family Head',
+  FAMILY_HEAD: 'Head',
   HUSBAND: 'Husband',
   WIFE: 'Wife',
   SON: 'Son',
   DAUGHTER: 'Daughter',
+  MOTHER: 'Mother',
   BROTHER: 'Brother',
   SISTER: 'Sister',
   GRANDFATHER: 'Grandfather',
@@ -233,7 +243,7 @@ export const RELATIONSHIP_LABELS: Record<Relationship, string> = {
 // Relationship options offered when adding/editing a non-head family member
 // (Family Head itself is assigned automatically, never picked manually).
 export const FAMILY_MEMBER_RELATIONSHIPS: Relationship[] = [
-  'HUSBAND', 'WIFE', 'SON', 'DAUGHTER', 'BROTHER', 'SISTER', 'GRANDFATHER', 'GRANDMOTHER', 'OTHER',
+  'HUSBAND', 'WIFE', 'SON', 'DAUGHTER', 'MOTHER', 'BROTHER', 'SISTER', 'GRANDFATHER', 'GRANDMOTHER', 'OTHER',
 ];
 
 // ─────────────────────────────────────────────────────────────────────────
@@ -309,7 +319,7 @@ export function toWhatsAppNumber(phone: string): string {
 
 export function hasAddress(addr?: Partial<Address> | null): addr is Address {
   if (!addr) return false;
-  return !!(addr.addressLine1?.trim() || addr.addressLine2?.trim() || addr.city?.trim() || addr.state?.trim() || addr.pincode?.trim());
+  return !!(addr.addressLine1?.trim() || addr.addressLine2?.trim() || addr.city?.trim() || addr.state?.trim() || addr.pincode?.trim() || addr.mapLink?.trim());
 }
 
 export function formatAddressOneLine(addr: Address | null | undefined): string {
@@ -476,19 +486,21 @@ export function membersOfFamily(familyId: string, members: Member[]): Member[] {
 }
 
 // A family's overall status for badge/filter purposes: ACTIVE if any member
-// is active, else TRANSFERRED if any member transferred, else INACTIVE.
+// is active, else INACTIVE.
 export function familyDisplayStatus(familyId: string, members: Member[]): MembershipStatus {
   const list = members.filter(m => m.familyId === familyId);
   if (list.some(m => m.membershipStatus === 'ACTIVE')) return 'ACTIVE';
-  if (list.some(m => m.membershipStatus === 'TRANSFERRED')) return 'TRANSFERRED';
   return 'INACTIVE';
 }
 
-export type ListFilter = 'all' | 'families' | 'singles' | 'active' | 'inactive' | 'transferred';
+export type TypeFilter = 'families' | 'singles';
 
 export interface ListFilterParams {
   branchScope?: string;
-  filter: ListFilter;
+  // undefined = both families and singles included ("All").
+  typeFilter?: TypeFilter;
+  // undefined = every status included ("All").
+  statusFilter?: MembershipStatus;
   search: string;
 }
 
@@ -498,20 +510,18 @@ export interface FilteredResult {
 }
 
 // Single source of truth for "which families/singles match the current
-// branch + type/status filter + search" — shared by the on-screen card list
-// and the export flow so what's exported always matches what's displayed.
+// branch + type filter + status filter + search" — shared by the on-screen
+// card list and the export flow so what's exported always matches what's
+// displayed. Type and status are independent axes (e.g. "Inactive Families"
+// is a valid combination).
 export function filterFamiliesAndMembers(families: Family[], members: Member[], params: ListFilterParams): FilteredResult {
   const q = params.search.trim().toLowerCase();
   const scopedFamilies = params.branchScope ? families.filter(f => f.branchId === params.branchScope) : families;
   const scopedMembers = params.branchScope ? members.filter(m => m.branchId === params.branchScope) : members;
   const scopedSingles = scopedMembers.filter(m => m.membershipType === 'SINGLE');
 
-  const includeFamilies = params.filter !== 'singles';
-  const includeSingles = params.filter !== 'families';
-  const statusFilter: MembershipStatus | null =
-    params.filter === 'active' || params.filter === 'inactive' || params.filter === 'transferred'
-      ? (params.filter.toUpperCase() as MembershipStatus)
-      : null;
+  const includeFamilies = params.typeFilter !== 'singles';
+  const includeSingles = params.typeFilter !== 'families';
 
   const filteredFamilies = includeFamilies
     ? scopedFamilies.filter(f => {
@@ -520,7 +530,7 @@ export function filterFamiliesAndMembers(families: Family[], members: Member[], 
         // status — not just the family's aggregate display status (which
         // always prefers ACTIVE). Otherwise a family with one Active and one
         // Inactive member could never be found under the Inactive filter.
-        if (statusFilter) return members.some(m => m.familyId === f.id && m.membershipStatus === statusFilter);
+        if (params.statusFilter) return members.some(m => m.familyId === f.id && m.membershipStatus === params.statusFilter);
         return true;
       })
     : [];
@@ -528,7 +538,7 @@ export function filterFamiliesAndMembers(families: Family[], members: Member[], 
   const filteredSingles = includeSingles
     ? scopedSingles.filter(m => {
         if (!memberMatchesSearch(m, q)) return false;
-        if (statusFilter) return m.membershipStatus === statusFilter;
+        if (params.statusFilter) return m.membershipStatus === params.statusFilter;
         return true;
       })
     : [];
@@ -539,10 +549,21 @@ export function filterFamiliesAndMembers(families: Family[], members: Member[], 
 // Expands a filtered families+singles result into the full flat list of
 // individual Member records (every member of each matched family, plus the
 // matched singles) — used for CSV/Excel/PDF export rows.
-export function expandFilteredToMembers(result: FilteredResult, allMembers: Member[]): Member[] {
-  const familyIds = new Set(result.families.map(f => f.id));
-  const fromFamilies = allMembers.filter(m => m.familyId && familyIds.has(m.familyId));
-  return [...fromFamilies, ...result.singleMembers];
+// Groups each matched family's members together (head first), since exports
+// must always keep a family together rather than scattering its members in
+// whatever order they happen to sit in the source array.
+export function expandFamilyMembersGrouped(result: FilteredResult, allMembers: Member[]): Member[] {
+  const membersByFamily = new Map<string, Member[]>();
+  for (const m of allMembers) {
+    if (!m.familyId) continue;
+    const list = membersByFamily.get(m.familyId);
+    if (list) list.push(m);
+    else membersByFamily.set(m.familyId, [m]);
+  }
+  return result.families.flatMap(f => {
+    const famMembers = membersByFamily.get(f.id) ?? [];
+    return [...famMembers].sort((a, b) => (b.isFamilyHead ? 1 : 0) - (a.isFamilyHead ? 1 : 0));
+  });
 }
 
 // ─────────────────────────────────────────────────────────────────────────
@@ -589,7 +610,6 @@ function buildMemberDoc(input: BuildMemberDocParams, actorEmail: string) {
 
 export interface CreateFamilyParams {
   branchId: string;
-  familyName: string;
   familyPhone: string;
   address: Address;
   headInput: MemberFormInput;
@@ -598,8 +618,6 @@ export interface CreateFamilyParams {
 
 export async function createFamilyWithMembers(params: CreateFamilyParams, actorEmail: string): Promise<string> {
   if (!params.branchId) throw new Error('Please select a branch.');
-  const nameErr = validateFamilyName(params.familyName);
-  if (nameErr) throw new Error(nameErr);
   const phoneErr = validatePhoneOptional(params.familyPhone);
   if (phoneErr) throw new Error(phoneErr);
 
@@ -612,12 +630,16 @@ export async function createFamilyWithMembers(params: CreateFamilyParams, actorE
     if (!m.relationship) throw new Error(`${m.name}: Please select a relationship.`);
   }
 
+  // Family name is derived from the head — e.g. "Bro. Kumar Family" — not
+  // typed separately. validateMemberForm above already guarantees name/gender.
+  const familyName = `${nameWithHonorific(params.headInput.name.trim(), params.headInput.gender as Gender)} Family`;
+
   const familyRef = doc(collection(db, 'families'));
   const batch = writeBatch(db);
 
   batch.set(familyRef, {
     branchId: params.branchId,
-    familyName: params.familyName.trim(),
+    familyName,
     familyPhone: params.familyPhone.trim() || null,
     address: hasAddress(params.address) ? params.address : null,
     status: 'ACTIVE',
@@ -650,7 +672,7 @@ export async function createFamilyWithMembers(params: CreateFamilyParams, actorE
   await batch.commit();
 
   await logAudit('CREATE_FAMILY', 'FAMILY', familyRef.id, params.branchId, actorEmail, {
-    familyName: params.familyName.trim(),
+    familyName,
     memberCount: 1 + params.otherMembers.length,
   });
   await logAudit('CREATE_MEMBER', 'MEMBER', headRef.id, params.branchId, actorEmail, {
@@ -848,11 +870,64 @@ export async function deactivateFamily(family: Family, members: Member[], actorE
   return affected.length;
 }
 
-export async function reactivateFamily(family: Family, actorEmail: string): Promise<void> {
-  await updateDoc(doc(db, 'families', family.id), {
+// Reactivates the family and every currently-inactive member in it, mirroring
+// deactivateFamily's cascade so the family's members stay in sync with it.
+export async function reactivateFamily(family: Family, members: Member[], actorEmail: string): Promise<number> {
+  const affected = members.filter(m => m.familyId === family.id && m.membershipStatus === 'INACTIVE');
+  const batch = writeBatch(db);
+  batch.update(doc(db, 'families', family.id), {
     status: 'ACTIVE',
     updatedAt: serverTimestamp(),
     updatedBy: actorEmail,
   });
-  await logAudit('REACTIVATE_FAMILY', 'FAMILY', family.id, family.branchId, actorEmail, { familyName: family.familyName });
+  for (const m of affected) {
+    batch.update(doc(db, 'members', m.id), {
+      membershipStatus: 'ACTIVE',
+      updatedAt: serverTimestamp(),
+      updatedBy: actorEmail,
+    });
+  }
+  await batch.commit();
+
+  await logAudit('REACTIVATE_FAMILY', 'FAMILY', family.id, family.branchId, actorEmail, {
+    familyName: family.familyName,
+    membersReactivated: affected.length,
+  });
+  return affected.length;
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// Permanent delete — irreversible, hard-removes the Firestore document(s).
+// This bypasses the "preserve for historical purposes" rule the rest of
+// this module follows; callers must confirm with the admin before invoking.
+// ─────────────────────────────────────────────────────────────────────────
+
+export async function permanentlyDeleteMember(member: Member, actorEmail: string): Promise<void> {
+  await deleteDoc(doc(db, 'members', member.id));
+  await logAudit('PERMANENT_DELETE_MEMBER', 'MEMBER', member.id, member.branchId, actorEmail, {
+    name: member.name,
+    membershipType: member.membershipType,
+    familyId: member.familyId,
+    isFamilyHead: member.isFamilyHead,
+    previousStatus: member.membershipStatus,
+  });
+}
+
+// Cascades: permanently deletes the family document and every member that
+// belongs to it (family head and other members alike) in one atomic batch.
+export async function permanentlyDeleteFamily(family: Family, members: Member[], actorEmail: string): Promise<number> {
+  const familyMembers = members.filter(m => m.familyId === family.id);
+  const batch = writeBatch(db);
+  batch.delete(doc(db, 'families', family.id));
+  for (const m of familyMembers) {
+    batch.delete(doc(db, 'members', m.id));
+  }
+  await batch.commit();
+
+  await logAudit('PERMANENT_DELETE_FAMILY', 'FAMILY', family.id, family.branchId, actorEmail, {
+    familyName: family.familyName,
+    memberCount: familyMembers.length,
+    memberNames: familyMembers.map(m => m.name),
+  });
+  return familyMembers.length;
 }

@@ -21,7 +21,6 @@ interface Props {
   onChange: (updates: Partial<MemberFormInput>) => void;
   showRelationship?: boolean;
   showAddress?: boolean;
-  showMaritalStatus?: boolean;
   nameLabel?: string;
 }
 
@@ -30,7 +29,6 @@ export default function MemberFormFields({
   onChange,
   showRelationship = false,
   showAddress = false,
-  showMaritalStatus = true,
   nameLabel = 'Full Name',
 }: Props) {
   return (
@@ -59,7 +57,13 @@ export default function MemberFormFields({
           label="Relationship *"
           placeholder="Select relationship"
           value={value.relationship}
-          onChange={v => onChange({ relationship: v })}
+          onChange={v =>
+            onChange({
+              relationship: v,
+              // Husband/Wife default to Married but the admin can still change it.
+              maritalStatus: v === 'HUSBAND' || v === 'WIFE' ? 'MARRIED' : value.maritalStatus,
+            })
+          }
           options={FAMILY_MEMBER_RELATIONSHIPS.map(r => ({ value: r, label: RELATIONSHIP_LABELS[r] }))}
         />
       )}
@@ -98,17 +102,15 @@ export default function MemberFormFields({
         maximumDate={TODAY}
       />
 
-      {showMaritalStatus && (
-        <DropdownField<MaritalStatus>
-          label="Marital Status (Optional)"
-          placeholder="Select marital status"
-          value={value.maritalStatus}
-          onChange={v => onChange({ maritalStatus: v, marriageDate: v === 'SINGLE' ? null : value.marriageDate })}
-          options={(Object.keys(MARITAL_STATUS_LABELS) as MaritalStatus[]).map(s => ({ value: s, label: MARITAL_STATUS_LABELS[s] }))}
-        />
-      )}
+      <DropdownField<MaritalStatus>
+        label="Marital Status (Optional)"
+        placeholder="Select marital status"
+        value={value.maritalStatus}
+        onChange={v => onChange({ maritalStatus: v, marriageDate: v === 'SINGLE' ? null : value.marriageDate })}
+        options={(Object.keys(MARITAL_STATUS_LABELS) as MaritalStatus[]).map(s => ({ value: s, label: MARITAL_STATUS_LABELS[s] }))}
+      />
 
-      {(!showMaritalStatus || value.maritalStatus !== 'SINGLE') && (
+      {value.maritalStatus !== 'SINGLE' && (
         <DateField
           label="Marriage Date (Optional)"
           value={value.marriageDate}
@@ -118,17 +120,31 @@ export default function MemberFormFields({
       )}
 
       {showAddress && (
-        <View style={styles.formField}>
-          <Text style={styles.formLabel}>Address (Optional)</Text>
-          <TextInput
-            style={[styles.formInput, styles.formInputMulti]}
-            placeholder="House, street, city, state, pincode"
-            placeholderTextColor="#999"
-            value={value.address.addressLine1}
-            onChangeText={v => onChange({ address: { ...value.address, addressLine1: v } })}
-            multiline
-          />
-        </View>
+        <>
+          <View style={styles.formField}>
+            <Text style={styles.formLabel}>Address (Optional)</Text>
+            <TextInput
+              style={[styles.formInput, styles.formInputMulti]}
+              placeholder="House, street, city, state, pincode"
+              placeholderTextColor="#999"
+              value={value.address.addressLine1}
+              onChangeText={v => onChange({ address: { ...value.address, addressLine1: v } })}
+              multiline
+            />
+          </View>
+          <View style={styles.formField}>
+            <Text style={styles.formLabel}>Google Maps Location Link (Optional)</Text>
+            <TextInput
+              style={styles.formInput}
+              placeholder="https://maps.app.goo.gl/..."
+              placeholderTextColor="#999"
+              value={value.address.mapLink}
+              onChangeText={v => onChange({ address: { ...value.address, mapLink: v } })}
+              autoCapitalize="none"
+              keyboardType="url"
+            />
+          </View>
+        </>
       )}
 
       <DropdownField<MembershipStatus>

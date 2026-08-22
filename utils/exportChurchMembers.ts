@@ -3,6 +3,7 @@ import * as Print from 'expo-print';
 import * as Sharing from 'expo-sharing';
 import JSZip from 'jszip';
 import * as XLSX from 'xlsx-js-style';
+import { pdfLetterheadHtml, getPdfLogoDataUri, PDF_LETTERHEAD_CSS } from './pdfBranding';
 import { formatISTFileTimestamp, formatTimestampIST } from './registrations';
 import {
   Branch,
@@ -182,18 +183,49 @@ function buildStyledWorksheet(headers: string[], columns: { header: string; minW
   return ws;
 }
 
+function listRowsHtml(rows: ListExportRow[]): string {
+  return rows
+    .map((row, idx) => {
+      const values = buildListRowValues(row);
+      return `<tr>${[`${idx + 1}`, ...values.map(v => String(v))].map(v => `<td>${escapeHtml(v)}</td>`).join('')}</tr>`;
+    })
+    .join('');
+}
+
+function listTableHtml(rows: ListExportRow[]): string {
+  return `<table>
+      <thead><tr><th>#</th>${LIST_COLUMNS.map(c => `<th>${escapeHtml(c.header)}</th>`).join('')}</tr></thead>
+      <tbody>${listRowsHtml(rows)}</tbody>
+    </table>`;
+}
+
+// familyRows must already be grouped by family (see expandFamilyMembersGrouped)
+// so a family's members always stay together in the export. When both
+// families and singles are present, each type gets its own Excel sheet /
+// PDF section rather than being interleaved into one table.
 export async function exportMemberList(
   format: ExportFormat,
-  rows: ListExportRow[],
+  familyRows: ListExportRow[],
+  singleRows: ListExportRow[],
   scopeLabel: string
 ): Promise<void> {
-  if (rows.length === 0) throw new Error('No records available to export.');
+  const totalCount = familyRows.length + singleRows.length;
+  if (totalCount === 0) throw new Error('No records available to export.');
+  const splitSections = familyRows.length > 0 && singleRows.length > 0;
 
   if (format === 'excel') {
     const headers = LIST_COLUMNS.map(c => c.header);
-    const ws = buildStyledWorksheet(headers, LIST_COLUMNS, rows.map(buildListRowValues));
     const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, 'Church Members'.slice(0, 31));
+    if (splitSections) {
+      const familyWs = buildStyledWorksheet(headers, LIST_COLUMNS, familyRows.map(buildListRowValues));
+      XLSX.utils.book_append_sheet(wb, familyWs, 'Families');
+      const singleWs = buildStyledWorksheet(headers, LIST_COLUMNS, singleRows.map(buildListRowValues));
+      XLSX.utils.book_append_sheet(wb, singleWs, 'Individuals');
+    } else {
+      const rows = familyRows.length > 0 ? familyRows : singleRows;
+      const ws = buildStyledWorksheet(headers, LIST_COLUMNS, rows.map(buildListRowValues));
+      XLSX.utils.book_append_sheet(wb, ws, 'Church Members'.slice(0, 31));
+    }
     const base64raw = XLSX.write(wb, { type: 'base64', bookType: 'xlsx' }) as string;
     const base64 = await freezeHeaderRow(base64raw);
     const fileNameNoExt = buildFileBaseName(`ChurchMembers_${scopeLabel}`);
@@ -202,12 +234,11 @@ export async function exportMemberList(
   }
 
   const generatedAt = formatTimestampIST(Date.now());
-  const rowsHtml = rows
-    .map((row, idx) => {
-      const values = buildListRowValues(row);
-      return `<tr>${[`${idx + 1}`, ...values.map(v => String(v))].map(v => `<td>${escapeHtml(v)}</td>`).join('')}</tr>`;
-    })
-    .join('');
+  const logoDataUri = await getPdfLogoDataUri();
+  const bodyHtml = splitSections
+    ? `<div class="sectionTitle">Families (${familyRows.length})</div>${listTableHtml(familyRows)}
+       <div class="sectionTitle">Individuals (${singleRows.length})</div>${listTableHtml(singleRows)}`
+    : listTableHtml(familyRows.length > 0 ? familyRows : singleRows);
 
   const html = `<!DOCTYPE html>
 <html>
@@ -220,24 +251,25 @@ export async function exportMemberList(
       .title { font-size: 20px; font-weight: bold; color: #0f3460; margin-bottom: 4px; }
       .meta { font-size: 11px; color: #666; margin-bottom: 2px; }
       .divider { height: 2px; background: #0f3460; margin: 12px 0 16px; }
+      .sectionTitle { font-size: 14px; font-weight: bold; color: #0f3460; margin: 18px 0 8px; }
       table { width: 100%; border-collapse: collapse; }
       thead { display: table-header-group; }
       tr { page-break-inside: avoid; }
       th, td { border: 1px solid #ccc; padding: 5px 6px; font-size: 9px; text-align: left; vertical-align: top; }
       th { background-color: #0f3460; color: #fff; font-weight: bold; }
       tbody tr:nth-child(even) { background-color: #f5f7fa; }
+${PDF_LETTERHEAD_CSS}
     </style>
   </head>
   <body>
+    ${pdfLetterheadHtml(logoDataUri, `
     <div class="title">Theos Gospel Hall — Church Members</div>
     <div class="meta">Scope: ${escapeHtml(scopeLabel)}</div>
     <div class="meta">Generated On: ${generatedAt} (IST)</div>
-    <div class="meta">Total Records: ${rows.length}</div>
+    <div class="meta">Total Records: ${totalCount}</div>
+    `)}
     <div class="divider"></div>
-    <table>
-      <thead><tr><th>#</th>${LIST_COLUMNS.map(c => `<th>${escapeHtml(c.header)}</th>`).join('')}</tr></thead>
-      <tbody>${rowsHtml}</tbody>
-    </table>
+    ${bodyHtml}
   </body>
 </html>`;
 
@@ -256,7 +288,6 @@ export interface ReportBranchRow {
   total: number;
   active: number;
   inactive: number;
-  transferred: number;
   families: number;
   singles: number;
 }
@@ -266,7 +297,6 @@ export interface ReportData {
   total: number;
   active: number;
   inactive: number;
-  transferred: number;
   families: number;
   singles: number;
   male: number;
@@ -284,24 +314,22 @@ const REPORT_BRANCH_COLUMNS = [
   { header: 'Total', minWidth: 8 },
   { header: 'Active', minWidth: 8 },
   { header: 'Inactive', minWidth: 8 },
-  { header: 'Transferred', minWidth: 10 },
   { header: 'Families', minWidth: 8 },
-  { header: 'Singles', minWidth: 8 },
+  { header: 'Individuals', minWidth: 8 },
 ];
 
 export async function exportChurchMembersReport(format: ExportFormat, report: ReportData): Promise<void> {
   const summaryRows: (string | number)[][] = [
     ['Active Members', report.active],
     ['Families', report.families],
-    ['Single Members', report.singles],
-    ['Transferred Members', report.transferred],
+    ['Individual Members', report.singles],
     ['Inactive Members', report.inactive],
     ['Total Members', report.total],
     [GENDER_LABELS.MALE, report.male],
     [GENDER_LABELS.FEMALE, report.female],
   ];
   const branchRows: (string | number)[][] = report.branchRows.map(r => [
-    r.branchName, r.total, r.active, r.inactive, r.transferred, r.families, r.singles,
+    r.branchName, r.total, r.active, r.inactive, r.families, r.singles,
   ]);
 
   if (format === 'excel') {
@@ -318,6 +346,7 @@ export async function exportChurchMembersReport(format: ExportFormat, report: Re
   }
 
   const generatedAt = formatTimestampIST(Date.now());
+  const logoDataUri = await getPdfLogoDataUri();
   const summaryHtml = summaryRows.map(([k, v]) => `<tr><td>${escapeHtml(String(k))}</td><td>${v}</td></tr>`).join('');
   const branchHtml = branchRows
     .map(r => `<tr>${r.map(v => `<td>${escapeHtml(String(v))}</td>`).join('')}</tr>`)
@@ -339,18 +368,21 @@ export async function exportChurchMembersReport(format: ExportFormat, report: Re
       th, td { border: 1px solid #ccc; padding: 6px 8px; font-size: 11px; text-align: left; }
       th { background-color: #0f3460; color: #fff; font-weight: bold; }
       tbody tr:nth-child(even) { background-color: #f5f7fa; }
+${PDF_LETTERHEAD_CSS}
     </style>
   </head>
   <body>
+    ${pdfLetterheadHtml(logoDataUri, `
     <div class="title">Theos Gospel Hall — Church Members Report</div>
     <div class="meta">Scope: ${escapeHtml(report.scopeLabel)}</div>
     <div class="meta">Generated On: ${generatedAt} (IST)</div>
+    `)}
     <div class="divider"></div>
     <div class="sectionTitle">Overall Summary</div>
     <table><thead><tr><th>Metric</th><th>Count</th></tr></thead><tbody>${summaryHtml}</tbody></table>
     <div class="sectionTitle">Branch-wise</div>
     <table>
-      <thead><tr><th>Branch</th><th>Total</th><th>Active</th><th>Inactive</th><th>Transferred</th><th>Families</th><th>Singles</th></tr></thead>
+      <thead><tr><th>Branch</th><th>Total</th><th>Active</th><th>Inactive</th><th>Families</th><th>Individuals</th></tr></thead>
       <tbody>${branchHtml}</tbody>
     </table>
   </body>

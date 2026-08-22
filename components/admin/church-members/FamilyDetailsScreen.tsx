@@ -1,6 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useState } from 'react';
-import { Alert, ScrollView, StyleSheet, TouchableOpacity, View } from 'react-native';
+import { Alert, Linking, ScrollView, StyleSheet, TouchableOpacity, View } from 'react-native';
 import { Text } from '../../AppText';
 import { Toast, useToast } from '../../Toast';
 import {
@@ -12,6 +12,7 @@ import {
   Member,
   membersOfFamily,
   nameWithHonorific,
+  permanentlyDeleteFamily,
   reactivateFamily,
   RELATIONSHIP_LABELS,
 } from '../../../utils/churchMembers';
@@ -35,9 +36,9 @@ export default function FamilyDetailsScreen({ family, branch, members, onBack, o
   const head = familyMembers.find(m => m.isFamilyHead);
   const activeCount = familyMembers.filter(m => m.membershipStatus === 'ACTIVE').length;
 
-  const handleDeleteFamily = () => {
+  const handleDeactivateFamily = () => {
     Alert.alert(
-      'Delete Family?',
+      'Deactivate Family?',
       (activeCount > 0
         ? `This will deactivate "${family.familyName}" and mark its ${activeCount} active member(s) as Inactive. `
         : `This will deactivate "${family.familyName}". `) +
@@ -65,12 +66,36 @@ export default function FamilyDetailsScreen({ family, branch, members, onBack, o
   const handleReactivateFamily = async () => {
     setBusy(true);
     try {
-      await reactivateFamily(family, getCurrentAdminEmail());
-      showToast('✅ Family reactivated');
+      const count = await reactivateFamily(family, members, getCurrentAdminEmail());
+      showToast(count > 0 ? `✅ Family reactivated (${count} member(s) set active)` : '✅ Family reactivated');
     } catch {
       Alert.alert('Error', 'Could not reactivate the family. Check internet.');
     }
     setBusy(false);
+  };
+
+  const handlePermanentDelete = () => {
+    Alert.alert(
+      'Permanently Delete Family',
+      `Permanently delete "${family.familyName}" and all ${familyMembers.length} of its member(s)? This cannot be undone — every record will be removed completely, not just marked Inactive.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete Forever',
+          style: 'destructive',
+          onPress: async () => {
+            setBusy(true);
+            try {
+              await permanentlyDeleteFamily(family, members, getCurrentAdminEmail());
+              onBack();
+            } catch (e: any) {
+              Alert.alert('Error', e?.message ?? 'Could not delete the family. Check internet.');
+              setBusy(false);
+            }
+          },
+        },
+      ]
+    );
   };
 
   return (
@@ -100,6 +125,12 @@ export default function FamilyDetailsScreen({ family, branch, members, onBack, o
             <View style={{ flex: 1 }}>
               <Text style={styles.detailLabel}>Address</Text>
               <Text style={styles.detailValue}>{formatAddressMultiline(family.address) || '—'}</Text>
+              {!!family.address?.mapLink && (
+                <TouchableOpacity onPress={() => Linking.openURL(family.address!.mapLink)} style={styles.mapLinkBtn}>
+                  <Ionicons name="location" size={13} color="#0f3460" />
+                  <Text style={styles.mapLinkText}>View on Map</Text>
+                </TouchableOpacity>
+              )}
             </View>
             <TouchableOpacity onPress={onEditFamily} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
               <Ionicons name="pencil" size={16} color="#0f3460" />
@@ -137,8 +168,8 @@ export default function FamilyDetailsScreen({ family, branch, members, onBack, o
             <Text style={styles.actionBtnText}>✏️ Edit Family</Text>
           </TouchableOpacity>
           {family.status === 'ACTIVE' ? (
-            <TouchableOpacity style={[styles.actionBtnDanger, busy && { opacity: 0.6 }]} disabled={busy} onPress={handleDeleteFamily}>
-              <Text style={styles.actionBtnDangerText}>🗑 Delete Family</Text>
+            <TouchableOpacity style={[styles.actionBtnDanger, busy && { opacity: 0.6 }]} disabled={busy} onPress={handleDeactivateFamily}>
+              <Text style={styles.actionBtnDangerText}>🚫 Deactivate Family</Text>
             </TouchableOpacity>
           ) : (
             <TouchableOpacity style={[styles.actionBtnSuccess, busy && { opacity: 0.6 }]} disabled={busy} onPress={handleReactivateFamily}>
@@ -146,6 +177,10 @@ export default function FamilyDetailsScreen({ family, branch, members, onBack, o
             </TouchableOpacity>
           )}
         </View>
+
+        <TouchableOpacity style={styles.permanentDeleteLink} disabled={busy} onPress={handlePermanentDelete}>
+          <Text style={styles.permanentDeleteLinkText}>Permanently Delete Family</Text>
+        </TouchableOpacity>
       </ScrollView>
       <Toast message={message} opacity={opacity} />
     </View>
@@ -163,6 +198,8 @@ const styles = StyleSheet.create({
   addressRow: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: 10 },
   detailLabel: { fontSize: 11, fontWeight: '600', color: '#888', textTransform: 'uppercase', marginBottom: 3 },
   detailValue: { fontSize: 15, color: '#1a1a2e' },
+  mapLinkBtn: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 6 },
+  mapLinkText: { fontSize: 12, fontWeight: '700', color: '#0f3460' },
   membersHeaderRow: { marginBottom: 10 },
   sectionTitle: { fontSize: 15, fontWeight: 'bold', color: '#1a1a2e' },
   memberRow: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#fff', borderRadius: 12, padding: 14, marginBottom: 10, elevation: 2, gap: 10 },
@@ -177,4 +214,6 @@ const styles = StyleSheet.create({
   actionBtnDangerText: { color: '#c62828', fontWeight: '700', fontSize: 12 },
   actionBtnSuccess: { flex: 1, backgroundColor: '#e6f7ec', borderRadius: 10, paddingVertical: 12, paddingHorizontal: 4, alignItems: 'center' },
   actionBtnSuccessText: { color: '#1e9e50', fontWeight: '700', fontSize: 12 },
+  permanentDeleteLink: { alignItems: 'center', paddingVertical: 8, marginBottom: 24 },
+  permanentDeleteLinkText: { color: '#c62828', fontWeight: '600', fontSize: 12, textDecorationLine: 'underline' },
 });

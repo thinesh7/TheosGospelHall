@@ -10,7 +10,6 @@ import {
   getCurrentAdminEmail,
   MemberFormInput,
   RELATIONSHIP_LABELS,
-  validateFamilyName,
   validateMemberForm,
   validatePhoneOptional,
 } from '../../../utils/churchMembers';
@@ -32,9 +31,9 @@ const AddFamilyWizard = forwardRef<AdminScreenHandle, Props>(({ branches, defaul
   const [saving, setSaving] = useState(false);
 
   const [branchId, setBranchId] = useState(defaultBranchId ?? '');
-  const [familyName, setFamilyName] = useState('');
   const [familyPhone, setFamilyPhone] = useState('');
   const [address, setAddress] = useState('');
+  const [mapLink, setMapLink] = useState('');
 
   const [headInput, setHeadInput] = useState<MemberFormInput>(emptyMemberForm());
   const [otherMembers, setOtherMembers] = useState<MemberFormInput[]>([]);
@@ -58,8 +57,6 @@ const AddFamilyWizard = forwardRef<AdminScreenHandle, Props>(({ branches, defaul
 
   const handleStep1Next = () => {
     if (!branchId) { Alert.alert('Required', 'Please select a branch.'); return; }
-    const nameErr = validateFamilyName(familyName);
-    if (nameErr) { Alert.alert('Required', nameErr); return; }
     const phoneErr = validatePhoneOptional(familyPhone);
     if (phoneErr) { Alert.alert('Invalid Phone', phoneErr); return; }
     setStep(2);
@@ -112,9 +109,8 @@ const AddFamilyWizard = forwardRef<AdminScreenHandle, Props>(({ branches, defaul
       const familyId = await createFamilyWithMembers(
         {
           branchId,
-          familyName,
           familyPhone,
-          address: { addressLine1: address, addressLine2: '', city: '', state: '', pincode: '' },
+          address: { addressLine1: address, addressLine2: '', city: '', state: '', pincode: '', mapLink },
           headInput,
           otherMembers,
         },
@@ -162,18 +158,29 @@ const AddFamilyWizard = forwardRef<AdminScreenHandle, Props>(({ branches, defaul
       <ScrollView contentContainerStyle={{ padding: 16 }} keyboardShouldPersistTaps="handled">
         {step === 1 && (
           <>
-            <DropdownField
-              label="Branch *"
-              placeholder="Select branch"
-              value={branchId}
-              onChange={setBranchId}
-              options={branches.map(b => ({ value: b.id, label: b.name }))}
-            />
+            {defaultBranchId ? (
+              <View style={shared.formField}>
+                <Text style={shared.formLabel}>Branch *</Text>
+                <View style={localStyles.lockedField}>
+                  <Text style={localStyles.lockedFieldText}>
+                    {branches.find(b => b.id === defaultBranchId)?.name ?? defaultBranchId}
+                  </Text>
+                  <Ionicons name="lock-closed" size={15} color="#999" />
+                </View>
+              </View>
+            ) : (
+              <DropdownField
+                label="Branch *"
+                placeholder="Select branch"
+                value={branchId}
+                onChange={setBranchId}
+                options={branches.map(b => ({ value: b.id, label: b.name }))}
+              />
+            )}
 
-            <View style={shared.formField}>
-              <Text style={shared.formLabel}>Family Name *</Text>
-              <TextInput style={shared.formInput} placeholder="e.g. Kumar Family" placeholderTextColor="#999" value={familyName} onChangeText={setFamilyName} />
-            </View>
+            <Text style={localStyles.sectionNote}>
+              The family will be named after the Family Head (Step 2) — e.g. &quot;Bro. Kumar Family&quot;.
+            </Text>
 
             <View style={shared.formField}>
               <Text style={shared.formLabel}>Family Address (Optional)</Text>
@@ -184,6 +191,19 @@ const AddFamilyWizard = forwardRef<AdminScreenHandle, Props>(({ branches, defaul
                 value={address}
                 onChangeText={setAddress}
                 multiline
+              />
+            </View>
+
+            <View style={shared.formField}>
+              <Text style={shared.formLabel}>Google Maps Location Link (Optional)</Text>
+              <TextInput
+                style={shared.formInput}
+                placeholder="https://maps.app.goo.gl/..."
+                placeholderTextColor="#999"
+                value={mapLink}
+                onChangeText={setMapLink}
+                autoCapitalize="none"
+                keyboardType="url"
               />
             </View>
 
@@ -211,7 +231,6 @@ const AddFamilyWizard = forwardRef<AdminScreenHandle, Props>(({ branches, defaul
             <MemberFormFields
               value={headInput}
               onChange={u => setHeadInput(prev => ({ ...prev, ...u }))}
-              showMaritalStatus={false}
             />
 
             <View style={localStyles.navRow}>
@@ -280,7 +299,6 @@ const AddFamilyWizard = forwardRef<AdminScreenHandle, Props>(({ branches, defaul
               value={draftMember}
               onChange={u => setDraftMember(prev => ({ ...prev, ...u }))}
               showRelationship
-              showMaritalStatus={false}
             />
             <TouchableOpacity style={localStyles.primaryBtn} onPress={saveMemberDraft}>
               <Text style={localStyles.primaryBtnText}>Save Member</Text>
@@ -321,6 +339,19 @@ const localStyles = StyleSheet.create({
   stepperLabel: { fontSize: 10, color: '#999', marginTop: 6, fontWeight: '600' },
   stepperLabelActive: { color: '#0f3460' },
   sectionTitle: { fontSize: 15, fontWeight: 'bold', color: '#1a1a2e', marginBottom: 12 },
+  sectionNote: { fontSize: 12, color: '#777', marginBottom: 14, fontStyle: 'italic' },
+  lockedField: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: '#f2f2f2',
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 12,
+    borderWidth: 1,
+    borderColor: '#e5e5e5',
+  },
+  lockedFieldText: { fontSize: 15, color: '#555', fontWeight: '600' },
   emptyText: { fontSize: 13, color: '#999', fontStyle: 'italic', marginBottom: 14, lineHeight: 18 },
   memberCard: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#fff', borderRadius: 12, padding: 14, marginBottom: 10, elevation: 2, gap: 8 },
   memberName: { fontSize: 14, fontWeight: 'bold', color: '#1a1a2e', marginBottom: 3 },

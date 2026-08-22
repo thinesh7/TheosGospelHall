@@ -147,7 +147,7 @@ service cloud.firestore {
         && data.gender in ['MALE', 'FEMALE']
         && data.branchId is string && data.branchId.size() > 0
         && data.membershipType in ['FAMILY', 'SINGLE']
-        && data.membershipStatus in ['ACTIVE', 'INACTIVE', 'TRANSFERRED'];
+        && data.membershipStatus in ['ACTIVE', 'INACTIVE'];
     }
 
     function hasRequiredFamilyFields(data) {
@@ -169,14 +169,18 @@ service cloud.firestore {
       allow read: if isAdmin();
       allow create: if isAdmin() && hasRequiredFamilyFields(request.resource.data);
       allow update: if isAdmin() && hasRequiredFamilyFields(request.resource.data);
-      allow delete: if false; // families are deactivated (status = INACTIVE), never deleted
+      // Deactivation (status = INACTIVE) is the normal path; admins can also
+      // permanently delete via the explicit "Permanently Delete" action.
+      allow delete: if isAdmin();
     }
 
     match /members/{memberId} {
       allow read: if isAdmin();
       allow create: if isAdmin() && hasRequiredMemberFields(request.resource.data);
       allow update: if isAdmin() && hasRequiredMemberFields(request.resource.data);
-      allow delete: if false; // members are deactivated (membershipStatus = INACTIVE), never deleted
+      // Deactivation (membershipStatus = INACTIVE) is the normal path; admins
+      // can also permanently delete via the explicit "Permanently Delete" action.
+      allow delete: if isAdmin();
     }
 
     // Append-only audit trail: admins can add and read entries, but

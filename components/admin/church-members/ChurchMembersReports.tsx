@@ -18,15 +18,21 @@ type StatusFilter = 'ALL' | MembershipStatus;
 
 function countGroup(members: Member[], families: Family[], branchId?: string, status?: StatusFilter) {
   let m = branchId ? members.filter(x => x.branchId === branchId) : members;
-  const f = branchId ? families.filter(x => x.branchId === branchId) : families;
+  let f = branchId ? families.filter(x => x.branchId === branchId) : families;
   if (status && status !== 'ALL') {
+    // A family counts toward a status-scoped tally only if it has at least
+    // one member with that status — e.g. "Families" under an Active scope
+    // means "families with at least 1 active member", not every family.
+    const matchingFamilyIds = new Set(
+      m.filter(x => x.membershipStatus === status && x.familyId).map(x => x.familyId as string)
+    );
+    f = f.filter(fam => matchingFamilyIds.has(fam.id));
     m = m.filter(x => x.membershipStatus === status);
   }
   return {
     total: m.length,
     active: m.filter(x => x.membershipStatus === 'ACTIVE').length,
     inactive: m.filter(x => x.membershipStatus === 'INACTIVE').length,
-    transferred: m.filter(x => x.membershipStatus === 'TRANSFERRED').length,
     families: f.length,
     singles: m.filter(x => x.membershipType === 'SINGLE').length,
     male: m.filter(x => x.gender === 'MALE').length,
@@ -54,11 +60,28 @@ export default function ChurchMembersReports({ branches, families, members, onBa
     () =>
       branches.map(b => {
         const g = countGroup(members, families, b.id, statusFilter);
-        return { branchName: b.name, total: g.total, active: g.active, inactive: g.inactive, transferred: g.transferred, families: g.families, singles: g.singles };
+        return { branchName: b.name, total: g.total, active: g.active, inactive: g.inactive, families: g.families, singles: g.singles };
       }),
     [branches, members, families, statusFilter]
   );
-  const maxBranchTotal = Math.max(1, ...branchRows.map(r => r.total));
+
+  // "Members by Branch" and "Gender Summary" always reflect the current
+  // active congregation — independent of the Status dropdown above, which
+  // only scopes the Overall Summary tiles.
+  const activeBranchRows = useMemo(
+    () => branches.map(b => ({ branchName: b.name, total: countGroup(members, families, b.id, 'ACTIVE').total })),
+    [branches, members, families]
+  );
+  const maxActiveBranchTotal = Math.max(1, ...activeBranchRows.map(r => r.total));
+
+  // Always-active view of the current branch scope — independent of the
+  // Status dropdown. Used for the "Active Members" / "Families" / "Single
+  // Members" tiles (Families = families with >=1 active member, Single
+  // Members = active singles only) as well as the Gender Summary bars.
+  const activeOverall = useMemo(
+    () => countGroup(members, families, branchFilter === 'ALL' ? undefined : branchFilter, 'ACTIVE'),
+    [members, families, branchFilter]
+  );
 
   const scopeLabel = `${branchFilter === 'ALL' ? 'All Branches' : branches.find(b => b.id === branchFilter)?.name ?? branchFilter}${statusFilter !== 'ALL' ? ` • ${MEMBERSHIP_STATUS_LABELS[statusFilter]}` : ''}`;
 
@@ -69,13 +92,12 @@ export default function ChurchMembersReports({ branches, families, members, onBa
       const report: ReportData = {
         scopeLabel,
         total: overall.total,
-        active: overall.active,
+        active: activeOverall.active,
         inactive: overall.inactive,
-        transferred: overall.transferred,
-        families: overall.families,
-        singles: overall.singles,
-        male: overall.male,
-        female: overall.female,
+        families: activeOverall.families,
+        singles: activeOverall.singles,
+        male: activeOverall.male,
+        female: activeOverall.female,
         branchRows,
       };
       await exportChurchMembersReport(format, report);
@@ -86,7 +108,7 @@ export default function ChurchMembersReports({ branches, families, members, onBa
     setExporting(null);
   };
 
-  const genderTotal = overall.male + overall.female || 1;
+  const genderTotal = activeOverall.male + activeOverall.female || 1;
 
   return (
     <View style={{ flex: 1 }}>
@@ -116,7 +138,6 @@ export default function ChurchMembersReports({ branches, families, members, onBa
               { value: 'ALL', label: 'All Status' },
               { value: 'ACTIVE', label: 'Active' },
               { value: 'INACTIVE', label: 'Inactive' },
-              { value: 'TRANSFERRED', label: 'Transferred' },
             ]}
           />
           <View style={{ flex: 1 }} />
@@ -130,27 +151,26 @@ export default function ChurchMembersReports({ branches, families, members, onBa
         </View>
 
         <View style={styles.summaryGrid}>
-          <SummaryTile label="Active Members" value={overall.active} color="#1e9e50" />
-          <SummaryTile label="Families" value={overall.families} color="#6a4c93" />
-          <SummaryTile label="Single Members" value={overall.singles} color="#6a4c93" />
+          <SummaryTile label="Active Members" value={activeOverall.active} color="#1e9e50" />
+          <SummaryTile label="Families" value={activeOverall.families} color="#6a4c93" />
+          <SummaryTile label="Individual Members" value={activeOverall.singles} color="#6a4c93" />
         </View>
         <View style={styles.summaryGrid}>
-          <SummaryTile label="Transferred" value={overall.transferred} color="#1565c0" />
           <SummaryTile label="Inactive Members" value={overall.inactive} color="#e65100" />
           <SummaryTile label="Total Members" value={overall.total} color="#0f3460" />
         </View>
 
-        <Text style={styles.sectionTitle}>Members by Branch</Text>
+        <Text style={styles.sectionTitle}>Gender Summary (Active)</Text>
         <View style={styles.card}>
-          {branchRows.map(row => (
-            <BarRow key={row.branchName} label={row.branchName} value={row.total} total={maxBranchTotal} color="#0f3460" showCountOnly />
-          ))}
+          <BarRow label={GENDER_LABELS.MALE} value={activeOverall.male} total={genderTotal} color="#1565c0" />
+          <BarRow label={GENDER_LABELS.FEMALE} value={activeOverall.female} total={genderTotal} color="#c2185b" />
         </View>
 
-        <Text style={styles.sectionTitle}>Gender Summary</Text>
+        <Text style={styles.sectionTitle}>Members by Branch (Active)</Text>
         <View style={styles.card}>
-          <BarRow label={GENDER_LABELS.MALE} value={overall.male} total={genderTotal} color="#1565c0" />
-          <BarRow label={GENDER_LABELS.FEMALE} value={overall.female} total={genderTotal} color="#c2185b" />
+          {activeBranchRows.map(row => (
+            <BarRow key={row.branchName} label={row.branchName} value={row.total} total={maxActiveBranchTotal} color="#0f3460" showCountOnly />
+          ))}
         </View>
 
         <View style={{ height: 30 }} />

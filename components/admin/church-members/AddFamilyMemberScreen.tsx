@@ -35,7 +35,7 @@ export default function AddFamilyMemberScreen({ family, onCancel, onSaved }: Pro
       </View>
       <Text style={styles.subtitle}>Adding to &quot;{family.familyName}&quot;</Text>
       <ScrollView contentContainerStyle={{ padding: 16 }} keyboardShouldPersistTaps="handled">
-        <MemberFormFields value={form} onChange={u => setForm(prev => ({ ...prev, ...u }))} showRelationship showMaritalStatus={false} />
+        <MemberFormFields value={form} onChange={u => setForm(prev => ({ ...prev, ...u }))} showRelationship />
         <TouchableOpacity style={[styles.saveBtn, saving && { opacity: 0.6 }]} disabled={saving} onPress={handleSave}>
           <Text style={styles.saveBtnText}>{saving ? 'Saving...' : 'Save Member'}</Text>
         </TouchableOpacity>

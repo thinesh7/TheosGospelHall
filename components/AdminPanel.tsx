@@ -185,7 +185,7 @@ export default function AdminPanel({ visible, onClose, onEventsUpdated }: Props)
                   <Text style={styles.backBtnText}>←</Text>
                 </TouchableOpacity>
               )}
-              <View>
+              <View style={styles.headerTextWrap}>
                 <Text style={styles.headerTitle}>{meta.title}</Text>
                 <Text style={styles.headerSub}>{meta.subtitle}</Text>
               </View>
@@ -297,6 +297,7 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
   },
   headerLeft: { flexDirection: 'row', alignItems: 'center', flex: 1, gap: 12 },
+  headerTextWrap: { flex: 1, flexShrink: 1 },
   backBtn: {
     width: 36,
     height: 36,

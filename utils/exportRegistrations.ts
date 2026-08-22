@@ -3,6 +3,7 @@ import * as Print from 'expo-print';
 import * as Sharing from 'expo-sharing';
 import JSZip from 'jszip';
 import * as XLSX from 'xlsx-js-style';
+import { pdfLetterheadHtml, getPdfLogoDataUri, PDF_LETTERHEAD_CSS } from './pdfBranding';
 import {
   computeAge,
   formatDateDisplay,
@@ -192,7 +193,7 @@ async function buildExcelBase64(sections: Section[]): Promise<string> {
   return freezeHeaderRows(base64);
 }
 
-function buildPdfHtml(programId: ProgramId, status: ExportStatusOption, sections: Section[]): string {
+function buildPdfHtml(programId: ProgramId, status: ExportStatusOption, sections: Section[], logoDataUri: string | null): string {
   const programLabel = PROGRAMS[programId].label;
   const generatedAt = formatTimestampIST(Date.now());
   const totalCount = sections.reduce((sum, s) => sum + s.registrations.length, 0);
@@ -252,13 +253,16 @@ function buildPdfHtml(programId: ProgramId, status: ExportStatusOption, sections
       th, td { border: 1px solid #ccc; padding: 6px 8px; font-size: 10px; text-align: left; vertical-align: top; }
       th { background-color: #0f3460; color: #fff; font-weight: bold; }
       tbody tr:nth-child(even) { background-color: #f5f7fa; }
+${PDF_LETTERHEAD_CSS}
     </style>
   </head>
   <body>
+    ${pdfLetterheadHtml(logoDataUri, `
     <div class="title">${escapeHtml(programLabel)}</div>
     <div class="meta">Registrations Report — ${STATUS_OPTION_LABELS[status]}</div>
     <div class="meta">Generated On: ${generatedAt} (IST)</div>
     <div class="meta">Total Registrations: ${totalCount}</div>
+    `)}
     <div class="divider"></div>
     ${sectionsHtml}
   </body>
@@ -296,7 +300,8 @@ async function exportToExcel(programId: ProgramId, status: ExportStatusOption, s
 }
 
 async function exportToPdf(programId: ProgramId, status: ExportStatusOption, sections: Section[]): Promise<void> {
-  const html = buildPdfHtml(programId, status, sections);
+  const logoDataUri = await getPdfLogoDataUri();
+  const html = buildPdfHtml(programId, status, sections, logoDataUri);
   // A4 landscape at 72 PPI (842x595pt); printToFileAsync has no separate
   // `orientation` option — width/height alone determine the page dimensions.
   const { base64 } = await Print.printToFileAsync({ html, width: 842, height: 595, base64: true });

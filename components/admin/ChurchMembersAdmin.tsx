@@ -35,7 +35,7 @@ type CMView =
   | { type: 'editMember'; memberId: string }
   | { type: 'reports' };
 
-const ChurchMembersAdmin = forwardRef<AdminScreenHandle, Record<string, never>>((_props, ref) => {
+const ChurchMembersAdmin = forwardRef<AdminScreenHandle, object>((_props, ref) => {
   const [stack, setStack] = useState<CMView[]>([{ type: 'dashboard' }]);
   const [branches, setBranches] = useState<Branch[]>([]);
   const [families, setFamilies] = useState<Family[]>([]);
@@ -96,8 +96,6 @@ const ChurchMembersAdmin = forwardRef<AdminScreenHandle, Record<string, never>>(
           onOpenBranch={branchId => push({ type: 'branch', branchId })}
           onOpenFamily={familyId => push({ type: 'familyDetails', familyId })}
           onOpenMember={memberId => push({ type: 'memberDetails', memberId })}
-          onAddFamily={() => push({ type: 'addFamily' })}
-          onAddSingle={() => push({ type: 'addSingle' })}
           onOpenReports={() => push({ type: 'reports' })}
         />
       );

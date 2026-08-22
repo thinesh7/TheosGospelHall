@@ -17,6 +17,7 @@ export default function EditFamilyScreen({ family, branches, onCancel, onSaved }
   const [familyName, setFamilyName] = useState(family.familyName);
   const [familyPhone, setFamilyPhone] = useState(family.familyPhone ?? '');
   const [addressLine1, setAddressLine1] = useState(family.address?.addressLine1 ?? '');
+  const [mapLink, setMapLink] = useState(family.address?.mapLink ?? '');
   const [saving, setSaving] = useState(false);
 
   const handleSave = async () => {
@@ -24,7 +25,7 @@ export default function EditFamilyScreen({ family, branches, onCancel, onSaved }
     try {
       await updateFamily(
         family,
-        { branchId, familyName, familyPhone, address: { ...EMPTY_ADDRESS, ...(family.address ?? {}), addressLine1 } },
+        { branchId, familyName, familyPhone, address: { ...EMPTY_ADDRESS, ...(family.address ?? {}), addressLine1, mapLink } },
         getCurrentAdminEmail()
       );
       onSaved();
@@ -78,6 +79,19 @@ export default function EditFamilyScreen({ family, branches, onCancel, onSaved }
             value={addressLine1}
             onChangeText={setAddressLine1}
             multiline
+          />
+        </View>
+
+        <View style={shared.formField}>
+          <Text style={shared.formLabel}>Google Maps Location Link (Optional)</Text>
+          <TextInput
+            style={shared.formInput}
+            placeholder="https://maps.app.goo.gl/..."
+            placeholderTextColor="#999"
+            value={mapLink}
+            onChangeText={setMapLink}
+            autoCapitalize="none"
+            keyboardType="url"
           />
         </View>
 

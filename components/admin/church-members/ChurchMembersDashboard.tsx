@@ -16,8 +16,6 @@ interface Props {
   onOpenBranch: (branchId: string) => void;
   onOpenFamily: (id: string) => void;
   onOpenMember: (id: string) => void;
-  onAddFamily: () => void;
-  onAddSingle: () => void;
   onOpenReports: () => void;
 }
 
@@ -28,8 +26,6 @@ export default function ChurchMembersDashboard({
   onOpenBranch,
   onOpenFamily,
   onOpenMember,
-  onAddFamily,
-  onAddSingle,
   onOpenReports,
 }: Props) {
   const [branchFilter, setBranchFilter] = useState<string>('ALL');
@@ -85,23 +81,14 @@ export default function ChurchMembersDashboard({
         </View>
 
         <View style={styles.tabRow}>
-          <TouchableOpacity style={[styles.tab, typeTab === 'all' && styles.tabActive]} onPress={() => setTypeTab('all')}>
-            <Text style={[styles.tabText, typeTab === 'all' && styles.tabTextActive]}>All ({summary.total})</Text>
-          </TouchableOpacity>
           <TouchableOpacity style={[styles.tab, typeTab === 'families' && styles.tabActive]} onPress={() => setTypeTab('families')}>
             <Text style={[styles.tabText, typeTab === 'families' && styles.tabTextActive]}>Families ({summary.families})</Text>
           </TouchableOpacity>
           <TouchableOpacity style={[styles.tab, typeTab === 'singles' && styles.tabActive]} onPress={() => setTypeTab('singles')}>
-            <Text style={[styles.tabText, typeTab === 'singles' && styles.tabTextActive]}>Singles ({summary.singles})</Text>
+            <Text style={[styles.tabText, typeTab === 'singles' && styles.tabTextActive]}>Individuals ({summary.singles})</Text>
           </TouchableOpacity>
-        </View>
-
-        <View style={styles.actionRow}>
-          <TouchableOpacity style={styles.addBtn} onPress={onAddFamily}>
-            <Text style={styles.addBtnText} numberOfLines={1} adjustsFontSizeToFit>＋ Add Family</Text>
-          </TouchableOpacity>
-          <TouchableOpacity style={styles.addBtnOutline} onPress={onAddSingle}>
-            <Text style={styles.addBtnOutlineText} numberOfLines={1} adjustsFontSizeToFit>＋ Add Single Member</Text>
+          <TouchableOpacity style={[styles.tab, typeTab === 'all' && styles.tabActive]} onPress={() => setTypeTab('all')}>
+            <Text style={[styles.tabText, typeTab === 'all' && styles.tabTextActive]}>All ({summary.total})</Text>
           </TouchableOpacity>
         </View>
 
@@ -129,7 +116,7 @@ export default function ChurchMembersDashboard({
             families={families}
             members={members}
             branches={branches}
-            filter={typeTab}
+            typeFilter={typeTab === 'all' ? undefined : typeTab}
             search={search}
             branchScope={branchScope}
             showBranchTag={!branchScope}
@@ -155,11 +142,6 @@ const styles = StyleSheet.create({
   tabText: { fontSize: 12, fontWeight: '700', color: '#555' },
   tabTextActive: { color: '#fff' },
   sectionLabel: { fontSize: 13, fontWeight: '700', color: '#555', marginBottom: 8, marginTop: 4 },
-  actionRow: { flexDirection: 'row', gap: 10, marginBottom: 18, alignItems: 'stretch' },
-  addBtn: { flex: 1, backgroundColor: '#0f3460', borderRadius: 10, paddingVertical: 13, paddingHorizontal: 4, alignItems: 'center', justifyContent: 'center' },
-  addBtnText: { color: '#fff', fontWeight: 'bold', fontSize: 13, textAlign: 'center' },
-  addBtnOutline: { flex: 1, backgroundColor: '#e8f0fe', borderRadius: 10, paddingVertical: 13, paddingHorizontal: 4, alignItems: 'center', justifyContent: 'center' },
-  addBtnOutlineText: { color: '#0f3460', fontWeight: 'bold', fontSize: 13, textAlign: 'center' },
   branchCard: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#fff', borderRadius: 14, padding: 16, marginBottom: 12, elevation: 3, borderLeftWidth: 5, borderLeftColor: '#0f3460' },
   branchCardTitle: { fontSize: 15, fontWeight: 'bold', color: '#1a1a2e', marginBottom: 4 },
   branchCardMeta: { fontSize: 12, color: '#666' },

@@ -1,7 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import * as Clipboard from 'expo-clipboard';
 import { useState } from 'react';
-import { Alert, ScrollView, StyleSheet, TouchableOpacity, View } from 'react-native';
+import { Alert, Linking, ScrollView, StyleSheet, TouchableOpacity, View } from 'react-native';
 import { Text } from '../../AppText';
 import { Toast, useToast } from '../../Toast';
 import {
@@ -17,6 +17,7 @@ import {
   Member,
   MEMBERSHIP_STATUS_LABELS,
   nameWithHonorific,
+  permanentlyDeleteMember,
   RELATIONSHIP_LABELS,
   updateMemberStatus,
 } from '../../../utils/churchMembers';
@@ -69,6 +70,31 @@ export default function MemberDetailsScreen({ member, family, branch, onBack, on
     setBusy(false);
   };
 
+  const handlePermanentDelete = () => {
+    Alert.alert(
+      'Permanently Delete Member',
+      `Permanently delete "${member.name}"? This cannot be undone — the member's record will be removed completely, not just marked Inactive.` +
+        (member.isFamilyHead ? '\n\nThis member is the Family Head — the family will be left without a head.' : ''),
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete Forever',
+          style: 'destructive',
+          onPress: async () => {
+            setBusy(true);
+            try {
+              await permanentlyDeleteMember(member, getCurrentAdminEmail());
+              onBack();
+            } catch (e: any) {
+              Alert.alert('Error', e?.message ?? 'Could not delete. Check internet.');
+              setBusy(false);
+            }
+          },
+        },
+      ]
+    );
+  };
+
   const handleCopyDetails = async () => {
     const lines = [
       `Name: ${member.name}`,
@@ -95,7 +121,7 @@ export default function MemberDetailsScreen({ member, family, branch, onBack, on
           <TouchableOpacity onPress={onBack}>
             <Text style={styles.backText}>← Back</Text>
           </TouchableOpacity>
-          <Text style={[styles.title, { flex: 1 }]}>{isFamily ? 'Family Member Details' : 'Single Member Details'}</Text>
+          <Text style={[styles.title, { flex: 1 }]}>{isFamily ? 'Family Member Details' : 'Individual Member Details'}</Text>
           <TouchableOpacity onPress={handleCopyDetails} style={styles.copyBtn}>
             <Ionicons name="copy-outline" size={20} color="#0f3460" />
           </TouchableOpacity>
@@ -104,7 +130,7 @@ export default function MemberDetailsScreen({ member, family, branch, onBack, on
         <View style={styles.card}>
           <View style={styles.nameRow}>
             <Avatar name={member.name} />
-            <Text style={styles.memberName}>{nameWithHonorific(member.name, member.gender)}</Text>
+            <Text style={styles.memberName}>{member.isFamilyHead ? member.name : nameWithHonorific(member.name, member.gender)}</Text>
             <StatusBadge status={member.membershipStatus} />
           </View>
 
@@ -143,12 +169,24 @@ export default function MemberDetailsScreen({ member, family, branch, onBack, on
           <View style={styles.card}>
             <Text style={styles.sectionLabel}>Address</Text>
             <Text style={styles.addressText}>{formatAddressMultiline(address ?? null) || '—'}</Text>
+            {!!address?.mapLink && (
+              <TouchableOpacity onPress={() => Linking.openURL(address.mapLink)} style={styles.mapLinkBtn}>
+                <Ionicons name="location" size={13} color="#0f3460" />
+                <Text style={styles.mapLinkText}>View on Map</Text>
+              </TouchableOpacity>
+            )}
           </View>
         )}
         {isFamily && !!address && (
           <View style={styles.card}>
             <Text style={styles.sectionLabel}>Family Address</Text>
             <Text style={styles.addressText}>{formatAddressMultiline(address) || '—'}</Text>
+            {!!address.mapLink && (
+              <TouchableOpacity onPress={() => Linking.openURL(address.mapLink)} style={styles.mapLinkBtn}>
+                <Ionicons name="location" size={13} color="#0f3460" />
+                <Text style={styles.mapLinkText}>View on Map</Text>
+              </TouchableOpacity>
+            )}
           </View>
         )}
 
@@ -166,6 +204,10 @@ export default function MemberDetailsScreen({ member, family, branch, onBack, on
             </TouchableOpacity>
           )}
         </View>
+
+        <TouchableOpacity style={styles.permanentDeleteLink} disabled={busy} onPress={handlePermanentDelete}>
+          <Text style={styles.permanentDeleteLinkText}>Permanently Delete Member</Text>
+        </TouchableOpacity>
       </ScrollView>
       <Toast message={message} opacity={opacity} />
     </View>
@@ -184,6 +226,8 @@ const styles = StyleSheet.create({
   familyLink: { fontSize: 15, color: '#0f3460', fontWeight: '700' },
   sectionLabel: { fontSize: 13, fontWeight: '700', color: '#555', marginBottom: 12, textTransform: 'uppercase' },
   addressText: { fontSize: 14, color: '#1a1a2e', lineHeight: 20 },
+  mapLinkBtn: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 8 },
+  mapLinkText: { fontSize: 12, fontWeight: '700', color: '#0f3460' },
   actionRow: { flexDirection: 'row', gap: 10, marginBottom: 24 },
   editBtn: { flex: 1, backgroundColor: '#e8f0fe', borderRadius: 12, paddingVertical: 14, alignItems: 'center' },
   editBtnText: { color: '#0f3460', fontWeight: '700', fontSize: 13 },
@@ -191,4 +235,6 @@ const styles = StyleSheet.create({
   deactivateBtnText: { color: '#c62828', fontWeight: '700', fontSize: 13 },
   activateBtn: { flex: 1, backgroundColor: '#e6f7ec', borderRadius: 10, paddingVertical: 14, alignItems: 'center' },
   activateBtnText: { color: '#1e9e50', fontWeight: '700', fontSize: 13 },
+  permanentDeleteLink: { alignItems: 'center', paddingVertical: 8, marginBottom: 24 },
+  permanentDeleteLinkText: { color: '#c62828', fontWeight: '600', fontSize: 12, textDecorationLine: 'underline' },
 });

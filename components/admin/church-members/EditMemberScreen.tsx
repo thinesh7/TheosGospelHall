@@ -42,7 +42,6 @@ export default function EditMemberScreen({ member, onCancel, onSaved }: Props) {
           onChange={u => setForm(prev => ({ ...prev, ...u }))}
           showRelationship={isFamilyNonHead}
           showAddress={isSingle}
-          showMaritalStatus={isSingle}
         />
         <TouchableOpacity style={[styles.saveBtn, saving && { opacity: 0.6 }]} disabled={saving} onPress={handleSave}>
           <Text style={styles.saveBtnText}>{saving ? 'Updating...' : 'Update Member'}</Text>
