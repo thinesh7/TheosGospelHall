@@ -5,6 +5,23 @@ All notable changes to the Theos Gospel Hall app are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [1.5.0] - 2026-08-22
+
+### Added
+- **Expanded Bible versions**: six new public-domain English translations — World English Bible, American Standard Version, Young's Literal Translation, Berean Standard Bible, Douay-Rheims, and the Geneva Bible (1599) — join the existing Tamil OV, Tamil ERV, NIV, ERV, and KJV, selectable from the same English/Tamil version pickers. New versions are fetched a chapter at a time and cached on the device, so a chapter loads instantly on every visit after the first and refreshes quietly in the background instead of showing a loading screen.
+- **Bible Text-to-Speech**: listen to a chapter read aloud with Play/Pause/Resume/Stop controls. The app automatically speaks in English or Tamil to match the selected version, favors the best-quality voice installed on the device, highlights the verse currently being read, and — unless manually stopped — keeps reading automatically into the next chapter and book, all the way through to the end of Revelation.
+- **In-app Notification Center**: a bell icon with an unread badge on the Home screen opens a history of past notifications grouped by Today/Yesterday/Earlier, with icons by category (Bible Study, Prayer, Youth, Special Meeting, App Update) and per-device read tracking.
+- **Home screen theme picker**: a Settings icon on Home opens a Light/Dark/Sepia picker, matching the theme control already available elsewhere in the app.
+
+### Changed
+- **Bible reader**: the selected or currently-read verse now uses a softer highlighted-card style instead of a solid color block, and the verse list reserves enough space at the bottom so the last verse is never hidden behind the navigation bar.
+- **Bible version-selection screen**: the chapter-number grid keeps every box the same size, even on a partial last row (e.g. chapters 26–27 of a 27-chapter book), instead of stretching them to fill the row.
+
+### Fixed
+- **Live video playback**: watching a currently-live stream no longer incorrectly marked it as "already finished" the next time it was opened.
+- **Bible Reader**: fixed a brief white flash when returning from the Bible Reader to the Bible tab in the Dark or Sepia theme, caused by the native screen background not following the in-app theme.
+- **Contact screen**: returning from the Admin Panel, or cancelling out of the admin login, now scrolls back to where the version footer is visible instead of leaving the page scrolled mid-way.
+
 ## [1.4.0] - 2026-07-31
 
 ### Added
