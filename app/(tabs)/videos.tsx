@@ -1290,9 +1290,17 @@ interface VideosScreenProps {
   autoPlayLive?: { videoId: string; title: string } | null;
   onAutoPlayLiveConsumed?: () => void;
   isActive?: boolean;
+  pendingSubTab?: 'live' | 'songs' | null;
+  onPendingSubTabConsumed?: () => void;
 }
 
-function VideosScreenContent({ autoPlayLive, onAutoPlayLiveConsumed, isActive }: VideosScreenProps = {}) {
+function VideosScreenContent({
+  autoPlayLive,
+  onAutoPlayLiveConsumed,
+  isActive,
+  pendingSubTab,
+  onPendingSubTabConsumed,
+}: VideosScreenProps = {}) {
   const { colors } = useTheme();
 
   const [activeTab, setActiveTab] = useState<Tab>('shorts');
@@ -1447,6 +1455,12 @@ function VideosScreenContent({ autoPlayLive, onAutoPlayLiveConsumed, isActive }:
     openVideo(autoPlayLive.videoId, autoPlayLive.title, true);
     onAutoPlayLiveConsumed?.();
   }, [autoPlayLive]);
+
+  useEffect(() => {
+    if (!pendingSubTab) return;
+    setActiveTab(pendingSubTab);
+    onPendingSubTabConsumed?.();
+  }, [pendingSubTab]);
 
   useEffect(() => {
     const onBackPress = () => {

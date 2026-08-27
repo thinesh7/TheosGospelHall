@@ -9,6 +9,7 @@ import LiveNowPopup from '../../components/LiveNowPopup';
 import { checkCurrentlyLive, LiveNowInfo } from '../../utils/liveStatus';
 import { useTheme } from '../../utils/ThemeContext';
 import { useIsUpdateGateActive } from '../../utils/UpdateGateContext';
+import { subscribeVideosTabRequest, VideosSubTab } from '../../utils/videoNavigation';
 import BibleScreen from './bible';
 import ContactScreen from './contact';
 import HomeScreen from './index';
@@ -35,6 +36,7 @@ export default function TabLayout() {
 
   const [liveNowInfo, setLiveNowInfo] = useState<LiveNowInfo | null>(null);
   const [autoPlayLive, setAutoPlayLive] = useState<{ videoId: string; title: string } | null>(null);
+  const [pendingVideosSubTab, setPendingVideosSubTab] = useState<VideosSubTab | null>(null);
   const isUpdateGateActive = useIsUpdateGateActive();
 
   // Skip the live-stream check entirely while a mandatory/optional update
@@ -74,6 +76,16 @@ export default function TabLayout() {
     pagerRef.current?.setPage(index);
   };
 
+  // A "Click Here" tap on a Live/Songs notification (Notification Center is
+  // a separate stack route on top of this one) requests a Videos sub-tab
+  // here, then this switches the pager to Videos itself.
+  useEffect(() => {
+    return subscribeVideosTabRequest(tab => {
+      setPendingVideosSubTab(tab);
+      goToTab(1);
+    });
+  }, []);
+
   const tabBarHeight = 60 + Math.max(insets.bottom, 8);
 
   return (
@@ -92,7 +104,13 @@ export default function TabLayout() {
         <View key="0" style={{ flex: 1, backgroundColor: colors.bg }}>{visitedTabs.has(0) ? <HomeScreen /> : null}</View>
         <View key="1" style={{ flex: 1, backgroundColor: colors.bg }}>
           {visitedTabs.has(1) ? (
-            <VideosScreen autoPlayLive={autoPlayLive} onAutoPlayLiveConsumed={() => setAutoPlayLive(null)} isActive={activeTab === 1} />
+            <VideosScreen
+              autoPlayLive={autoPlayLive}
+              onAutoPlayLiveConsumed={() => setAutoPlayLive(null)}
+              isActive={activeTab === 1}
+              pendingSubTab={pendingVideosSubTab}
+              onPendingSubTabConsumed={() => setPendingVideosSubTab(null)}
+            />
           ) : null}
         </View>
         <View key="2" style={{ flex: 1, backgroundColor: colors.bg }}>{visitedTabs.has(2) ? <BibleScreen /> : null}</View>

@@ -13,7 +13,13 @@ import { db } from '../firebaseConfig';
 import { COLLECTIONS } from './testMode';
 
 export type NotificationSource = 'admin' | 'special_meeting' | 'app_update';
-export type NotificationCategory = 'bible_study' | 'prayer_meeting' | 'youth_meeting' | 'others';
+export type NotificationCategory =
+  | 'bible_study'
+  | 'prayer_meeting'
+  | 'youth_meeting'
+  | 'live'
+  | 'songs'
+  | 'others';
 
 export interface NotificationItem {
   id: string;

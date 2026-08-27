@@ -1,13 +1,12 @@
 import { Ionicons } from '@expo/vector-icons';
-import { useMemo, useState } from 'react';
+import { LinearGradient } from 'expo-linear-gradient';
+import { useState } from 'react';
 import { ScrollView, StyleSheet, TouchableOpacity, View } from 'react-native';
 import { Text } from '../../AppText';
 import { TextInput } from '../../AppTextInput';
 import { Branch, Family, familyDisplayStatus, Member } from '../../../utils/churchMembers';
 import MemberFamilyList from './MemberFamilyList';
 import { CompactDropdown } from './shared';
-
-type TypeTab = 'all' | 'families' | 'singles';
 
 interface Props {
   branches: Branch[];
@@ -29,23 +28,11 @@ export default function ChurchMembersDashboard({
   onOpenReports,
 }: Props) {
   const [branchFilter, setBranchFilter] = useState<string>('ALL');
-  const [typeTab, setTypeTab] = useState<TypeTab>('all');
   const [search, setSearch] = useState('');
 
   const branchScope = branchFilter === 'ALL' ? undefined : branchFilter;
 
-  const scopedMembers = branchScope ? members.filter(m => m.branchId === branchScope) : members;
-  const scopedFamilies = branchScope ? families.filter(f => f.branchId === branchScope) : families;
-
-  const summary = useMemo(() => {
-    return {
-      total: scopedMembers.length,
-      families: scopedFamilies.length,
-      singles: scopedMembers.filter(m => m.membershipType === 'SINGLE').length,
-    };
-  }, [scopedMembers, scopedFamilies]);
-
-  const showBrowseList = branchFilter !== 'ALL' || typeTab !== 'all' || search.trim().length > 0;
+  const showBrowseList = branchFilter !== 'ALL' || search.trim().length > 0;
 
   return (
     <View style={{ flex: 1 }}>
@@ -58,9 +45,11 @@ export default function ChurchMembersDashboard({
             options={[{ value: 'ALL', label: 'All Branches' }, ...branches.map(b => ({ value: b.id, label: b.name }))]}
           />
           <View style={{ flex: 1 }} />
-          <TouchableOpacity style={styles.reportsBtn} onPress={onOpenReports}>
-            <Ionicons name="bar-chart-outline" size={16} color="#0f3460" />
-            <Text style={styles.reportsBtnText}>Summary</Text>
+          <TouchableOpacity onPress={onOpenReports} activeOpacity={0.85}>
+            <LinearGradient colors={['#1a1a2e', '#16213e', '#0f3460']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.reportsBtn}>
+              <Ionicons name="sparkles" size={15} color="#f4b942" />
+              <Text style={styles.reportsBtnText}>Summary</Text>
+            </LinearGradient>
           </TouchableOpacity>
         </View>
 
@@ -78,18 +67,6 @@ export default function ChurchMembersDashboard({
               <Ionicons name="close-circle" size={18} color="#999" />
             </TouchableOpacity>
           )}
-        </View>
-
-        <View style={styles.tabRow}>
-          <TouchableOpacity style={[styles.tab, typeTab === 'families' && styles.tabActive]} onPress={() => setTypeTab('families')}>
-            <Text style={[styles.tabText, typeTab === 'families' && styles.tabTextActive]}>Families ({summary.families})</Text>
-          </TouchableOpacity>
-          <TouchableOpacity style={[styles.tab, typeTab === 'singles' && styles.tabActive]} onPress={() => setTypeTab('singles')}>
-            <Text style={[styles.tabText, typeTab === 'singles' && styles.tabTextActive]}>Individuals ({summary.singles})</Text>
-          </TouchableOpacity>
-          <TouchableOpacity style={[styles.tab, typeTab === 'all' && styles.tabActive]} onPress={() => setTypeTab('all')}>
-            <Text style={[styles.tabText, typeTab === 'all' && styles.tabTextActive]}>All ({summary.total})</Text>
-          </TouchableOpacity>
         </View>
 
         {!showBrowseList ? (
@@ -116,7 +93,6 @@ export default function ChurchMembersDashboard({
             families={families}
             members={members}
             branches={branches}
-            typeFilter={typeTab === 'all' ? undefined : typeTab}
             search={search}
             branchScope={branchScope}
             showBranchTag={!branchScope}
@@ -132,15 +108,10 @@ export default function ChurchMembersDashboard({
 
 const styles = StyleSheet.create({
   toolbarRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 10 },
-  reportsBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: '#fff', borderRadius: 10, paddingHorizontal: 12, paddingVertical: 11, borderWidth: 1, borderColor: '#eee' },
-  reportsBtnText: { fontSize: 13, fontWeight: '700', color: '#0f3460' },
-  searchBar: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#fff', borderRadius: 12, paddingHorizontal: 12, paddingVertical: 10, elevation: 3, gap: 8, marginBottom: 12 },
+  reportsBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, borderRadius: 20, paddingHorizontal: 16, paddingVertical: 11, elevation: 4, shadowColor: '#0f3460', shadowOffset: { width: 0, height: 3 }, shadowOpacity: 0.3, shadowRadius: 5 },
+  reportsBtnText: { fontSize: 13, fontWeight: '700', color: '#f4b942', letterSpacing: 0.3 },
+  searchBar: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#fff', borderRadius: 12, paddingHorizontal: 12, paddingVertical: 10, elevation: 3, gap: 8, marginBottom: 16 },
   searchInput: { flex: 1, fontSize: 14, color: '#333' },
-  tabRow: { flexDirection: 'row', gap: 8, marginBottom: 14 },
-  tab: { flex: 1, paddingVertical: 10, borderRadius: 10, backgroundColor: '#fff', borderWidth: 1, borderColor: '#eee', alignItems: 'center' },
-  tabActive: { backgroundColor: '#0f3460', borderColor: '#0f3460' },
-  tabText: { fontSize: 12, fontWeight: '700', color: '#555' },
-  tabTextActive: { color: '#fff' },
   sectionLabel: { fontSize: 13, fontWeight: '700', color: '#555', marginBottom: 8, marginTop: 4 },
   branchCard: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#fff', borderRadius: 14, padding: 16, marginBottom: 12, elevation: 3, borderLeftWidth: 5, borderLeftColor: '#0f3460' },
   branchCardTitle: { fontSize: 15, fontWeight: 'bold', color: '#1a1a2e', marginBottom: 4 },

@@ -134,9 +134,10 @@ const AppUpdateAdmin = forwardRef<AdminScreenHandle, {}>((_, ref) => {
       } catch {}
       setShowNotifyModal(false);
       if (result.failedCount > 0) {
+        const reasons = result.deliveryErrors.map(e => `• ${e.message} (${e.count})`).join('\n');
         Alert.alert(
           'Partially Sent',
-          `✅ ${result.successCount} delivered\n❌ ${result.failedCount} failed\n\nCheck Firebase → notificationLogs for details.`
+          `✅ ${result.successCount} delivered\n❌ ${result.failedCount} failed${reasons ? `\n\n${reasons}` : ''}\n\nCheck Firebase → notificationLogs for full details.`
         );
       } else {
         Alert.alert('✅ Sent!', `Notification delivered to ${result.successCount} device${result.successCount === 1 ? '' : 's'}.`);

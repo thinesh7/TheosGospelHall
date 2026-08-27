@@ -318,6 +318,20 @@ export async function isDuplicateNotificationResponse(response: any): Promise<bo
   }
 }
 
+export async function getNotificationPermissionStatus(): Promise<
+  'granted' | 'denied' | 'undetermined' | 'unsupported'
+> {
+  // Unlike a missing push token, this isn't something a "grant it anyway"
+  // path can route around: since SDK 53, expo-notifications' Android native
+  // module isn't in Expo Go at all, so even getPermissionsAsync() throws
+  // there (not just token/registration calls) — callers must treat
+  // 'unsupported' as "nothing to ask the user to do", not as 'denied'.
+  if (isExpoGo) return 'unsupported';
+  const Notifications = getNotifications();
+  const { status } = await Notifications.getPermissionsAsync();
+  return status;
+}
+
 export async function checkStoredToken(): Promise<string | null> {
   try {
     return await AsyncStorage.getItem(TOKEN_KEY);

@@ -65,19 +65,17 @@ export default function ChurchMembersReports({ branches, families, members, onBa
     [branches, members, families, statusFilter]
   );
 
-  // "Members by Branch" and "Gender Summary" always reflect the current
-  // active congregation — independent of the Status dropdown above, which
-  // only scopes the Overall Summary tiles.
+  // "Members by Branch" and "Gender Summary" are explicitly labeled "(Active)"
+  // and always reflect the current active congregation, independent of the
+  // Status dropdown above (which scopes the Overall Summary tiles instead).
   const activeBranchRows = useMemo(
     () => branches.map(b => ({ branchName: b.name, total: countGroup(members, families, b.id, 'ACTIVE').total })),
     [branches, members, families]
   );
   const maxActiveBranchTotal = Math.max(1, ...activeBranchRows.map(r => r.total));
 
-  // Always-active view of the current branch scope — independent of the
-  // Status dropdown. Used for the "Active Members" / "Families" / "Single
-  // Members" tiles (Families = families with >=1 active member, Single
-  // Members = active singles only) as well as the Gender Summary bars.
+  // Always-active view of the current branch scope, used only for the
+  // Gender Summary (Active) bars — independent of the Status dropdown.
   const activeOverall = useMemo(
     () => countGroup(members, families, branchFilter === 'ALL' ? undefined : branchFilter, 'ACTIVE'),
     [members, families, branchFilter]
@@ -92,10 +90,10 @@ export default function ChurchMembersReports({ branches, families, members, onBa
       const report: ReportData = {
         scopeLabel,
         total: overall.total,
-        active: activeOverall.active,
+        active: overall.active,
         inactive: overall.inactive,
-        families: activeOverall.families,
-        singles: activeOverall.singles,
+        families: overall.families,
+        singles: overall.singles,
         male: activeOverall.male,
         female: activeOverall.female,
         branchRows,
@@ -151,9 +149,9 @@ export default function ChurchMembersReports({ branches, families, members, onBa
         </View>
 
         <View style={styles.summaryGrid}>
-          <SummaryTile label="Active Members" value={activeOverall.active} color="#1e9e50" />
-          <SummaryTile label="Families" value={activeOverall.families} color="#6a4c93" />
-          <SummaryTile label="Individual Members" value={activeOverall.singles} color="#6a4c93" />
+          <SummaryTile label="Active Members" value={overall.active} color="#1e9e50" />
+          <SummaryTile label="Families" value={overall.families} color="#6a4c93" />
+          <SummaryTile label="Individual Members" value={overall.singles} color="#6a4c93" />
         </View>
         <View style={styles.summaryGrid}>
           <SummaryTile label="Inactive Members" value={overall.inactive} color="#e65100" />

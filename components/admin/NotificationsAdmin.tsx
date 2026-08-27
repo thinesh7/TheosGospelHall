@@ -17,8 +17,15 @@ const CATEGORIES: { key: NotificationCategory; label: string }[] = [
   { key: 'bible_study', label: 'Bible Study' },
   { key: 'prayer_meeting', label: 'Prayer Meeting' },
   { key: 'youth_meeting', label: 'Youth Meeting' },
+  { key: 'live', label: 'Live' },
+  { key: 'songs', label: 'Songs' },
   { key: 'others', label: 'Others' },
 ];
+
+// Live/Songs always deep-link to a fixed in-app section (Videos → Live /
+// Videos → Songs) instead of an admin-provided URL, so the link field is
+// irrelevant for them.
+const VIDEOS_NAV_CATEGORIES: NotificationCategory[] = ['live', 'songs'];
 
 const NotificationsAdmin = forwardRef<AdminScreenHandle, {}>((_props, ref) => {
   const [message, setMessage] = useState('');
@@ -52,15 +59,17 @@ const NotificationsAdmin = forwardRef<AdminScreenHandle, {}>((_props, ref) => {
     try {
       const result = await sendPushNotificationToAll('📢 Theos Gospel Hall', body, { type: 'admin' });
       try {
-        await addNotification({ message: body, link: link.trim() || null, source: 'admin', category });
+        const isVideosNav = VIDEOS_NAV_CATEGORIES.includes(category);
+        await addNotification({ message: body, link: isVideosNav ? null : link.trim() || null, source: 'admin', category });
       } catch {}
       setMessage('');
       setLink('');
       setCategory('bible_study');
       if (result.failedCount > 0) {
+        const reasons = result.deliveryErrors.map(e => `• ${e.message} (${e.count})`).join('\n');
         Alert.alert(
           'Partially Sent',
-          `✅ ${result.successCount} delivered\n❌ ${result.failedCount} failed\n\nCheck Firebase → notificationLogs for details.`
+          `✅ ${result.successCount} delivered\n❌ ${result.failedCount} failed${reasons ? `\n\n${reasons}` : ''}\n\nCheck Firebase → notificationLogs for full details.`
         );
       } else {
         Alert.alert('✅ Sent!', `Notification delivered to ${result.successCount} device${result.successCount === 1 ? '' : 's'}.`);
@@ -101,18 +110,28 @@ const NotificationsAdmin = forwardRef<AdminScreenHandle, {}>((_props, ref) => {
         ))}
       </View>
 
-      <Text style={[styles.label, { marginTop: 16 }]}>Optional Link (if any)</Text>
-      <Text style={styles.hint}>Add a link if you want users to open a website, Google Meet, YouTube, or any page.</Text>
-      <TextInput
-        style={styles.input}
-        placeholder="https://..."
-        placeholderTextColor="#999"
-        value={link}
-        onChangeText={setLink}
-        autoCapitalize="none"
-        keyboardType="url"
-        editable={!sending}
-      />
+      {VIDEOS_NAV_CATEGORIES.includes(category) ? (
+        <Text style={[styles.hint, { marginTop: 16, fontStyle: 'normal' }]}>
+          {category === 'live'
+            ? 'This notification\'s "Click Here" button will take users straight to the Live tab.'
+            : 'This notification\'s "Click Here" button will take users straight to Videos → Songs.'}
+        </Text>
+      ) : (
+        <>
+          <Text style={[styles.label, { marginTop: 16 }]}>Optional Link (if any)</Text>
+          <Text style={styles.hint}>Add a link if you want users to open a website, Google Meet, YouTube, or any page.</Text>
+          <TextInput
+            style={styles.input}
+            placeholder="https://..."
+            placeholderTextColor="#999"
+            value={link}
+            onChangeText={setLink}
+            autoCapitalize="none"
+            keyboardType="url"
+            editable={!sending}
+          />
+        </>
+      )}
 
       <TouchableOpacity
         style={[styles.sendBtn, (sending || !message.trim()) && { opacity: 0.6 }]}

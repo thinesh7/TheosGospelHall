@@ -2,10 +2,14 @@ import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
-import { Animated, Linking, SectionList, StyleSheet, TouchableOpacity, View } from 'react-native';
+import { AppState, Animated, Linking, SectionList, StyleSheet, TouchableOpacity, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Text } from '../components/AppText';
-import { useTheme } from '../utils/ThemeContext';
+import { checkIsOnline } from '../utils/connectivity';
+import {
+  getNotificationPermissionStatus,
+  registerForPushNotifications,
+} from '../utils/notifications';
 import {
   getCachedNotifications,
   getMemoryCachedNotifications,
@@ -17,6 +21,15 @@ import {
   subscribeNotifications,
   subscribeReadIds,
 } from '../utils/notificationCenterSync';
+import { useTheme } from '../utils/ThemeContext';
+import { requestVideosTab } from '../utils/videoNavigation';
+
+// Live/Songs notifications carry no link at all — their CTA always jumps to
+// a fixed in-app section instead of opening a URL, so this identifies them
+// independent of whether `item.link` happens to be set.
+function isVideosNavCategory(item: NotificationItem): item is NotificationItem & { category: 'live' | 'songs' } {
+  return item.category === 'live' || item.category === 'songs';
+}
 
 // Icon is resolved only from the notification's stored `source` (Special
 // Meeting / App Update get a fixed icon of their own) or, for admin sends,
@@ -38,6 +51,10 @@ function CategoryIcon({ item, color, size }: { item: NotificationItem; color: st
       return <MaterialCommunityIcons name="hands-pray" size={size} color={color} />;
     case 'youth_meeting':
       return <Ionicons name="flash" size={size} color={color} />;
+    case 'live':
+      return <Ionicons name="radio" size={size} color={color} />;
+    case 'songs':
+      return <Ionicons name="musical-notes" size={size} color={color} />;
     default:
       return <Ionicons name="notifications" size={size} color={color} />;
   }
@@ -47,6 +64,7 @@ function linkLabel(item: NotificationItem): string {
   if (item.source === 'app_update') return 'Update Now';
   if (item.source === 'special_meeting') return 'Join Meeting';
   if (item.category === 'youth_meeting' || item.category === 'prayer_meeting') return 'Join Meeting';
+  if (isVideosNavCategory(item)) return 'Click Here';
   return 'Open Link';
 }
 
@@ -65,6 +83,14 @@ function splitMessage(message: string): { title: string; body: string } {
 function isBodyTruncated(body: string): boolean {
   if (!body) return false;
   return body.split('\n').length > 3 || body.length > 140;
+}
+
+// Same cheap proxy as isBodyTruncated, but for the title's 2-line clamp —
+// the title never contains '\n' (splitMessage cuts it off there), and its
+// row is narrower than the body's (it shares space with the timestamp) and
+// bold, so it wraps at fewer characters per line.
+function isTitleTruncated(title: string): boolean {
+  return title.length > 60;
 }
 
 function formatItemTime(ts: number): string {
@@ -86,6 +112,12 @@ export default function NotificationCenterScreen() {
   const [items, setItems] = useState<NotificationItem[]>(() => getMemoryCachedNotifications());
   const [readIds, setReadIds] = useState<Set<string>>(() => getMemoryReadIds());
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
+  const [permStatus, setPermStatus] = useState<
+    'granted' | 'denied' | 'undetermined' | 'unsupported' | null
+  >(null);
+  const [bannerDismissed, setBannerDismissed] = useState(false);
+  const [isOffline, setIsOffline] = useState(false);
+  const [checkingConnection, setCheckingConnection] = useState(false);
   const glowAnim = useRef(new Animated.Value(0.15)).current;
   const itemsRef = useRef(items);
   itemsRef.current = items;
@@ -119,7 +151,69 @@ export default function NotificationCenterScreen() {
     };
   }, []);
 
-  const handleOpenLink = (item: NotificationItem) => {
+  // Re-checked on foreground so the banner clears the moment the user
+  // grants the permission from the OS settings screen and comes back. A
+  // fresh grant also registers the push token right away, since the one at
+  // app launch (app/_layout.tsx) only runs once per cold start and would
+  // otherwise miss a permission flip that happens mid-session.
+  useEffect(() => {
+    getNotificationPermissionStatus().then(setPermStatus);
+    const sub = AppState.addEventListener('change', nextState => {
+      if (nextState !== 'active') return;
+      getNotificationPermissionStatus().then(status => {
+        setPermStatus(prev => {
+          if (status === 'granted' && prev !== 'granted') registerForPushNotifications();
+          return status;
+        });
+      });
+    });
+    return () => sub.remove();
+  }, []);
+
+  // Re-checked on foreground for the same reason as the permission check
+  // above: coming back from Settings (or just regaining signal) should
+  // clear the offline message without requiring a manual retry tap.
+  useEffect(() => {
+    let cancelled = false;
+    checkIsOnline().then(online => {
+      if (!cancelled) setIsOffline(!online);
+    });
+    const sub = AppState.addEventListener('change', nextState => {
+      if (nextState !== 'active') return;
+      checkIsOnline().then(online => {
+        if (!cancelled) setIsOffline(!online);
+      });
+    });
+    return () => {
+      cancelled = true;
+      sub.remove();
+    };
+  }, []);
+
+  const handleRetryConnection = () => {
+    setCheckingConnection(true);
+    checkIsOnline()
+      .then(online => setIsOffline(!online))
+      .finally(() => setCheckingConnection(false));
+  };
+
+  // expo-notifications has no in-app "enable" action once a permission
+  // decision has been made (Android silently no-ops a re-request after a
+  // denial, iOS never re-prompts at all) — the OS notification settings
+  // screen for this app is the only place left that can flip it back on.
+  const handleEnableNotifications = () => {
+    Linking.openSettings();
+  };
+
+  const handleCtaPress = (item: NotificationItem) => {
+    if (isVideosNavCategory(item)) {
+      // Fires while this screen is still on top of the stack — the tabs
+      // layout underneath is already mounted and listening, so the Videos
+      // sub-tab is switched before back() even reveals it.
+      requestVideosTab(item.category);
+      router.back();
+      return;
+    }
     if (item.link) {
       Linking.openURL(item.link).catch(() => {});
     }
@@ -153,7 +247,51 @@ export default function NotificationCenterScreen() {
         <View style={styles.backBtn} />
       </LinearGradient>
 
-      {sections.length === 0 ? (
+      {permStatus && permStatus !== 'granted' && permStatus !== 'unsupported' && !bannerDismissed && (
+        <View style={[styles.permBanner, { backgroundColor: c.surface, borderColor: c.divider }]}>
+          <View style={[styles.permIconWrap, { backgroundColor: c.raised }]}>
+            <Ionicons name="notifications-off-outline" size={20} color={c.accent} />
+          </View>
+          <View style={styles.permContent}>
+            <Text style={[styles.permTitle, { color: c.text }]}>Don&apos;t miss new notifications</Text>
+            <Text style={[styles.permText, { color: c.subtext }]}>
+              Turn on notifications to get the latest announcements and updates.
+            </Text>
+            <TouchableOpacity
+              style={[styles.permButton, { backgroundColor: c.raised, borderColor: c.accent }]}
+              onPress={handleEnableNotifications}
+            >
+              <Text style={[styles.permButtonText, { color: c.accent }]}>Turn on Notifications</Text>
+            </TouchableOpacity>
+          </View>
+          <TouchableOpacity
+            onPress={() => setBannerDismissed(true)}
+            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+          >
+            <Ionicons name="close" size={18} color={c.subtext} />
+          </TouchableOpacity>
+        </View>
+      )}
+
+      {sections.length === 0 && isOffline ? (
+        <View style={styles.emptyBox}>
+          <View style={[styles.emptyIconWrap, { backgroundColor: c.raised, borderColor: c.accent }]}>
+            <Ionicons name="cloud-offline-outline" size={40} color={c.accent} />
+          </View>
+          <Text style={[styles.emptyTitle, { color: c.text }]}>You&apos;re offline</Text>
+          <Text style={[styles.emptyText, { color: c.subtext }]}>
+            Turn on your internet connection to view notifications.
+          </Text>
+          <TouchableOpacity
+            style={[styles.retryBtn, { backgroundColor: c.accent }]}
+            onPress={handleRetryConnection}
+            disabled={checkingConnection}
+          >
+            <Ionicons name="refresh" size={15} color="#fff" />
+            <Text style={styles.retryBtnText}>{checkingConnection ? 'Checking…' : 'Try Again'}</Text>
+          </TouchableOpacity>
+        </View>
+      ) : sections.length === 0 ? (
         <View style={styles.emptyBox}>
           <Animated.View
             style={[styles.emptyGlow, { backgroundColor: c.accent, opacity: glowAnim }]}
@@ -193,37 +331,38 @@ export default function NotificationCenterScreen() {
 
                 <View style={styles.content}>
                   <View style={styles.titleRow}>
-                    <Text style={[styles.title, { color: c.text }]} numberOfLines={2}>
+                    <Text
+                      style={[styles.title, { color: c.text }]}
+                      numberOfLines={isExpanded ? undefined : 2}
+                    >
                       {title}
                     </Text>
                     <Text style={[styles.time, { color: c.subtext }]}>{formatItemTime(item.createdAt)}</Text>
                   </View>
                   {!!body && (
-                    <>
-                      <Text
-                        style={[styles.body, { color: c.subtext }]}
-                        numberOfLines={isExpanded ? undefined : 3}
-                      >
-                        {body}
-                      </Text>
-                      {isBodyTruncated(body) && (
-                        <View style={styles.readMoreRow}>
-                          <Text style={[styles.readMoreText, { color: c.accent }]}>
-                            {isExpanded ? 'Show less' : 'Read more'}
-                          </Text>
-                          <Ionicons
-                            name={isExpanded ? 'chevron-up' : 'chevron-down'}
-                            size={13}
-                            color={c.accent}
-                          />
-                        </View>
-                      )}
-                    </>
+                    <Text
+                      style={[styles.body, { color: c.subtext }]}
+                      numberOfLines={isExpanded ? undefined : 3}
+                    >
+                      {body}
+                    </Text>
                   )}
-                  {!!item.link && (
+                  {(isTitleTruncated(title) || isBodyTruncated(body)) && (
+                    <View style={styles.readMoreRow}>
+                      <Text style={[styles.readMoreText, { color: c.accent }]}>
+                        {isExpanded ? 'Show less' : 'Read more'}
+                      </Text>
+                      <Ionicons
+                        name={isExpanded ? 'chevron-up' : 'chevron-down'}
+                        size={13}
+                        color={c.accent}
+                      />
+                    </View>
+                  )}
+                  {(!!item.link || isVideosNavCategory(item)) && (
                     <TouchableOpacity
                       style={[styles.ctaButton, { backgroundColor: c.accent }]}
-                      onPress={() => handleOpenLink(item)}
+                      onPress={() => handleCtaPress(item)}
                       hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                     >
                       <Text style={styles.ctaText}>{linkLabel(item)}</Text>
@@ -251,6 +390,29 @@ const styles = StyleSheet.create({
   },
   backBtn: { width: 32 },
   headerTitle: { flex: 1, fontSize: 18, fontWeight: 'bold', textAlign: 'center', color: '#fff' },
+  permBanner: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 12,
+    margin: 16,
+    marginBottom: 0,
+    padding: 14,
+    borderRadius: 16,
+    borderWidth: 1,
+    elevation: 2,
+  },
+  permIconWrap: { width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center' },
+  permContent: { flex: 1 },
+  permTitle: { fontSize: 14, fontWeight: '700', marginBottom: 4 },
+  permText: { fontSize: 12.5, lineHeight: 18, marginBottom: 10 },
+  permButton: {
+    alignSelf: 'flex-start',
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+    borderRadius: 20,
+    borderWidth: 1.5,
+  },
+  permButtonText: { fontSize: 13, fontWeight: '700' },
   emptyBox: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 40 },
   emptyGlow: { position: 'absolute', width: 150, height: 150, borderRadius: 75 },
   emptyIconWrap: {
@@ -265,6 +427,16 @@ const styles = StyleSheet.create({
   },
   emptyTitle: { fontSize: 18, fontWeight: '800', marginBottom: 8, textAlign: 'center' },
   emptyText: { fontSize: 13, lineHeight: 19, textAlign: 'center', maxWidth: 260 },
+  retryBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingHorizontal: 24,
+    paddingVertical: 12,
+    borderRadius: 24,
+    marginTop: 18,
+  },
+  retryBtnText: { color: '#fff', fontSize: 14, fontWeight: '700' },
   sectionTitle: {
     fontSize: 13,
     fontWeight: '700',

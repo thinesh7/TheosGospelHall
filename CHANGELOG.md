@@ -5,6 +5,20 @@ All notable changes to the Theos Gospel Hall app are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [1.6.0] - 2026-08-27
+
+### Added
+- **Church Members Management**: a new Admin Panel module (Admin Panel → Church Members) for managing the church's membership records across branches. Supports adding, editing, deactivating/reactivating, and permanently deleting both families and individual members; family-level deactivate/reactivate cascades to all of that family's members. Members and families can be searched and filtered by branch, with per-person contact actions (copy, call, WhatsApp). A Reports view shows Overall, Gender, and Members-by-Branch summaries with a Status filter (Active/Inactive/All) that scopes the Overall tiles while Gender and Branch breakdowns stay always-active. Member lists export to Excel and PDF — mixed lists split Families and Individuals into separate sheets/sections, family members are grouped together, and every generated PDF (member lists, reports, and registrations) now carries a church logo letterhead.
+- **Live/Songs deep-link notifications**: two new notification categories, "Live" and "Songs", in the admin Send Notifications screen. Selecting either hides the manual link field and shows a note that the notification's "Click Here" button takes users straight to that section; tapping it in the Notification Center jumps directly to Videos → Live or Videos → Songs.
+- **Notification permission nudge**: the Notification Center shows a dismissible banner asking users to enable notifications when the device's permission isn't granted, with a button that opens the OS notification settings. Granting permission while the app is open (e.g. returning from Settings) registers the device for push immediately instead of waiting for the next app launch.
+- **Offline notification detection**: the Notification Center now detects when the device has no internet connection and, if there's nothing cached to show, displays a "You're offline" message with a "Try Again" button instead of a misleading blank screen.
+
+### Changed
+- **Push notification delivery reporting**: sending a notification (Send Notifications or Notify Users About Update) now checks Expo's delivery receipts a few seconds after sending, instead of only confirming the message was accepted for relay, and lists the actual delivery failure reasons (grouped, with counts) in the "Partially Sent" alert. Devices found to be no longer registered are automatically removed from the push token list.
+
+### Fixed
+- **Notification Center long titles**: a notification title running longer than two lines was permanently cut off with no way to read the rest, even though the message body already had a "Read more" toggle for the same problem. Long titles now expand together with the body when the notification is tapped.
+
 ## [1.5.2] - 2026-08-22
 
 ### Fixed
