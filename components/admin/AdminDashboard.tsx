@@ -1,7 +1,7 @@
 import { ScrollView, StyleSheet, TouchableOpacity, View } from 'react-native';
 import { Text } from '../AppText';
 
-export type AdminModule = 'specialMeetings' | 'songsMenu' | 'homeContent' | 'registrations' | 'churchMembers' | 'appManagement';
+export type AdminModule = 'specialMeetings' | 'songsMenu' | 'homeContent' | 'registrations' | 'churchMembers' | 'tghArticles' | 'appManagement';
 
 interface ModuleCard {
   id: AdminModule;
@@ -16,6 +16,12 @@ const MODULES: ModuleCard[] = [
     icon: '👥',
     title: 'Church Members',
     subtitle: 'Manage church members and families across all branches',
+  },
+  {
+    id: 'tghArticles',
+    icon: '📰',
+    title: 'TGH Articles',
+    subtitle: 'Add, edit, and publish TGH Articles',
   },
   {
     id: 'songsMenu',

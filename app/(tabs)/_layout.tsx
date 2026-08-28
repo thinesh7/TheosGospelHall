@@ -10,16 +10,16 @@ import { checkCurrentlyLive, LiveNowInfo } from '../../utils/liveStatus';
 import { useTheme } from '../../utils/ThemeContext';
 import { useIsUpdateGateActive } from '../../utils/UpdateGateContext';
 import { subscribeVideosTabRequest, VideosSubTab } from '../../utils/videoNavigation';
-import BibleScreen from './bible';
 import ContactScreen from './contact';
 import HomeScreen from './index';
+import ReadingScreen from './reading';
 import SongsHubScreen from './songs-hub';
 import VideosScreen from './videos';
 
 const TABS = [
   { name: 'Home', icon: 'home' },
   { name: 'Videos', icon: 'play-circle' },
-  { name: 'Bible', icon: 'book' },
+  { name: 'Reading', icon: 'book' },
   { name: 'Songs', icon: 'musical-notes' },
   { name: 'Contact', icon: 'call' },
 ];
@@ -113,7 +113,7 @@ export default function TabLayout() {
             />
           ) : null}
         </View>
-        <View key="2" style={{ flex: 1, backgroundColor: colors.bg }}>{visitedTabs.has(2) ? <BibleScreen /> : null}</View>
+        <View key="2" style={{ flex: 1, backgroundColor: colors.bg }}>{visitedTabs.has(2) ? <ReadingScreen /> : null}</View>
         <View key="3" style={{ flex: 1, backgroundColor: colors.bg }}>{visitedTabs.has(3) ? <SongsHubScreen /> : null}</View>
         <View key="4" style={{ flex: 1, backgroundColor: colors.bg }}>{visitedTabs.has(4) ? <ContactScreen /> : null}</View>
       </PagerView>

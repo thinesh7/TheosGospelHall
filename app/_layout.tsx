@@ -76,6 +76,7 @@ function AppStack() {
       <Stack.Screen name="song-reader" options={{ headerShown: false }} />
       <Stack.Screen name="other-song-reader" options={{ headerShown: false }} />
       <Stack.Screen name="bible-reader" options={{ headerShown: false }} />
+      <Stack.Screen name="article-reader" options={{ headerShown: false }} />
       <Stack.Screen name="notification-center" options={{ headerShown: false }} />
     </Stack>
   );

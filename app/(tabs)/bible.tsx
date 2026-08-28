@@ -1,6 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
-import { useEffect, useState } from 'react';
+import { ReactNode, useEffect, useState } from 'react';
 import {
   BackHandler,
   FlatList,
@@ -52,7 +52,11 @@ function SettingsModal({ visible, onClose, c, fontSize, setFontSize }: SettingsM
   );
 }
 
-export default function BibleScreen() {
+interface Props {
+  headerTitle?: ReactNode;
+}
+
+export default function BibleScreen({ headerTitle }: Props) {
   const router = useRouter();
   const { colors: c, theme, cycleTheme } = useTheme();
   const insets = useSafeAreaInsets();
@@ -111,10 +115,14 @@ export default function BibleScreen() {
       <View style={[styles.container, { backgroundColor: c.bg }]}>
         <StatusBar barStyle={theme === 'light' ? 'dark-content' : 'light-content'} />
         <View style={[styles.header, { backgroundColor: c.headerBg, paddingRight: 16 + insets.right }]}>
-          <View style={{ flex: 1 }}>
-            <Text style={[styles.headerTitle, { color: c.text }]}>📖 Bible</Text>
-            <Text style={[styles.headerSubtitle, { color: c.subtext }]}>{BIBLE_VERSIONS.length} versions available</Text>
-          </View>
+          {headerTitle ? (
+            <View style={{ flex: 1 }}>{headerTitle}</View>
+          ) : (
+            <View style={{ flex: 1 }}>
+              <Text style={[styles.headerTitle, { color: c.text }]}>📖 Bible</Text>
+              <Text style={[styles.headerSubtitle, { color: c.subtext }]}>{BIBLE_VERSIONS.length} versions available</Text>
+            </View>
+          )}
           <TouchableOpacity onPress={cycleTheme} style={styles.themeBtn}>
             <ThemeToggleIcon theme={theme} size={22} color={c.text} />
           </TouchableOpacity>

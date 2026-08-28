@@ -13,6 +13,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Text } from './AppText';
 import AdminDashboard, { AdminModule } from './admin/AdminDashboard';
 import ApiKeysAdmin from './admin/ApiKeysAdmin';
+import ArticlesAdmin from './admin/ArticlesAdmin';
 import AppManagementMenu, { AppManagementModule } from './admin/AppManagementMenu';
 import AppUpdateAdmin from './admin/AppUpdateAdmin';
 import ChurchMembersAdmin from './admin/ChurchMembersAdmin';
@@ -53,6 +54,7 @@ type ViewKey =
   | 'registrationsManageYouth'
   | 'registrationsManageAcademy'
   | 'churchMembers'
+  | 'tghArticles'
   | 'appUpdate';
 
 interface ViewMeta {
@@ -81,6 +83,7 @@ const VIEW_META: Record<ViewKey, ViewMeta> = {
   registrationsManageYouth: { title: '🔥 Manage Youth Program', subtitle: 'Status, closed message & visibility' },
   registrationsManageAcademy: { title: '🎓 Manage TGH Academy', subtitle: 'Status, closed message & visibility' },
   churchMembers: { title: '👥 Church Members', subtitle: 'Manage church members and families across all branches' },
+  tghArticles: { title: '📰 TGH Articles', subtitle: 'Add, edit, and publish TGH Articles' },
   appUpdate: { title: '⬆️ App Update Settings', subtitle: 'Manage force/optional update rollout' },
 };
 
@@ -135,6 +138,7 @@ export default function AdminPanel({ visible, onClose, onEventsUpdated }: Props)
     else if (module === 'homeContent') pushView('homeContent');
     else if (module === 'registrations') pushView('registrationsTopMenu');
     else if (module === 'churchMembers') pushView('churchMembers');
+    else if (module === 'tghArticles') pushView('tghArticles');
     else if (module === 'appManagement') pushView('appManagementMenu');
   };
 
@@ -274,6 +278,10 @@ export default function AdminPanel({ visible, onClose, onEventsUpdated }: Props)
 
             {currentView === 'churchMembers' && (
               <ChurchMembersAdmin ref={activeScreenRef} />
+            )}
+
+            {currentView === 'tghArticles' && (
+              <ArticlesAdmin ref={activeScreenRef} />
             )}
 
             {currentView === 'appUpdate' && (
