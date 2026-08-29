@@ -248,9 +248,12 @@ export default function SongsScreen({ headerTitle }: { headerTitle?: React.React
   const SongCard = useCallback(({ item }: { item: SongIndexEntry }) => {
     const isFav = favorites.includes(item.songId);
     return (
-      <TouchableOpacity style={[styles.card, { backgroundColor: c.surface }]} onPress={() => openSong(item.songNumber)}>
+      <TouchableOpacity style={[styles.card, { backgroundColor: c.surface, borderColor: c.divider }]} onPress={() => openSong(item.songNumber)}>
+        <View style={[styles.numberBadge, { backgroundColor: c.accent }]}>
+          <Text style={styles.numberBadgeText}>{item.songNumber}</Text>
+        </View>
         <Text style={[styles.cardText, { color: c.text }]} numberOfLines={3}>
-          {item.title}
+          {stripNumber(item.title)}
         </Text>
         <TouchableOpacity
           onPress={() => toggleFavorite(item)}
@@ -278,7 +281,7 @@ export default function SongsScreen({ headerTitle }: { headerTitle?: React.React
         </View>
       </View>
 
-      <View style={[styles.searchBar, { backgroundColor: c.surfaceAlt }]}>
+      <View style={[styles.searchBar, { backgroundColor: c.surfaceAlt, borderColor: c.divider }]}>
         <Ionicons name="search" size={20} color={c.subtext} />
         <TextInput
           style={[styles.searchInput, { color: c.text }]}
@@ -294,27 +297,30 @@ export default function SongsScreen({ headerTitle }: { headerTitle?: React.React
         )}
       </View>
 
-      <View style={[styles.tabsRow, { backgroundColor: c.surfaceAlt }]}>
+      <View style={[styles.tabsRow, { backgroundColor: c.surfaceAlt, borderColor: c.divider }]}>
         <TouchableOpacity
-          style={[styles.tab, activeTab === 'numbers' && { backgroundColor: c.accent }]}
+          style={[styles.tab, activeTab === 'numbers' && styles.tabActive, activeTab === 'numbers' && { backgroundColor: c.accent }]}
           onPress={() => selectTab('numbers')}
         >
+          <Ionicons name="list-outline" size={15} color={activeTab === 'numbers' ? '#fff' : c.accent} />
           <Text style={[styles.tabText, { color: activeTab === 'numbers' ? '#fff' : c.accent }]}>
             1 to 720
           </Text>
         </TouchableOpacity>
         <TouchableOpacity
-          style={[styles.tab, activeTab === 'az' && { backgroundColor: c.accent }]}
+          style={[styles.tab, activeTab === 'az' && styles.tabActive, activeTab === 'az' && { backgroundColor: c.accent }]}
           onPress={() => selectTab('az')}
         >
+          <Ionicons name="swap-vertical-outline" size={15} color={activeTab === 'az' ? '#fff' : c.accent} />
           <Text style={[styles.tabText, { color: activeTab === 'az' ? '#fff' : c.accent }]}>
             A to Z
           </Text>
         </TouchableOpacity>
         <TouchableOpacity
-          style={[styles.tab, activeTab === 'favorites' && { backgroundColor: c.accent }]}
+          style={[styles.tab, activeTab === 'favorites' && styles.tabActive, activeTab === 'favorites' && { backgroundColor: c.accent }]}
           onPress={() => selectTab('favorites')}
         >
+          <Ionicons name="heart-outline" size={15} color={activeTab === 'favorites' ? '#fff' : c.accent} />
           <Text style={[styles.tabText, { color: activeTab === 'favorites' ? '#fff' : c.accent }]}>
             Favorites
           </Text>
@@ -370,9 +376,14 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginHorizontal: 16,
     borderRadius: 30,
+    borderWidth: 1,
     paddingHorizontal: 16,
     paddingVertical: 12,
     elevation: 2,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.06,
+    shadowRadius: 4,
   },
   searchInput: { flex: 1, marginLeft: 10, fontSize: 16 },
   tabsRow: {
@@ -381,26 +392,59 @@ const styles = StyleSheet.create({
     marginTop: 16,
     marginBottom: 4,
     borderRadius: 30,
+    borderWidth: 1,
     padding: 4,
     elevation: 1,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 3,
   },
   tab: {
     flex: 1,
+    flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
+    gap: 5,
     paddingVertical: 10,
     borderRadius: 26,
+  },
+  // Applied only to the active segment — a touch of raised depth so the
+  // selection reads clearly without leaning on brightness/contrast alone.
+  tabActive: {
+    elevation: 3,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.15,
+    shadowRadius: 4,
   },
   tabText: { fontSize: 14, fontWeight: '600' },
   card: {
     borderRadius: 14,
     padding: 16,
     marginBottom: 12,
-    elevation: 1,
+    borderWidth: 1,
+    elevation: 2,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.06,
+    shadowRadius: 3,
     flexDirection: 'row',
-    alignItems: 'flex-start',
+    // Centered rather than flex-start so the heart icon sits at a
+    // consistent vertical position regardless of whether the Tamil title
+    // wraps to one, two, or three lines.
+    alignItems: 'center',
     justifyContent: 'space-between',
   },
+  numberBadge: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 12,
+  },
+  numberBadgeText: { fontSize: 14, fontWeight: '700', color: '#fff' },
   cardText: { fontSize: 16, flex: 1, lineHeight: 24 },
   favIconBtn: { marginLeft: 8, padding: 2 },
   empty: { textAlign: 'center', marginTop: 40, fontSize: 14 },

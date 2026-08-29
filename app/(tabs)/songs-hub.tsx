@@ -1,3 +1,4 @@
+import { Ionicons } from '@expo/vector-icons';
 import { useState } from 'react';
 import { StyleSheet, TouchableOpacity, View } from 'react-native';
 import { Text } from '../../components/AppText';
@@ -7,8 +8,8 @@ import SongsScreen from './songs';
 
 type CollectionTab = 'geethangalum' | 'other';
 
-const OPTIONS: { id: CollectionTab; label: string }[] = [
-  { id: 'geethangalum', label: 'Geethangalum Keerthanaigalum' },
+const OPTIONS: { id: CollectionTab; label: string; icon?: keyof typeof Ionicons.glyphMap }[] = [
+  { id: 'geethangalum', label: 'Geethangalum Keerthanaigalum', icon: 'musical-notes' },
   { id: 'other', label: 'Special Songs' },
 ];
 
@@ -28,17 +29,22 @@ export default function SongsHubScreen() {
             onPress={() => setActiveCollection(opt.id)}
             activeOpacity={0.8}
           >
-            <Text
-              style={[
-                styles.segmentText,
-                { color: isActive ? '#fff' : c.accent },
-              ]}
-              numberOfLines={2}
-              adjustsFontSizeToFit
-              minimumFontScale={0.6}
-            >
-              {opt.label}
-            </Text>
+            <View style={styles.segmentContent}>
+              {opt.icon && (
+                <Ionicons name={opt.icon} size={14} color={isActive ? '#fff' : c.accent} />
+              )}
+              <Text
+                style={[
+                  styles.segmentText,
+                  { color: isActive ? '#fff' : c.accent },
+                ]}
+                numberOfLines={2}
+                adjustsFontSizeToFit
+                minimumFontScale={0.6}
+              >
+                {opt.label}
+              </Text>
+            </View>
           </TouchableOpacity>
         );
       })}
@@ -66,6 +72,11 @@ const styles = StyleSheet.create({
     padding: 3,
     flex: 1,
     marginRight: 12,
+    elevation: 1,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 3,
   },
   segment: {
     flex: 1,
@@ -75,5 +86,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  segmentText: { fontSize: 13, fontWeight: '700', textAlign: 'center' },
+  segmentContent: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  segmentText: { fontSize: 13, fontWeight: '700', textAlign: 'center', flexShrink: 1 },
 });
