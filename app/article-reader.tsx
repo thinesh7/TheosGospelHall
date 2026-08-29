@@ -1,7 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import { useEffect, useMemo, useState } from 'react';
-import { ActivityIndicator, Modal, ScrollView, Share, StyleSheet, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, BackHandler, Modal, ScrollView, Share, StyleSheet, TouchableOpacity, View } from 'react-native';
 import Markdown from 'react-native-markdown-display';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Text } from '../components/AppText';
@@ -58,6 +58,19 @@ export default function ArticleReaderScreen() {
     });
     return () => { cancelled = true; };
   }, [articleId]);
+
+  // Without this, hardware back falls through to the Reading hub's own
+  // listener (still mounted in the background — tabs are kept alive, not
+  // unmounted — see app/(tabs)/reading.tsx), which swallows the press
+  // instead of popping this screen. bible-reader.tsx claims it the same way.
+  useEffect(() => {
+    const handler = BackHandler.addEventListener('hardwareBackPress', () => {
+      if (showSettings) { setShowSettings(false); return true; }
+      router.back();
+      return true;
+    });
+    return () => handler.remove();
+  }, [showSettings]);
 
   const markdownStyles = useMemo(() => buildArticleMarkdownStyles(c, fontSize), [c, fontSize]);
 

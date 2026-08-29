@@ -1,4 +1,5 @@
 import { Ionicons } from '@expo/vector-icons';
+import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
 import { ReactNode, useEffect, useState } from 'react';
 import {
@@ -18,6 +19,131 @@ import ThemeToggleIcon from '../../components/ThemeToggleIcon';
 import { BIBLE_VERSIONS, BOOKS } from '../../utils/bibleData';
 import { getMemBibleSettings, saveBibleSettings } from '../../utils/bibleSettings';
 import { useTheme } from '../../utils/ThemeContext';
+import { ThemeName } from '../../utils/theme';
+
+// Fixed hex (not theme tokens), same pattern as READING_SECTIONS in reading.tsx.
+const TAMIL_ACCENT = '#ef4444';
+const TAMIL_ICON_COLORS = ['#7f1d2e', '#ef4444'];
+const ENGLISH_ACCENT = '#22c55e';
+const ENGLISH_ICON_COLOR = '#16a34a';
+
+interface BilingualCardStyle {
+  gradient: [string, string, string];
+  // Dark-only extras: a warm glow overlay laid on top of `gradient`, a subtle border, a
+  // tinted shadow, gradient-filled chips (vs. flat color), and a distinct dot-pattern tint.
+  // Left undefined for light/sepia so their look is unchanged.
+  glowGradient?: [string, string, string];
+  glowLocations?: [number, number, number];
+  cardBorder?: string;
+  shadowColor?: string;
+  text: string;
+  subtext: string;
+  chipBackBg: string;
+  chipBackGradient?: [string, string];
+  chipBackText: string;
+  chipFrontBg: string;
+  chipFrontGradient?: [string, string];
+  chipFrontText: string;
+  swapBg: string;
+  swapIcon: string;
+  buttonBg: string;
+  buttonText: string;
+  buttonIconBg: string;
+  buttonIconColor: string;
+  decoration: string;
+  dotColor?: string;
+}
+
+// The Bilingual card is a deliberate exception to the rest of this screen: instead of
+// tinting the theme's own surface color (which read as a washed-out, muddy tint against
+// light/sepia surfaces), each theme gets its own self-contained, high-contrast, "premium"
+// look — a base gradient plus a second glow gradient layered on top (glowGradient),
+// concentrated toward the bottom-right CTA corner via glowLocations, a subtle border
+// (cardBorder), and gradient-filled chips (chipBackGradient/chipFrontGradient) for a 3D,
+// stacked-card feel. Each theme's glow/border/chip colors are its own: brighter royal-blue
+// "sheen" for light, warm orange glow for dark, and amber "sunlit parchment" for sepia —
+// same layered technique, different palette per theme.
+const BILINGUAL_STYLES: Record<ThemeName, BilingualCardStyle> = {
+  light: {
+    // Royal-blue base with a soft light-blue "sheen" glowing in from the bottom-right,
+    // like light catching a glossy surface — brighter rather than warmer, to suit light
+    // mode's cleaner, airier feel.
+    gradient: ['#152a6b', '#1e3fae', '#3b5bdb'],
+    glowGradient: ['rgba(147,197,253,0)', 'rgba(147,197,253,0)', 'rgba(147,197,253,0.4)'],
+    glowLocations: [0, 0.5, 1],
+    cardBorder: 'rgba(255,255,255,0.18)',
+    shadowColor: '#1e3fae',
+    text: '#ffffff',
+    subtext: 'rgba(255,255,255,0.85)',
+    chipBackBg: '#d1479f',
+    chipBackGradient: ['#f472b6', '#c23a8c'],
+    chipBackText: '#ffffff',
+    chipFrontBg: '#1b1440',
+    chipFrontGradient: ['#2d2160', '#150f38'],
+    chipFrontText: '#ffffff',
+    swapBg: '#ffffff',
+    swapIcon: '#1e3fae',
+    buttonBg: '#ffffff',
+    buttonText: '#1e3fae',
+    buttonIconBg: '#1e3fae',
+    buttonIconColor: '#ffffff',
+    decoration: 'rgba(255,255,255,0.16)',
+    dotColor: 'rgba(255,255,255,0.32)',
+  },
+  dark: {
+    // Deep purple-to-burgundy base that blends into the dark background, with a warm
+    // red/orange glow layered on top (via glowGradient below) concentrated toward the
+    // bottom-right corner, near the CTA — a premium, moody look rather than a flat
+    // saturated gradient.
+    gradient: ['#1b0f2e', '#241132', '#2c1330'],
+    glowGradient: ['rgba(255,90,45,0)', 'rgba(255,90,45,0)', 'rgba(255,74,58,0.45)'],
+    glowLocations: [0, 0.5, 1],
+    cardBorder: 'rgba(255,255,255,0.08)',
+    shadowColor: '#ff6a2b',
+    text: '#ffffff',
+    subtext: 'rgba(255,255,255,0.85)',
+    chipBackBg: '#c2447a',
+    chipBackGradient: ['#e0508f', '#b52e68'],
+    chipBackText: '#ffffff',
+    chipFrontBg: '#241b47',
+    chipFrontGradient: ['#332048', '#1c0f2b'],
+    chipFrontText: '#ffffff',
+    swapBg: '#ffffff',
+    swapIcon: '#2b1740',
+    buttonBg: '#ff6a2b',
+    buttonText: '#ffffff',
+    buttonIconBg: '#ffffff',
+    buttonIconColor: '#ff6a2b',
+    decoration: 'rgba(255,255,255,0.14)',
+    dotColor: 'rgba(255,255,255,0.22)',
+  },
+  sepia: {
+    // Warm parchment-to-leather base with an amber glow gathering toward the bottom-right,
+    // like sunlight catching an old book cover — matches the gold/brown accent already used
+    // for its Start Reading button.
+    gradient: ['#eccf93', '#d9a441', '#a3672c'],
+    glowGradient: ['rgba(196,120,40,0)', 'rgba(196,120,40,0)', 'rgba(139,69,19,0.4)'],
+    glowLocations: [0, 0.5, 1],
+    cardBorder: 'rgba(139,69,19,0.25)',
+    shadowColor: '#a3672c',
+    text: '#3a2213',
+    subtext: 'rgba(58,34,19,0.72)',
+    chipBackBg: '#ffffff',
+    chipBackGradient: ['#fffaf0', '#efdcb0'],
+    chipBackText: '#3a2213',
+    chipFrontBg: '#3a2213',
+    chipFrontGradient: ['#4a2f1a', '#2b1810'],
+    chipFrontText: '#f4ecd8',
+    swapBg: '#ffffff',
+    swapIcon: '#a3672c',
+    buttonBg: '#8b4513',
+    buttonText: '#ffffff',
+    buttonIconBg: 'rgba(255,255,255,0.3)',
+    buttonIconColor: '#8b4513',
+    decoration: 'rgba(58,34,19,0.14)',
+    dotColor: 'rgba(58,34,19,0.24)',
+  },
+};
 
 interface SettingsModalProps {
   visible: boolean;
@@ -111,6 +237,7 @@ export default function BibleScreen({ headerTitle }: Props) {
   if (view === 'home') {
     const tamilVersions = BIBLE_VERSIONS.filter(v => v.lang === 'Tamil');
     const englishVersions = BIBLE_VERSIONS.filter(v => v.lang === 'English');
+    const bs = BILINGUAL_STYLES[theme];
     return (
       <View style={[styles.container, { backgroundColor: c.bg }]}>
         <StatusBar barStyle={theme === 'light' ? 'dark-content' : 'light-content'} />
@@ -124,50 +251,111 @@ export default function BibleScreen({ headerTitle }: Props) {
             </View>
           )}
           <TouchableOpacity onPress={cycleTheme} style={styles.themeBtn}>
-            <ThemeToggleIcon theme={theme} size={22} color={c.text} />
+            <ThemeToggleIcon theme={theme} size={26} color={c.text} />
           </TouchableOpacity>
           <TouchableOpacity onPress={() => setShowSettings(true)} style={styles.settingsBtn}>
             <Ionicons name="settings-outline" size={22} color={c.text} />
           </TouchableOpacity>
         </View>
         <ScrollView contentContainerStyle={{ padding: 16 }}>
-          <TouchableOpacity style={[styles.bilingualCard, { backgroundColor: c.accent }]} onPress={() => {
+          <TouchableOpacity activeOpacity={0.9} onPress={() => {
             setIsBilingual(true); setVersion(getMemBibleSettings().primaryVersion);
             setView('books'); setTestament('OT');
           }}>
-            <View style={{ flex: 1 }}>
-              <View style={styles.bilingualTitleRow}>
-                <View style={styles.bilingualMark}>
-                  <Text style={styles.bilingualMarkText}>அ / A</Text>
-                </View>
-                <Text style={styles.bilingualTitle}>Bilingual Reading</Text>
+            <LinearGradient
+              colors={bs.gradient}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
+              style={[
+                styles.bilingualCard,
+                { shadowColor: bs.shadowColor ?? '#7c3aed' },
+                bs.cardBorder ? { borderWidth: 1, borderColor: bs.cardBorder } : null,
+              ]}
+            >
+              {bs.glowGradient && (
+                <LinearGradient
+                  colors={bs.glowGradient}
+                  locations={bs.glowLocations}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 1 }}
+                  style={StyleSheet.absoluteFill}
+                />
+              )}
+              <Ionicons name="book-outline" size={72} color={bs.decoration} style={styles.bilingualDecoration} />
+              <View style={styles.bilingualDotGrid}>
+                {Array.from({ length: 9 }).map((_, i) => (
+                  <View key={i} style={[styles.bilingualDot, { backgroundColor: bs.dotColor ?? bs.decoration }]} />
+                ))}
               </View>
-              <Text style={styles.bilingualDesc}>Tamil (top) + English (bottom) together</Text>
-            </View>
-            <Ionicons name="chevron-forward" size={24} color="#fff" />
+
+              <View style={styles.bilingualTopRow}>
+                <View style={styles.chipStack}>
+                  <LinearGradient
+                    colors={bs.chipBackGradient ?? [bs.chipBackBg, bs.chipBackBg]}
+                    start={{ x: 0, y: 0 }}
+                    end={{ x: 1, y: 1 }}
+                    style={styles.chipBack}
+                  >
+                    <Text style={[styles.chipText, { color: bs.chipBackText }]}>தமிழ்</Text>
+                  </LinearGradient>
+                  <LinearGradient
+                    colors={bs.chipFrontGradient ?? [bs.chipFrontBg, bs.chipFrontBg]}
+                    start={{ x: 0, y: 0 }}
+                    end={{ x: 1, y: 1 }}
+                    style={styles.chipFront}
+                  >
+                    <Text style={[styles.chipText, { color: bs.chipFrontText }]}>English</Text>
+                  </LinearGradient>
+                  <View style={[styles.swapBadge, { backgroundColor: bs.swapBg }]}>
+                    <Ionicons name="swap-vertical" size={14} color={bs.swapIcon} />
+                  </View>
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={[styles.bilingualTitle, { color: bs.text }]}>Bilingual Reading</Text>
+                  <Text style={[styles.bilingualDesc, { color: bs.subtext }]}>
+                    Read Tamil (top) and English (bottom) together
+                  </Text>
+                </View>
+              </View>
+
+              <View style={[styles.startBtn, { backgroundColor: bs.buttonBg }]}>
+                <Text style={[styles.startBtnText, { color: bs.buttonText }]}>Start Reading</Text>
+                <View style={[styles.startBtnIcon, { backgroundColor: bs.buttonIconBg }]}>
+                  <Ionicons name="arrow-forward" size={14} color={bs.buttonIconColor} />
+                </View>
+              </View>
+            </LinearGradient>
           </TouchableOpacity>
-          <Text style={[styles.sectionLabel, { color: c.subtext }]}>Tamil Versions</Text>
-          {tamilVersions.map(v => (
+
+          <View style={styles.sectionLabelRow}>
+            <View style={[styles.sectionBar, { backgroundColor: TAMIL_ACCENT }]} />
+            <Text style={[styles.sectionLabel, { color: c.subtext }]}>Tamil Versions</Text>
+          </View>
+          {tamilVersions.map((v, i) => (
             <TouchableOpacity key={v.code} style={[styles.versionCard, { backgroundColor: c.surface }]}
               onPress={() => { setIsBilingual(false); selectVersion(v.code); setView('books'); setTestament('OT'); }}>
-              <View style={[styles.versionIcon, { backgroundColor: c.accent }]}><Text style={styles.versionIconText}>த</Text></View>
+              <View style={[styles.versionIcon, { backgroundColor: TAMIL_ICON_COLORS[i % TAMIL_ICON_COLORS.length] }]}><Text style={styles.versionIconText}>த</Text></View>
               <View style={{ flex: 1 }}>
                 <Text style={[styles.versionName, { color: c.text }]}>{v.name}</Text>
                 <Text style={[styles.versionShort, { color: c.subtext }]}>{v.short}</Text>
               </View>
-              <Ionicons name="chevron-forward" size={18} color={c.subtext} />
+              <Ionicons name="chevron-forward" size={18} color={TAMIL_ACCENT} />
             </TouchableOpacity>
           ))}
-          <Text style={[styles.sectionLabel, { color: c.subtext, marginTop: 16 }]}>English Versions</Text>
+
+          <View style={[styles.sectionLabelRow, { marginTop: 16 }]}>
+            <View style={[styles.sectionBar, { backgroundColor: ENGLISH_ACCENT }]} />
+            <Text style={[styles.sectionLabel, { color: c.subtext }]}>English Versions</Text>
+          </View>
           {englishVersions.map(v => (
             <TouchableOpacity key={v.code} style={[styles.versionCard, { backgroundColor: c.surface }]}
               onPress={() => { setIsBilingual(false); selectVersion(v.code); setView('books'); setTestament('OT'); }}>
-              <View style={[styles.versionIcon, { backgroundColor: '#1a6b3a' }]}><Text style={styles.versionIconText}>E</Text></View>
+              <View style={[styles.versionIcon, { backgroundColor: ENGLISH_ICON_COLOR }]}><Text style={styles.versionIconText}>E</Text></View>
               <View style={{ flex: 1 }}>
                 <Text style={[styles.versionName, { color: c.text }]}>{v.name}</Text>
                 <Text style={[styles.versionShort, { color: c.subtext }]}>{v.short}</Text>
               </View>
-              <Ionicons name="chevron-forward" size={18} color={c.subtext} />
+              <Ionicons name="chevron-forward" size={18} color={ENGLISH_ACCENT} />
             </TouchableOpacity>
           ))}
         </ScrollView>
@@ -193,7 +381,7 @@ export default function BibleScreen({ headerTitle }: Props) {
             <Text style={[styles.headerSubtitle, { color: c.subtext }]}>{selectLabel}</Text>
           </View>
           <TouchableOpacity onPress={cycleTheme} style={styles.themeBtn}>
-            <ThemeToggleIcon theme={theme} size={22} color={c.text} />
+            <ThemeToggleIcon theme={theme} size={26} color={c.text} />
           </TouchableOpacity>
         </View>
         <View style={[styles.testamentRow, { backgroundColor: c.surface }]}>
@@ -235,7 +423,7 @@ export default function BibleScreen({ headerTitle }: Props) {
             <Text style={[styles.headerSubtitle, { color: c.subtext }]}>{isEnglish || isBilingual ? 'Select chapter' : 'அதிகாரம் தேர்வு செய்யுங்கள்'}</Text>
           </View>
           <TouchableOpacity onPress={cycleTheme} style={styles.themeBtn}>
-            <ThemeToggleIcon theme={theme} size={22} color={c.text} />
+            <ThemeToggleIcon theme={theme} size={26} color={c.text} />
           </TouchableOpacity>
         </View>
         <FlatList
@@ -270,20 +458,98 @@ const styles = StyleSheet.create({
   backBtn: { padding: 4 },
   settingsBtn: { padding: 4 },
   themeBtn: { padding: 4 },
-  bilingualCard: { borderRadius: 16, padding: 20, marginBottom: 20, flexDirection: 'row', alignItems: 'center', elevation: 4 },
-  bilingualTitleRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
-  bilingualMark: {
-    backgroundColor: 'rgba(255,255,255,0.22)',
-    borderRadius: 8,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.4)',
+  bilingualCard: {
+    borderRadius: 24,
+    padding: 20,
+    marginBottom: 20,
+    overflow: 'hidden',
+    elevation: 6,
+    shadowColor: '#7c3aed',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 12,
   },
-  bilingualMarkText: { color: '#fff', fontSize: 14, fontWeight: '800' },
-  bilingualTitle: { fontSize: 18, fontWeight: 'bold', color: '#fff' },
-  bilingualDesc: { fontSize: 13, color: 'rgba(255,255,255,0.85)', marginTop: 4 },
-  sectionLabel: { fontSize: 13, fontWeight: 'bold', marginBottom: 10 },
+  bilingualDecoration: { position: 'absolute', right: -4, top: -8, transform: [{ rotate: '-8deg' }] },
+  bilingualDotGrid: {
+    position: 'absolute',
+    right: 20,
+    bottom: 18,
+    width: 44,
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 6,
+  },
+  bilingualDot: { width: 4, height: 4, borderRadius: 2 },
+  bilingualTopRow: { flexDirection: 'row', alignItems: 'center', gap: 16 },
+  chipStack: { width: 116, height: 94 },
+  chipBack: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    width: 92,
+    height: 38,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    transform: [{ rotate: '-7deg' }],
+    elevation: 3,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.15,
+    shadowRadius: 4,
+  },
+  chipFront: {
+    position: 'absolute',
+    top: 46,
+    left: 22,
+    width: 92,
+    height: 38,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    transform: [{ rotate: '5deg' }],
+    elevation: 4,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.18,
+    shadowRadius: 5,
+  },
+  chipText: { fontSize: 13, fontWeight: '700' },
+  // Sits in the gap between the two chips rather than centered on either — the previous
+  // spacing let it land on top of "English"'s text.
+  swapBadge: {
+    position: 'absolute',
+    top: 28,
+    left: 64,
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+    elevation: 5,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 4,
+  },
+  bilingualTitle: { fontSize: 18, fontWeight: '800' },
+  bilingualDesc: { fontSize: 13, marginTop: 4, lineHeight: 18 },
+  startBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    alignSelf: 'flex-start',
+    borderRadius: 24,
+    paddingLeft: 18,
+    paddingRight: 6,
+    paddingVertical: 6,
+    marginTop: 16,
+    gap: 10,
+  },
+  startBtnText: { fontSize: 14, fontWeight: '700' },
+  startBtnIcon: { width: 28, height: 28, borderRadius: 14, alignItems: 'center', justifyContent: 'center' },
+  sectionLabelRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 10 },
+  sectionBar: { width: 4, height: 16, borderRadius: 2 },
+  sectionLabel: { fontSize: 13, fontWeight: 'bold' },
   versionCard: { borderRadius: 14, padding: 16, marginBottom: 12, flexDirection: 'row', alignItems: 'center', elevation: 3, gap: 12 },
   versionIcon: { width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center' },
   versionIconText: { color: '#fff', fontSize: 18, fontWeight: 'bold' },

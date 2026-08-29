@@ -660,10 +660,10 @@ function VideoModal({ visible, videoId, title, isLive, onClose }: VideoModalProp
     Animated.timing(fsOverlayOpacity, { toValue: 1, duration: 100, useNativeDriver: true }).start();
     if (isFs) {
       ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.LANDSCAPE);
-      activateKeepAwakeAsync('fullscreen');
+      activateKeepAwakeAsync('fullscreen').catch(() => {});
     } else {
       ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.PORTRAIT_UP);
-      deactivateKeepAwake('fullscreen');
+      deactivateKeepAwake('fullscreen').catch(() => {});
     }
   }, []);
 
@@ -795,10 +795,10 @@ function SongItem({ item, index, isActive, playerReady, progressLoaded, colors, 
     onFullscreenToggle();
     if (isFs) {
       ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.LANDSCAPE);
-      activateKeepAwakeAsync('fullscreen');
+      activateKeepAwakeAsync('fullscreen').catch(() => {});
     } else {
       ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.PORTRAIT);
-      deactivateKeepAwake('fullscreen');
+      deactivateKeepAwake('fullscreen').catch(() => {});
     }
   }, [fsTransitionRef, isFullscreenRef, onFullscreenToggle]);
 
@@ -1197,10 +1197,10 @@ function ShortsPlayerItemInner({ item, index, isActive, onEnd, onClose, total, o
     isFullscreenRef.current = isFs;
     if (isFs) {
       ScreenOrientation.unlockAsync();
-      activateKeepAwakeAsync('fullscreen');
+      activateKeepAwakeAsync('fullscreen').catch(() => {});
     } else {
       ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.PORTRAIT);
-      deactivateKeepAwake('fullscreen');
+      deactivateKeepAwake('fullscreen').catch(() => {});
     }
   }, []);
 

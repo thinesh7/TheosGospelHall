@@ -6,6 +6,7 @@ import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
 import { useEffect, useRef, useState } from 'react';
 import { AppState as RNAppState, Linking } from 'react-native';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import 'react-native-reanimated';
 
 import ForceUpdateScreen from '@/components/ForceUpdateScreen';
@@ -215,34 +216,36 @@ export default function RootLayout() {
   const isUpdateGateActive = updateStatus === 'mandatory' || updateStatus === 'optional';
 
   return (
-    <AppThemeProvider>
-      <UpdateGateProvider active={isUpdateGateActive}>
-      <NavThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
-        {appState === 'welcome' ? (
-          <WelcomeSetupScreen onComplete={async () => {
-            await AsyncStorage.setItem(SETUP_KEY, '1').catch(() => {});
-            setAppState('ready');
-          }} />
-        ) : (
-          <AppStack />
-        )}
-        {updateStatus === 'mandatory' && updateConfig && (
-          <ForceUpdateScreen message={updateConfig.updateMessage} storeUrl={updateConfig.androidStoreUrl} />
-        )}
-        {updateStatus === 'optional' && updateConfig && (
-          <OptionalUpdateModal
-            visible
-            message={updateConfig.updateMessage}
-            storeUrl={updateConfig.androidStoreUrl}
-            onSkip={() => {
-              skippedVersionRef.current = updateConfig.latestVersion;
-              setUpdateStatus('none');
-            }}
-          />
-        )}
-        <StatusBar style="auto" />
-      </NavThemeProvider>
-      </UpdateGateProvider>
-    </AppThemeProvider>
+    <GestureHandlerRootView style={{ flex: 1 }}>
+      <AppThemeProvider>
+        <UpdateGateProvider active={isUpdateGateActive}>
+        <NavThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
+          {appState === 'welcome' ? (
+            <WelcomeSetupScreen onComplete={async () => {
+              await AsyncStorage.setItem(SETUP_KEY, '1').catch(() => {});
+              setAppState('ready');
+            }} />
+          ) : (
+            <AppStack />
+          )}
+          {updateStatus === 'mandatory' && updateConfig && (
+            <ForceUpdateScreen message={updateConfig.updateMessage} storeUrl={updateConfig.androidStoreUrl} />
+          )}
+          {updateStatus === 'optional' && updateConfig && (
+            <OptionalUpdateModal
+              visible
+              message={updateConfig.updateMessage}
+              storeUrl={updateConfig.androidStoreUrl}
+              onSkip={() => {
+                skippedVersionRef.current = updateConfig.latestVersion;
+                setUpdateStatus('none');
+              }}
+            />
+          )}
+          <StatusBar style="auto" />
+        </NavThemeProvider>
+        </UpdateGateProvider>
+      </AppThemeProvider>
+    </GestureHandlerRootView>
   );
 }
