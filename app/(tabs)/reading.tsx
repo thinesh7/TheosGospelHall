@@ -1,7 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { ReactNode, useEffect, useRef, useState } from 'react';
-import { BackHandler, ScrollView, StatusBar, StyleSheet, TouchableOpacity, View } from 'react-native';
+import { BackHandler, Image, ScrollView, StatusBar, StyleSheet, TouchableOpacity, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Text } from '../../components/AppText';
 import ArticlesScreen, { getArticleHeaderIconGradient } from '../../components/reading/ArticlesScreen';
@@ -61,21 +61,22 @@ const BIBLE_CARD_STYLES: Record<ThemeName, ReadingCardStyle> = {
     chevronIcon: '#ffffff',
   },
   sepia: {
-    // Exact palette from the sepia reference: rich antique gold/ochre card, warm brown
-    // glow toward the CTA corner, and solid golden-amber pills/chevron (not a translucent
-    // overlay like the other themes) so they read as raised badges on the parchment card.
-    gradient: ['#e7b653', '#d08a34', '#b96a16'],
-    glowGradient: ['rgba(147,72,19,0)', 'rgba(147,72,19,0)', 'rgba(147,72,19,0.35)'],
+    // Refined palette: soft ivory-caramel card (not saturated gold/ochre), a muted
+    // brown glow toward the CTA corner, and solid muted-bronze pills/chevron (not a
+    // translucent overlay like the other themes) so they read as raised badges on
+    // the parchment card — no blue, no green, nothing bright-orange or neon-gold.
+    gradient: ['#f3e2c4', '#e8cda0', '#dab883'],
+    glowGradient: ['rgba(138,90,50,0)', 'rgba(138,90,50,0)', 'rgba(138,90,50,0.28)'],
     glowLocations: [0, 0.5, 1],
-    cardBorder: 'rgba(56,37,22,0.25)',
-    shadowColor: '#b96a16',
-    iconGradient: ['#e7b653', '#96530f'],
-    text: '#382516',
-    subtext: '#6d5840',
-    pillBg: '#cf9a44',
-    pillText: '#382516',
-    chevronBg: '#cf9a44',
-    chevronIcon: '#382516',
+    cardBorder: 'rgba(59,42,26,0.2)',
+    shadowColor: '#8a6239',
+    iconGradient: ['#c2955f', '#8a5a2e'],
+    text: '#3b2a1a',
+    subtext: '#7a6650',
+    pillBg: '#c2955f',
+    pillText: '#3b2a1a',
+    chevronBg: '#c2955f',
+    chevronIcon: '#3b2a1a',
   },
 };
 
@@ -109,28 +110,40 @@ const ARTICLES_CARD_STYLES: Record<ThemeName, ReadingCardStyle> = {
     chevronIcon: '#ffffff',
   },
   sepia: {
-    // Warm terracotta/burnt-orange, distinct from Bible's more golden ochre so the two
-    // cards still read as separate sections under the same parchment treatment.
-    gradient: ['#f0b264', '#db9a40', '#c96f17'],
-    glowGradient: ['rgba(147,72,19,0)', 'rgba(147,72,19,0)', 'rgba(147,72,19,0.35)'],
+    // A deeper muted tan-bronze than Bible's ivory-caramel, so the two cards still
+    // read as separate sections under the same soft parchment treatment — without
+    // reaching for terracotta/burnt-orange.
+    gradient: ['#ecdab6', '#ddbf90', '#c9a06a'],
+    glowGradient: ['rgba(138,90,50,0)', 'rgba(138,90,50,0)', 'rgba(138,90,50,0.28)'],
     glowLocations: [0, 0.5, 1],
-    cardBorder: 'rgba(56,37,22,0.25)',
-    shadowColor: '#c96f17',
-    iconGradient: ['#f0b264', '#96530f'],
-    text: '#382516',
-    subtext: '#6d5840',
-    pillBg: '#d9873a',
-    pillText: '#382516',
-    chevronBg: '#d9873a',
-    chevronIcon: '#382516',
+    cardBorder: 'rgba(59,42,26,0.2)',
+    shadowColor: '#8a5a32',
+    iconGradient: ['#c99b5e', '#8a5a2e'],
+    text: '#3b2a1a',
+    subtext: '#7a6650',
+    pillBg: '#c2955f',
+    pillText: '#3b2a1a',
+    chevronBg: '#c2955f',
+    chevronIcon: '#3b2a1a',
   },
 };
 
-// Sepia gets its own dedicated parchment gradient for the hero banner (soft beige to warm
-// tan) instead of the plain c.surface fill light/dark use — left unset for the other
-// themes so their hero is unchanged.
-const HERO_GRADIENT: Partial<Record<ThemeName, [string, string]>> = {
-  sepia: ['#eeddba', '#e5cfa3'],
+interface HeroStyle {
+  bg: [string, string];
+  title: string;
+  underline: string;
+  subtitle: string;
+}
+
+// A warm, literary "bookshelf" palette per theme for the hero banner — a soft
+// cream gradient for light, a warm dark plum-brown for dark (rather than the
+// flat card surface), and the existing sepia parchment tones — so the title
+// and the Reading.png book illustration read as one deliberate design in
+// every theme.
+const HERO_STYLES: Record<ThemeName, HeroStyle> = {
+  light: { bg: ['#f8f9fa', '#eef1f5'], title: '#16264f', underline: '#e2963d', subtitle: '#5f6b7a' },
+  dark: { bg: ['#241a12', '#2c2013'], title: '#f5ede0', underline: '#f0b94a', subtitle: '#c9bda6' },
+  sepia: { bg: ['#f8ecd9', '#f2e0c4'], title: '#3b2a1a', underline: '#a9713f', subtitle: '#7a6650' },
 };
 
 // Add a new reading category by adding one entry here (plus a themeStyles map above) and
@@ -221,44 +234,32 @@ export default function ReadingScreen() {
     }
   }
 
-  const bibleCs = BIBLE_CARD_STYLES[theme];
-  const articlesCs = ARTICLES_CARD_STYLES[theme];
-  const heroBg = HERO_GRADIENT[theme] ?? [c.surface, c.surface];
+  const hs = HERO_STYLES[theme];
 
   return (
     <View style={[styles.container, { backgroundColor: c.bg }]}>
       <StatusBar barStyle={theme === 'light' ? 'dark-content' : 'light-content'} />
       <ScrollView contentContainerStyle={[styles.listContent, { paddingRight: 16 + insets.right }]}>
         <LinearGradient
-          colors={heroBg}
+          colors={hs.bg}
           start={{ x: 0, y: 0 }}
           end={{ x: 1, y: 1 }}
           style={[styles.hero, { marginTop: insets.top + 6 }]}
         >
-          <LinearGradient
-            colors={[`${bibleCs.gradient[1]}26`, `${articlesCs.gradient[1]}1f`]}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 1 }}
-            style={StyleSheet.absoluteFill}
-          />
-          <Text style={styles.heroDecorationBig}>📚</Text>
-          <Text style={styles.heroDecorationSmall}>📖</Text>
-
-          <View style={styles.heroTopRow}>
-            <LinearGradient colors={bibleCs.iconGradient} style={styles.heroIconBadge}>
-              <Text style={styles.heroIconText}>📖</Text>
-            </LinearGradient>
-            <Text style={[styles.heroTitle, { color: c.text }]}>Reading</Text>
+          <View style={styles.heroRow}>
+            <View style={styles.heroTextCol}>
+              <Text style={[styles.heroTitle, { color: hs.title }]}>Reading</Text>
+              <View style={[styles.heroUnderline, { backgroundColor: hs.underline }]} />
+              <Text style={[styles.heroSubtitle, { color: hs.subtitle }]}>
+                Nourish your mind, strengthen your spirit.
+              </Text>
+            </View>
+            <Image
+              source={require('../../assets/images/Reading.png')}
+              style={styles.heroImage}
+              resizeMode="contain"
+            />
           </View>
-          <Text style={[styles.heroSubtitle, { color: c.subtext }]}>
-            Nourish your mind, strengthen your spirit.
-          </Text>
-          <LinearGradient
-            colors={[bibleCs.gradient[1], articlesCs.gradient[1]]}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 0 }}
-            style={styles.heroUnderline}
-          />
         </LinearGradient>
 
         {READING_SECTIONS.map(section => {
@@ -328,28 +329,14 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.12,
     shadowRadius: 10,
   },
-  heroDecorationBig: {
-    position: 'absolute',
-    right: -14,
-    top: 6,
-    fontSize: 92,
-    opacity: 0.16,
-    transform: [{ rotate: '-8deg' }],
-  },
-  heroDecorationSmall: {
-    position: 'absolute',
-    right: 66,
-    top: -10,
-    fontSize: 44,
-    opacity: 0.2,
-    transform: [{ rotate: '10deg' }],
-  },
-  heroTopRow: { flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 10 },
-  heroIconBadge: { width: 52, height: 52, borderRadius: 16, alignItems: 'center', justifyContent: 'center' },
-  heroIconText: { fontSize: 26 },
-  heroTitle: { fontSize: 30, fontWeight: '800', letterSpacing: 0.2 },
-  heroSubtitle: { fontSize: 14, lineHeight: 20, marginBottom: 14, maxWidth: '78%' },
-  heroUnderline: { width: 44, height: 4, borderRadius: 2 },
+  heroRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  heroTextCol: { flex: 1 },
+  heroTitle: { fontSize: 32, fontWeight: '800', letterSpacing: 0.2, marginBottom: 10 },
+  heroUnderline: { width: 56, height: 4, borderRadius: 2, marginBottom: 14 },
+  heroSubtitle: { fontSize: 14, lineHeight: 20 },
+  // Matches Reading.png's native 1536x1024 (3:2) aspect ratio so `contain`
+  // never letterboxes or stretches it.
+  heroImage: { width: 132, height: 88 },
 
   card: {
     flexDirection: 'row',

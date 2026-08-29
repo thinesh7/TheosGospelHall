@@ -36,15 +36,19 @@ export const THEMES: Record<ThemeName, ThemeColors> = {
     raised: '#eef1f5',
   },
   sepia: {
-    bg: '#f4ecd8',
-    surface: '#ece2cc',
-    surfaceAlt: '#ece2cc',
-    headerBg: '#ece2cc',
-    text: '#3a2e1f',
-    subtext: '#7a6a52',
-    accent: '#8b4513',
-    divider: '#d7ccc8',
-    raised: '#e0d3b0',
+    // Soft warm parchment/ivory rather than a strong yellow, with a muted
+    // caramel/bronze accent (no blue, no green, no bright orange or gold) —
+    // meant to feel like a premium Bible/reading app, comfortable for long
+    // sessions.
+    bg: '#f7ecd9',
+    surface: '#fbf3e6',
+    surfaceAlt: '#fbf3e6',
+    headerBg: '#fbf3e6',
+    text: '#3b2a1a',
+    subtext: '#7a6650',
+    accent: '#a9713f',
+    divider: '#e3d3ba',
+    raised: '#f2e2c9',
   },
 };
 

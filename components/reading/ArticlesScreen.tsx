@@ -2,12 +2,12 @@ import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
 import { ReactNode, useEffect, useMemo, useState } from 'react';
-import { FlatList, ScrollView, StatusBar, StyleSheet, TouchableOpacity, View } from 'react-native';
+import { FlatList, RefreshControl, ScrollView, StatusBar, StyleSheet, TouchableOpacity, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Text } from '../AppText';
 import ThemeToggleIcon from '../ThemeToggleIcon';
 import { getBookmarkedArticleIds, setBookmarkedArticleIds } from '../../utils/articleBookmarks';
-import { ArticleCategoryEntry, ArticleIndexEntry, getArticlesIndex, getCachedCategories, subscribeCategories, subscribePublishedArticles } from '../../utils/articles';
+import { ArticleCategoryEntry, ArticleIndexEntry, getArticlesIndex, getCachedCategories, subscribeCategories, syncArticles } from '../../utils/articles';
 import { ThemeName } from '../../utils/theme';
 import { useTheme } from '../../utils/ThemeContext';
 
@@ -102,28 +102,31 @@ const ARTICLE_STYLES: Record<ThemeName, ArticleThemeStyle> = {
     footerDash: 'rgba(255,107,112,0.4)',
   },
   sepia: {
-    bg: '#f3e8d0',
-    headerBg: '#f3e8d0',
-    card: ['#e7c98f', '#e2c084'],
-    cardAlt: ['#ddb879', '#d5ac68'],
-    cardBorder: '#c19a62',
-    shadowColor: '#6b3f1d',
-    text: '#3b2414',
-    subtext: '#6d4c32',
-    divider: '#c19a62',
-    bookmarkBg: 'rgba(169,103,36,0.18)',
-    bookmarkIcon: '#a96724',
-    avatarBg: 'rgba(169,103,36,0.18)',
-    avatarIcon: '#6d4c32',
-    chevronBg: 'rgba(169,103,36,0.2)',
-    chevronIcon: '#a96724',
-    chipBg: '#ead9b0',
-    chipText: '#6b3f1d',
-    chipSelectedBg: '#a96724',
-    chipSelectedText: '#f3e8d0',
-    footerBg: '#ead9b0',
-    footerIconGradient: ['#c58a3a', '#6b3f1d'],
-    footerDash: 'rgba(169,103,36,0.4)',
+    // Soft parchment/ivory rather than saturated gold-tan, muted caramel/bronze
+    // accents in place of the old bright orange-brown, and subtle tan borders —
+    // no blue, no green, nothing neon or overly dark.
+    bg: '#f7ecd9',
+    headerBg: '#f7ecd9',
+    card: ['#fbf3e6', '#f5e9d5'],
+    cardAlt: ['#f6ead4', '#efdfc0'],
+    cardBorder: '#e3d3ba',
+    shadowColor: '#6b4a2c',
+    text: '#3b2a1a',
+    subtext: '#7a6650',
+    divider: '#e3d3ba',
+    bookmarkBg: 'rgba(169,113,63,0.16)',
+    bookmarkIcon: '#a9713f',
+    avatarBg: 'rgba(169,113,63,0.16)',
+    avatarIcon: '#7a6650',
+    chevronBg: 'rgba(169,113,63,0.18)',
+    chevronIcon: '#a9713f',
+    chipBg: '#f0e3ca',
+    chipText: '#5c3f28',
+    chipSelectedBg: '#8a5a32',
+    chipSelectedText: '#faf3e6',
+    footerBg: '#f0e3ca',
+    footerIconGradient: ['#c2955f', '#5c3f28'],
+    footerDash: 'rgba(138,90,50,0.35)',
   },
 };
 
@@ -144,6 +147,7 @@ export default function ArticlesScreen({ headerTitle }: Props) {
   const insets = useSafeAreaInsets();
   const [articles, setArticles] = useState<ArticleIndexEntry[]>([]);
   const [loaded, setLoaded] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
   const [categories, setCategories] = useState<ArticleCategoryEntry[]>([]);
   const [selectedFilter, setSelectedFilter] = useState(ALL_FILTER);
   const [bookmarked, setBookmarked] = useState<Set<string>>(new Set());
@@ -151,16 +155,25 @@ export default function ArticlesScreen({ headerTitle }: Props) {
   const st = ARTICLE_STYLES[theme];
   const filters = useMemo(() => [ALL_FILTER, ...categories.map(c => c.name)], [categories]);
 
+  // Cache-first, same as songs.tsx: show the cached index immediately, then
+  // sync in the background (no permanent onSnapshot connection) and update
+  // once that resolves. Pull-to-refresh below re-runs the same sync.
   useEffect(() => {
     getArticlesIndex().then(cached => {
       if (cached.length > 0) setArticles(cached);
     });
-    const unsubscribe = subscribePublishedArticles(list => {
-      setArticles(list);
+    syncArticles().then(result => {
+      if (result.index.length > 0 || result.updated) setArticles(result.index);
       setLoaded(true);
     });
-    return unsubscribe;
   }, []);
+
+  const onPullToRefresh = async () => {
+    setRefreshing(true);
+    const result = await syncArticles();
+    if (result.index.length > 0 || result.updated) setArticles(result.index);
+    setRefreshing(false);
+  };
 
   useEffect(() => {
     getCachedCategories().then(cached => {
@@ -250,6 +263,9 @@ export default function ArticlesScreen({ headerTitle }: Props) {
         data={filteredArticles}
         keyExtractor={item => item.id}
         contentContainerStyle={styles.listContent}
+        refreshControl={
+          <RefreshControl refreshing={refreshing} onRefresh={onPullToRefresh} colors={[st.chevronIcon]} tintColor={st.chevronIcon} />
+        }
         renderItem={({ item, index }) => {
           const cardColors = index % 2 === 0 ? st.card : st.cardAlt;
           const isBookmarked = bookmarked.has(item.id);

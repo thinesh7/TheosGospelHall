@@ -24,6 +24,7 @@ const CATEGORIES_COLLECTION = 'TGHArticleCategories';
 const INDEX_CACHE_KEY = 'tgh_articles_published_index';
 const ARTICLE_CACHE_PREFIX = 'tgh_article_';
 const CATEGORIES_CACHE_KEY = 'tgh_article_categories';
+const LAST_SYNC_KEY = 'tgh_articles_last_sync';
 
 export type ArticleStatus = 'draft' | 'published';
 
@@ -217,16 +218,95 @@ export function subscribeArticles(cb: (articles: Article[]) => void): () => void
   }, () => {});
 }
 
-// Users: published articles only, in the same admin-controlled order.
-export function subscribePublishedArticles(cb: (articles: ArticleIndexEntry[]) => void): () => void {
-  const q = query(collection(db, COLLECTION), where('status', '==', 'published'));
-  return onSnapshot(q, (snap: QuerySnapshot) => {
-    const articles = sortArticles(snap.docs.map(d => docToArticle(d.id, d.data())));
-    const index = articles.map(toIndexEntry);
-    cb(index);
-    saveIndexCache(index);
-    articles.forEach(saveArticleCache);
-  }, () => {});
+async function getLastSync(): Promise<number> {
+  try {
+    const stored = await AsyncStorage.getItem(LAST_SYNC_KEY);
+    return stored ? parseInt(stored, 10) : 0;
+  } catch {
+    return 0;
+  }
+}
+
+async function setLastSync(timestamp: number) {
+  try {
+    await AsyncStorage.setItem(LAST_SYNC_KEY, String(timestamp));
+  } catch {}
+}
+
+// Users: published articles only, in the same admin-controlled order. Mirrors
+// utils/songsSync.ts's syncSongs() — cache-first, with an explicit sync
+// (called on mount + pull-to-refresh in ArticlesScreen) instead of a
+// permanently-open onSnapshot listener, and incremental after the first
+// sync so only articles changed since `lastSync` get re-fetched.
+//
+// The incremental branch needs a Firestore composite index on
+// (status ASC, updatedAt ASC) — see firestore.indexes.json — because unlike
+// Songs' fully-public collection, TGHArticles' security rule restricts
+// non-admin reads to `status == 'published'`, so a query combining that
+// equality filter with the `updatedAt >` range filter can't run without one.
+// Until that index is deployed on the live project this branch throws and
+// falls back to the cached index (see catch below) — nothing breaks, sync
+// just stays on full refreshes until then.
+export async function syncArticles(force: boolean = false): Promise<{ index: ArticleIndexEntry[]; updated: boolean }> {
+  const existingIndex = await getArticlesIndex();
+  let lastSync = await getLastSync();
+
+  if (existingIndex.length === 0 && lastSync > 0) {
+    lastSync = 0;
+    await setLastSync(0);
+  }
+
+  const effectiveLastSync = force ? 0 : lastSync;
+  const isFullSync = effectiveLastSync === 0;
+
+  try {
+    const q = isFullSync
+      ? query(collection(db, COLLECTION), where('status', '==', 'published'))
+      : query(
+          collection(db, COLLECTION),
+          where('status', '==', 'published'),
+          where('updatedAt', '>', Timestamp.fromMillis(effectiveLastSync)),
+        );
+
+    const snap = await getDocs(q);
+
+    if (snap.empty) {
+      // A full sync returning zero published articles is a real "nothing
+      // published" state — clear the stale cached index instead of leaving
+      // deleted/unpublished ghosts behind. An incremental sync returning
+      // zero just means nothing changed since last time.
+      if (isFullSync && existingIndex.length > 0) {
+        await saveIndexCache([]);
+        return { index: [], updated: true };
+      }
+      return { index: existingIndex, updated: false };
+    }
+
+    const changedArticles = sortArticles(snap.docs.map(d => docToArticle(d.id, d.data())));
+    await Promise.all(changedArticles.map(saveArticleCache));
+
+    let finalIndex: ArticleIndexEntry[];
+    if (isFullSync) {
+      // The full-sync query's result *is* the complete current published
+      // set, so replace the cache outright — this is what drops entries for
+      // articles unpublished or deleted since the last sync, which the
+      // incremental (merge-only) branch below has no way to detect.
+      finalIndex = changedArticles.map(toIndexEntry);
+    } else {
+      const indexMap = new Map<string, ArticleIndexEntry>();
+      existingIndex.forEach(e => indexMap.set(e.id, e));
+      changedArticles.forEach(a => indexMap.set(a.id, toIndexEntry(a)));
+      finalIndex = sortArticles(Array.from(indexMap.values()));
+    }
+    await saveIndexCache(finalIndex);
+
+    const maxTimestamp = Math.max(...changedArticles.map(a => a.updatedAt), lastSync);
+    await setLastSync(maxTimestamp);
+
+    return { index: finalIndex, updated: true };
+  } catch {
+    return { index: existingIndex, updated: false };
+  }
 }
 
 export async function getArticle(id: string): Promise<Article | null> {
