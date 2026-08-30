@@ -4,14 +4,15 @@ import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
-  Dimensions,
   FlatList,
   Modal,
   Share,
   StyleSheet,
   TouchableOpacity,
+  useWindowDimensions,
   View,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { SongIndexEntry, getSongById, getSongsIndex } from '../utils/songsSync';
 import { getReaderSettings, ReaderLanguage, saveReaderSettings } from '../utils/songReaderSettings';
 import { useTheme } from '../utils/ThemeContext';
@@ -20,8 +21,6 @@ import { TextInput } from '../components/AppTextInput';
 import ThemeToggleIcon from '../components/ThemeToggleIcon';
 
 const FAVORITES_KEY = 'tgh_song_favorites';
-
-const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 
 const MIN_FONT_SIZE = 14;
 const MAX_FONT_SIZE = 28;
@@ -91,6 +90,8 @@ export default function SongReaderScreen() {
   const router = useRouter();
   const { songNumber } = useLocalSearchParams<{ songNumber: string }>();
   const { colors: c, theme, cycleTheme } = useTheme();
+  const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = useWindowDimensions();
+  const insets = useSafeAreaInsets();
   const flatListRef = useRef<FlatList>(null);
   const lyricsMapRef = useRef<LyricsMap>({});
   const loadingSetRef = useRef<Set<string>>(new Set());
@@ -133,11 +134,15 @@ export default function SongReaderScreen() {
     saveReaderSettings({ language, fontSize, thickness });
   }, [language, fontSize, thickness, settingsLoaded]);
 
+  // Re-snap to the current page whenever the pager's item width changes —
+  // covers both the initial index-restore and a rotation mid-read, since
+  // the FlatList's horizontal scroll offset from before a rotation no
+  // longer points at the same page once every page is a different width.
   useEffect(() => {
     if (songsIndex.length > 0 && currentIndex >= 0) {
       flatListRef.current?.scrollToIndex({ index: currentIndex, animated: false });
     }
-  }, [songsIndex.length]);
+  }, [songsIndex.length, SCREEN_WIDTH]);
 
   const ensureLyricsLoaded = async (songId: string) => {
     if (lyricsMapRef.current[songId] || loadingSetRef.current.has(songId)) return;
@@ -188,7 +193,11 @@ export default function SongReaderScreen() {
   const decreaseThickness = () => setThickness(prev => Math.max(MIN_THICKNESS, prev - THICKNESS_STEP));
   const increaseThickness = () => setThickness(prev => Math.min(MAX_THICKNESS, prev + THICKNESS_STEP));
 
-  const lyricsPaddingBottom = 190 + (fontSize - MIN_FONT_SIZE) * 7 + (thickness - MIN_THICKNESS) / 6;
+  const isLandscape = SCREEN_WIDTH > SCREEN_HEIGHT;
+
+  // Landscape has no floating bottomBar to clear (see below), so it doesn't
+  // need the portrait-only bottom padding for it.
+  const lyricsPaddingBottom = (isLandscape ? 24 : 190) + (fontSize - MIN_FONT_SIZE) * 7 + (thickness - MIN_THICKNESS) / 6;
 
   const searchResults = searchQuery.trim()
     ? songsIndex.filter(s => {
@@ -206,13 +215,53 @@ export default function SongReaderScreen() {
     setSearchQuery('');
   };
 
+  // Shared between the fixed portrait placement (rendered once, above the
+  // pager) and the landscape placement (rendered per-page, as each page's
+  // own scrollable ListHeaderComponent — see SongPage below) so there's one
+  // definition of the icon row instead of two drifting copies. Acting on
+  // `song` directly (rather than the outer `currentSong` state) also means
+  // the landscape per-page copy is always correct for whichever page it's
+  // attached to, with no dependency on the swipe-settle timing of
+  // `currentIndex`.
+  const renderTopBar = (song: SongIndexEntry) => (
+    <View style={[styles.topBar, { backgroundColor: c.headerBg, paddingTop: insets.top + 8, paddingLeft: 16 + insets.left, paddingRight: 16 + insets.right }]}>
+      <TouchableOpacity onPress={() => router.back()}>
+        <Ionicons name="chevron-back" size={26} color={c.text} />
+      </TouchableOpacity>
+      <View style={styles.topBarActions}>
+        <TouchableOpacity onPress={() => setShowSearch(true)} style={styles.iconBtn}>
+          <Ionicons name="search" size={22} color={c.text} />
+        </TouchableOpacity>
+        <TouchableOpacity onPress={() => toggleFavorite(song.songId)} style={styles.iconBtn}>
+          <Ionicons
+            name={favorites.includes(song.songId) ? 'heart' : 'heart-outline'}
+            size={22}
+            color={favorites.includes(song.songId) ? '#e74c3c' : c.text}
+          />
+        </TouchableOpacity>
+        <TouchableOpacity onPress={() => shareSong(song)} style={styles.iconBtn}>
+          <Ionicons name="share-social-outline" size={22} color={c.text} />
+        </TouchableOpacity>
+        <TouchableOpacity onPress={cycleTheme} style={styles.iconBtn}>
+          <ThemeToggleIcon theme={theme} size={22} color={c.text} />
+        </TouchableOpacity>
+        <TouchableOpacity onPress={() => setShowSettings(true)} style={styles.iconBtn}>
+          <Ionicons name="options-outline" size={22} color={c.text} />
+        </TouchableOpacity>
+      </View>
+    </View>
+  );
+
   const SongPage = ({ item }: { item: SongIndexEntry }) => {
     const lyrics = lyricsMap[item.songId];
 
     if (!lyrics) {
       return (
-        <View style={[styles.page, { backgroundColor: c.bg, alignItems: 'center', justifyContent: 'center' }]}>
-          <ActivityIndicator size="large" color={c.accent} />
+        <View style={[styles.page, { width: SCREEN_WIDTH, height: SCREEN_HEIGHT, backgroundColor: c.bg }]}>
+          {isLandscape && renderTopBar(item)}
+          <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
+            <ActivityIndicator size="large" color={c.accent} />
+          </View>
         </View>
       );
     }
@@ -222,12 +271,17 @@ export default function SongReaderScreen() {
     const text = language === 'english' ? capitalizeParagraphs(deduped) : deduped;
 
     return (
-      <View style={[styles.page, { backgroundColor: c.bg }]}>
+      <View style={[styles.page, { width: SCREEN_WIDTH, height: SCREEN_HEIGHT, backgroundColor: c.bg }]}>
         <FlatList
           data={[text]}
           keyExtractor={() => item.songId}
+          // Only landscape scrolls the top bar away with the lyrics — in
+          // portrait it stays fixed above this FlatList instead (see the
+          // main return below), matching the request that this only change
+          // landscape behavior.
+          ListHeaderComponent={isLandscape ? renderTopBar(item) : undefined}
           renderItem={() => (
-            <View style={{ paddingHorizontal: 20, paddingTop: 10, paddingBottom: lyricsPaddingBottom }}>
+            <View style={{ paddingHorizontal: 20 + Math.max(insets.left, insets.right), paddingTop: 10, paddingBottom: lyricsPaddingBottom }}>
               <Text style={[styles.title, { color: c.accent, fontSize: fontSize + 4, fontWeight: thickness >= 600 ? 'bold' : '600' }]}>
                 {item.title}
               </Text>
@@ -246,7 +300,7 @@ export default function SongReaderScreen() {
     return (
       <>
         <Stack.Screen options={{ headerShown: false }} />
-        <View style={[styles.page, { backgroundColor: c.bg, alignItems: 'center', justifyContent: 'center' }]}>
+        <View style={[styles.page, { width: SCREEN_WIDTH, height: SCREEN_HEIGHT, backgroundColor: c.bg, alignItems: 'center', justifyContent: 'center' }]}>
           <ActivityIndicator size="large" color={c.accent} />
         </View>
       </>
@@ -259,32 +313,10 @@ export default function SongReaderScreen() {
     <View style={[styles.container, { backgroundColor: c.bg }]}>
       <Stack.Screen options={{ headerShown: false }} />
 
-      <View style={[styles.topBar, { backgroundColor: c.headerBg }]}>
-        <TouchableOpacity onPress={() => router.back()}>
-          <Ionicons name="chevron-back" size={26} color={c.text} />
-        </TouchableOpacity>
-        <View style={styles.topBarActions}>
-          <TouchableOpacity onPress={() => setShowSearch(true)} style={styles.iconBtn}>
-            <Ionicons name="search" size={22} color={c.text} />
-          </TouchableOpacity>
-          <TouchableOpacity onPress={() => toggleFavorite(currentSong.songId)} style={styles.iconBtn}>
-            <Ionicons
-              name={favorites.includes(currentSong.songId) ? 'heart' : 'heart-outline'}
-              size={22}
-              color={favorites.includes(currentSong.songId) ? '#e74c3c' : c.text}
-            />
-          </TouchableOpacity>
-          <TouchableOpacity onPress={() => shareSong(currentSong)} style={styles.iconBtn}>
-            <Ionicons name="share-social-outline" size={22} color={c.text} />
-          </TouchableOpacity>
-          <TouchableOpacity onPress={cycleTheme} style={styles.iconBtn}>
-            <ThemeToggleIcon theme={theme} size={22} color={c.text} />
-          </TouchableOpacity>
-          <TouchableOpacity onPress={() => setShowSettings(true)} style={styles.iconBtn}>
-            <Ionicons name="options-outline" size={22} color={c.text} />
-          </TouchableOpacity>
-        </View>
-      </View>
+      {/* Portrait only — in landscape this same bar is rendered per-page
+          inside SongPage's own FlatList instead, so it scrolls away with
+          the lyrics rather than staying fixed. */}
+      {!isLandscape && renderTopBar(currentSong)}
 
       <FlatList
         ref={flatListRef}
@@ -303,25 +335,29 @@ export default function SongReaderScreen() {
         }}
       />
 
-      <View style={[styles.bottomBar, { backgroundColor: c.headerBg }]}>
-        <TouchableOpacity
-          disabled={currentIndex === 0}
-          onPress={() => flatListRef.current?.scrollToIndex({ index: currentIndex - 1, animated: true })}
-          style={styles.navBtn}
-        >
-          <Ionicons name="chevron-back-circle" size={30} color={currentIndex === 0 ? '#555' : c.accent} />
-        </TouchableOpacity>
-        <Text style={[styles.pageIndicator, { color: c.subtext }]}>
-          {currentSong.songNumber} / {songsIndex.length}
-        </Text>
-        <TouchableOpacity
-          disabled={currentIndex === songsIndex.length - 1}
-          onPress={() => flatListRef.current?.scrollToIndex({ index: currentIndex + 1, animated: true })}
-          style={styles.navBtn}
-        >
-          <Ionicons name="chevron-forward-circle" size={30} color={currentIndex === songsIndex.length - 1 ? '#555' : c.accent} />
-        </TouchableOpacity>
-      </View>
+      {/* Portrait only — swiping the pager above is enough to navigate in
+          landscape, where every bit of vertical space matters more. */}
+      {!isLandscape && (
+        <View style={[styles.bottomBar, { backgroundColor: c.headerBg, left: 20 + insets.left, right: 20 + insets.right, bottom: insets.bottom + 24 }]}>
+          <TouchableOpacity
+            disabled={currentIndex === 0}
+            onPress={() => flatListRef.current?.scrollToIndex({ index: currentIndex - 1, animated: true })}
+            style={styles.navBtn}
+          >
+            <Ionicons name="chevron-back-circle" size={30} color={currentIndex === 0 ? '#555' : c.accent} />
+          </TouchableOpacity>
+          <Text style={[styles.pageIndicator, { color: c.subtext }]}>
+            {currentSong.songNumber} / {songsIndex.length}
+          </Text>
+          <TouchableOpacity
+            disabled={currentIndex === songsIndex.length - 1}
+            onPress={() => flatListRef.current?.scrollToIndex({ index: currentIndex + 1, animated: true })}
+            style={styles.navBtn}
+          >
+            <Ionicons name="chevron-forward-circle" size={30} color={currentIndex === songsIndex.length - 1 ? '#555' : c.accent} />
+          </TouchableOpacity>
+        </View>
+      )}
 
       <Modal visible={showSettings} transparent animationType="slide" onRequestClose={() => setShowSettings(false)}>
         <TouchableOpacity style={styles.modalOverlay} activeOpacity={1} onPress={() => setShowSettings(false)}>
@@ -457,14 +493,17 @@ export default function SongReaderScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
-  page: { width: SCREEN_WIDTH, height: SCREEN_HEIGHT },
+  // width/height are applied inline from useWindowDimensions() (reactive to
+  // rotation) instead of here, since a static value would go stale the
+  // moment the device rotates.
+  page: {},
   topBar: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingTop: 50,
+    // paddingTop/paddingLeft/paddingRight applied inline with safe-area
+    // insets — see JSX.
     paddingBottom: 12,
-    paddingHorizontal: 16,
   },
   topBarActions: { flexDirection: 'row', gap: 8 },
   iconBtn: { padding: 4 },
@@ -472,9 +511,7 @@ const styles = StyleSheet.create({
   lyrics: {},
   bottomBar: {
     position: 'absolute',
-    left: 20,
-    right: 20,
-    bottom: 47,
+    // left/right/bottom applied inline with safe-area insets — see JSX.
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',

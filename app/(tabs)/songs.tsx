@@ -266,11 +266,9 @@ export default function SongsScreen({ headerTitle }: { headerTitle?: React.React
     );
   }, [favorites, c, toggleFavorite]);
 
-  return (
-    <View style={[styles.container, { backgroundColor: c.bg }]}>
-      <StatusBar barStyle={theme === 'light' ? 'dark-content' : 'light-content'} />
-
-      <View style={[styles.headerRow, { marginRight: 16 + insets.right }]}>
+  const listHeader = (
+    <View style={{ paddingBottom: 12 }}>
+      <View style={[styles.headerRow, { marginTop: insets.top + 12, marginLeft: 16 + insets.left, marginRight: 16 + insets.right }]}>
         {headerTitle ? headerTitle : (
           <Text style={[styles.headerTitle, { color: c.accent }]}>Geethangalum Keerthanaigalum</Text>
         )}
@@ -281,7 +279,7 @@ export default function SongsScreen({ headerTitle }: { headerTitle?: React.React
         </View>
       </View>
 
-      <View style={[styles.searchBar, { backgroundColor: c.surfaceAlt, borderColor: c.divider }]}>
+      <View style={[styles.searchBar, { backgroundColor: c.surfaceAlt, borderColor: c.divider, marginLeft: 16 + insets.left, marginRight: 16 + insets.right }]}>
         <Ionicons name="search" size={20} color={c.subtext} />
         <TextInput
           style={[styles.searchInput, { color: c.text }]}
@@ -297,7 +295,7 @@ export default function SongsScreen({ headerTitle }: { headerTitle?: React.React
         )}
       </View>
 
-      <View style={[styles.tabsRow, { backgroundColor: c.surfaceAlt, borderColor: c.divider }]}>
+      <View style={[styles.tabsRow, { backgroundColor: c.surfaceAlt, borderColor: c.divider, marginLeft: 16 + insets.left, marginRight: 16 + insets.right }]}>
         <TouchableOpacity
           style={[styles.tab, activeTab === 'numbers' && styles.tabActive, activeTab === 'numbers' && { backgroundColor: c.accent }]}
           onPress={() => selectTab('numbers')}
@@ -326,33 +324,40 @@ export default function SongsScreen({ headerTitle }: { headerTitle?: React.React
           </Text>
         </TouchableOpacity>
       </View>
+    </View>
+  );
 
-      {loading ? (
-        showSetup
-          ? <FirstTimeSetup c={c} />
-          : <ActivityIndicator size="large" color={c.accent} style={{ marginTop: 60 }} />
-      ) : (
-        <FlatList
-          ref={flatListRef}
-          data={filteredSongs}
-          keyExtractor={item => item.songId}
-          renderItem={SongCard}
-          contentContainerStyle={{ padding: 12, paddingBottom: 100 }}
-          initialNumToRender={20}
-          maxToRenderPerBatch={20}
-          windowSize={10}
-          removeClippedSubviews
-          keyboardShouldPersistTaps="handled"
-          refreshControl={
-            <RefreshControl refreshing={refreshing} onRefresh={onPullToRefresh} colors={[c.accent]} tintColor={c.accent} />
-          }
-          ListEmptyComponent={
+  return (
+    <View style={[styles.container, { backgroundColor: c.bg }]}>
+      <StatusBar barStyle={theme === 'light' ? 'dark-content' : 'light-content'} />
+
+      <FlatList
+        ref={flatListRef}
+        data={filteredSongs}
+        keyExtractor={item => item.songId}
+        renderItem={SongCard}
+        ListHeaderComponent={listHeader}
+        contentContainerStyle={{ paddingBottom: 100, paddingLeft: 12 + insets.left, paddingRight: 12 + insets.right }}
+        initialNumToRender={20}
+        maxToRenderPerBatch={20}
+        windowSize={10}
+        removeClippedSubviews
+        keyboardShouldPersistTaps="handled"
+        refreshControl={
+          <RefreshControl refreshing={refreshing} onRefresh={onPullToRefresh} colors={[c.accent]} tintColor={c.accent} />
+        }
+        ListEmptyComponent={
+          loading ? (
+            showSetup
+              ? <FirstTimeSetup c={c} />
+              : <ActivityIndicator size="large" color={c.accent} style={{ marginTop: 60 }} />
+          ) : (
             <Text style={[styles.empty, { color: c.subtext }]}>
               {activeTab === 'favorites' ? 'No favorites yet' : 'No songs found'}
             </Text>
-          }
-        />
-      )}
+          )
+        }
+      />
       <Toast message={toastMessage} opacity={toastOpacity} />
     </View>
   );
@@ -364,8 +369,10 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginTop: 54,
-    marginLeft: 16,
+    // marginTop/marginLeft/marginRight are applied inline with safe-area
+    // insets (see JSX) instead of fixed here, since a phone's notch/camera
+    // cutout can sit on either the top or a side edge depending on
+    // orientation.
     marginBottom: 14,
   },
   headerTitle: { fontSize: 20, fontWeight: 'bold', flex: 1 },
@@ -374,7 +381,7 @@ const styles = StyleSheet.create({
   searchBar: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginHorizontal: 16,
+    // marginLeft/marginRight applied inline with insets — see above.
     borderRadius: 30,
     borderWidth: 1,
     paddingHorizontal: 16,
@@ -388,7 +395,7 @@ const styles = StyleSheet.create({
   searchInput: { flex: 1, marginLeft: 10, fontSize: 16 },
   tabsRow: {
     flexDirection: 'row',
-    marginHorizontal: 16,
+    // marginLeft/marginRight applied inline with insets — see headerRow above.
     marginTop: 16,
     marginBottom: 4,
     borderRadius: 30,
