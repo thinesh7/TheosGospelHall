@@ -345,7 +345,7 @@ export default function SongsScreen({ headerTitle }: { headerTitle?: React.React
 
   return (
     <View style={[styles.container, { backgroundColor: c.bg }]}>
-      <StatusBar barStyle={theme === 'light' ? 'dark-content' : 'light-content'} />
+      <StatusBar barStyle={theme === 'light' ? 'dark-content' : 'light-content'} hidden={isLandscape} animated />
 
       {!isLandscape && combinedHeader}
 

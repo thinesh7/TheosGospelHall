@@ -5,7 +5,7 @@ import { router, Stack } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
 import { useEffect, useRef, useState } from 'react';
-import { AppState as RNAppState, Linking } from 'react-native';
+import { AppState as RNAppState, Linking, useWindowDimensions } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import 'react-native-reanimated';
 
@@ -85,6 +85,17 @@ function AppStack() {
 
 export default function RootLayout() {
   const colorScheme = useColorScheme();
+  // App-wide: whenever the device is physically in landscape, hide the
+  // system status bar (time/network/battery) so the app can use the full
+  // screen there — this is the only tab/screen-independent place that's
+  // always mounted, so it covers every tab (including the readers, which
+  // don't render their own StatusBar). songs.tsx/other-songs.tsx also set
+  // the same `hidden` value on their own local <StatusBar> (needed there
+  // for barStyle), computed from the same real dimensions, so both agree —
+  // React Native's StatusBar merges props across simultaneously-mounted
+  // instances rather than one clobbering the other.
+  const { width: rootWidth, height: rootHeight } = useWindowDimensions();
+  const isRootLandscape = rootWidth > rootHeight;
   const [appState, setAppState] = useState<AppState>('checking');
   const [versionCheckDone, setVersionCheckDone] = useState(false);
   const [updateStatus, setUpdateStatus] = useState<UpdateStatus>('none');
@@ -242,7 +253,7 @@ export default function RootLayout() {
               }}
             />
           )}
-          <StatusBar style="auto" />
+          <StatusBar style="auto" hidden={isRootLandscape} animated />
         </NavThemeProvider>
         </UpdateGateProvider>
       </AppThemeProvider>

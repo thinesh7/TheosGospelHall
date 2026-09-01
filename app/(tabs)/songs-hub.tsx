@@ -39,8 +39,7 @@ export default function SongsHubScreen() {
                   { color: isActive ? '#fff' : c.accent },
                 ]}
                 numberOfLines={2}
-                adjustsFontSizeToFit
-                minimumFontScale={0.6}
+                ellipsizeMode="tail"
               >
                 {opt.label}
               </Text>

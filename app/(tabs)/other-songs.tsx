@@ -233,7 +233,7 @@ export default function OtherSongsScreen({ headerTitle }: { headerTitle?: React.
 
   return (
     <View style={[styles.container, { backgroundColor: c.bg }]}>
-      <StatusBar barStyle={theme === 'light' ? 'dark-content' : 'light-content'} />
+      <StatusBar barStyle={theme === 'light' ? 'dark-content' : 'light-content'} hidden={isLandscape} animated />
 
       {!isLandscape && combinedHeader}
 

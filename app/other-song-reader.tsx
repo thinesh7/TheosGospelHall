@@ -12,6 +12,7 @@ import {
   useWindowDimensions,
   View,
 } from 'react-native';
+import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { OtherSongIndexEntry, getOtherSongById, getOtherSongsIndex } from '../utils/otherSongsSync';
 import { getReaderSettings, ReaderLanguage, saveReaderSettings } from '../utils/songReaderSettings';
@@ -24,6 +25,10 @@ const FAVORITES_KEY = 'tgh_other_song_favorites';
 
 const MIN_FONT_SIZE = 14;
 const MAX_FONT_SIZE = 28;
+// Landscape's extra width can comfortably carry a much bigger font than
+// portrait before lines get too short to read, so it gets a higher cap —
+// mainly so pinch-to-zoom there has real headroom to fill the screen.
+const MAX_FONT_SIZE_LANDSCAPE = 48;
 const MIN_THICKNESS = 300;
 const MAX_THICKNESS = 800;
 const THICKNESS_STEP = 100;
@@ -116,6 +121,15 @@ export default function OtherSongReaderScreen() {
     saveReaderSettings({ language, fontSize, thickness });
   }, [language, fontSize, thickness, settingsLoaded]);
 
+  // Landscape allows zooming past the portrait cap (see MAX_FONT_SIZE vs
+  // MAX_FONT_SIZE_LANDSCAPE below); clamp back down on rotating to portrait
+  // so an oversized font doesn't overflow the narrower screen there.
+  useEffect(() => {
+    if (SCREEN_WIDTH <= SCREEN_HEIGHT) {
+      setFontSize(prev => Math.min(prev, MAX_FONT_SIZE));
+    }
+  }, [SCREEN_WIDTH, SCREEN_HEIGHT]);
+
   // Re-snap to the current page whenever the pager's item width changes —
   // covers both the initial index-restore and a rotation mid-read.
   // useLayoutEffect (not useEffect) so this correction is applied in the
@@ -176,16 +190,45 @@ export default function OtherSongReaderScreen() {
     } catch (e) {}
   };
 
+  const isLandscape = SCREEN_WIDTH > SCREEN_HEIGHT;
+  const maxFontSize = isLandscape ? MAX_FONT_SIZE_LANDSCAPE : MAX_FONT_SIZE;
+
   const decreaseFontSize = () => setFontSize(prev => Math.max(MIN_FONT_SIZE, prev - 1));
-  const increaseFontSize = () => setFontSize(prev => Math.min(MAX_FONT_SIZE, prev + 1));
+  const increaseFontSize = () => setFontSize(prev => Math.min(maxFontSize, prev + 1));
   const decreaseThickness = () => setThickness(prev => Math.max(MIN_THICKNESS, prev - THICKNESS_STEP));
   const increaseThickness = () => setThickness(prev => Math.min(MAX_THICKNESS, prev + THICKNESS_STEP));
-
-  const isLandscape = SCREEN_WIDTH > SCREEN_HEIGHT;
 
   // Landscape has no floating bottomBar to clear (see below), so it doesn't
   // need the portrait-only bottom padding for it.
   const lyricsPaddingBottom = (isLandscape ? 24 : 190) + (fontSize - MIN_FONT_SIZE) * 7 + (thickness - MIN_THICKNESS) / 6;
+
+  // Landscape-only pinch-to-zoom on the pager, so the wide screen's leftover
+  // space can be filled by growing the font instead of staying stuck at
+  // whatever size was picked in portrait. `runOnJS(true)` moves the whole
+  // gesture (including onStart/onUpdate) onto the JS thread so it can read
+  // and write `fontSize` state directly with a plain ref, no Reanimated
+  // shared values needed. `pinchStartFontSize` snapshots the size the
+  // pinch began at so `e.scale` (cumulative from gesture start) maps to an
+  // absolute size rather than compounding every frame.
+  const pinchStartFontSize = useRef(fontSize);
+  const pinchGesture = Gesture.Pinch()
+    .enabled(isLandscape)
+    .runOnJS(true)
+    .onStart(() => {
+      pinchStartFontSize.current = fontSize;
+    })
+    .onUpdate(e => {
+      const next = Math.round(pinchStartFontSize.current * e.scale);
+      setFontSize(Math.min(maxFontSize, Math.max(MIN_FONT_SIZE, next)));
+    });
+  // The pager FlatList's own scroll/swipe handling is a native gesture
+  // recognizer under the hood; without explicitly declaring it here, it
+  // silently claims the touch stream on the first finger and the Pinch
+  // above never sees the second one. Gesture.Native() is a stand-in for
+  // that built-in recognizer, and Simultaneous tells both to activate
+  // together instead of one blocking the other.
+  const pagerNativeGesture = Gesture.Native();
+  const pagerGesture = Gesture.Simultaneous(pinchGesture, pagerNativeGesture);
 
   const searchResults = searchQuery.trim()
     ? songsIndex.filter(s => {
@@ -306,28 +349,30 @@ export default function OtherSongReaderScreen() {
           the lyrics rather than staying fixed. */}
       {!isLandscape && renderTopBar(currentSong)}
 
-      <FlatList
-        // Forces a clean remount on every orientation flip instead of
-        // reusing the existing scroll position (computed for the old page
-        // width): the fresh instance lands on `initialScrollIndex` using
-        // the already-updated `getItemLayout`, so it opens correctly
-        // positioned rather than needing an async post-hoc correction.
-        key={isLandscape ? 'landscape' : 'portrait'}
-        ref={flatListRef}
-        data={songsIndex}
-        keyExtractor={item => item.songId}
-        renderItem={SongPage}
-        horizontal
-        pagingEnabled
-        showsHorizontalScrollIndicator={false}
-        initialScrollIndex={currentIndex}
-        getItemLayout={(_, index) => ({ length: SCREEN_WIDTH, offset: SCREEN_WIDTH * index, index })}
-        onScrollToIndexFailed={() => {}}
-        onMomentumScrollEnd={e => {
-          const index = Math.round(e.nativeEvent.contentOffset.x / SCREEN_WIDTH);
-          setCurrentIndex(index);
-        }}
-      />
+      <GestureDetector gesture={pagerGesture}>
+        <FlatList
+          // Forces a clean remount on every orientation flip instead of
+          // reusing the existing scroll position (computed for the old page
+          // width): the fresh instance lands on `initialScrollIndex` using
+          // the already-updated `getItemLayout`, so it opens correctly
+          // positioned rather than needing an async post-hoc correction.
+          key={isLandscape ? 'landscape' : 'portrait'}
+          ref={flatListRef}
+          data={songsIndex}
+          keyExtractor={item => item.songId}
+          renderItem={SongPage}
+          horizontal
+          pagingEnabled
+          showsHorizontalScrollIndicator={false}
+          initialScrollIndex={currentIndex}
+          getItemLayout={(_, index) => ({ length: SCREEN_WIDTH, offset: SCREEN_WIDTH * index, index })}
+          onScrollToIndexFailed={() => {}}
+          onMomentumScrollEnd={e => {
+            const index = Math.round(e.nativeEvent.contentOffset.x / SCREEN_WIDTH);
+            setCurrentIndex(index);
+          }}
+        />
+      </GestureDetector>
 
       {/* Portrait only — swiping the pager above is enough to navigate in
           landscape, where every bit of vertical space matters more. */}
@@ -391,9 +436,9 @@ export default function OtherSongReaderScreen() {
               </TouchableOpacity>
               <Text style={[styles.stepperValue, { color: c.text }]}>{fontSize}</Text>
               <TouchableOpacity
-                style={[styles.stepperBtn, { backgroundColor: c.raised }, fontSize >= MAX_FONT_SIZE && styles.stepperBtnDisabled]}
+                style={[styles.stepperBtn, { backgroundColor: c.raised }, fontSize >= maxFontSize && styles.stepperBtnDisabled]}
                 onPress={increaseFontSize}
-                disabled={fontSize >= MAX_FONT_SIZE}
+                disabled={fontSize >= maxFontSize}
               >
                 <Ionicons name="add" size={20} color={c.text} />
               </TouchableOpacity>
