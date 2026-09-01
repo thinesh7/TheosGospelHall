@@ -11,6 +11,7 @@ import {
   StatusBar,
   StyleSheet,
   TouchableOpacity,
+  useWindowDimensions,
   View,
 } from 'react-native';
 import { SongIndexEntry, getSongsIndex, syncSongs } from '../../utils/songsSync';
@@ -144,6 +145,8 @@ export default function SongsScreen({ headerTitle }: { headerTitle?: React.React
   const router = useRouter();
   const { colors: c, theme, cycleTheme } = useTheme();
   const insets = useSafeAreaInsets();
+  const { width: winWidth, height: winHeight } = useWindowDimensions();
+  const isLandscape = winWidth > winHeight;
   const flatListRef = useRef<FlatList>(null);
   const [activeTab, setActiveTab] = useState<Tab>('numbers');
   const [search, setSearch] = useState('');
@@ -266,19 +269,8 @@ export default function SongsScreen({ headerTitle }: { headerTitle?: React.React
     );
   }, [favorites, c, toggleFavorite]);
 
-  const listHeader = (
-    <View style={{ paddingBottom: 12 }}>
-      <View style={[styles.headerRow, { marginTop: insets.top + 12, marginLeft: 16 + insets.left, marginRight: 16 + insets.right }]}>
-        {headerTitle ? headerTitle : (
-          <Text style={[styles.headerTitle, { color: c.accent }]}>Geethangalum Keerthanaigalum</Text>
-        )}
-        <View style={styles.headerActions}>
-          <TouchableOpacity onPress={cycleTheme} style={styles.themeBtn}>
-            <ThemeToggleIcon theme={theme} size={22} color={c.text} />
-          </TouchableOpacity>
-        </View>
-      </View>
-
+  const searchTabsBlock = (
+    <View>
       <View style={[styles.searchBar, { backgroundColor: c.surfaceAlt, borderColor: c.divider, marginLeft: 16 + insets.left, marginRight: 16 + insets.right }]}>
         <Ionicons name="search" size={20} color={c.subtext} />
         <TextInput
@@ -327,16 +319,42 @@ export default function SongsScreen({ headerTitle }: { headerTitle?: React.React
     </View>
   );
 
+  const titleRow = (
+    <View style={[styles.headerRow, { marginTop: insets.top + 12, marginLeft: 16 + insets.left, marginRight: 16 + insets.right }]}>
+      {headerTitle ? headerTitle : (
+        <Text style={[styles.headerTitle, { color: c.accent }]}>Geethangalum Keerthanaigalum</Text>
+      )}
+      <View style={styles.headerActions}>
+        <TouchableOpacity onPress={cycleTheme} style={styles.themeBtn}>
+          <ThemeToggleIcon theme={theme} size={22} color={c.text} />
+        </TouchableOpacity>
+      </View>
+    </View>
+  );
+
+  // Title + search bar + filter tabs together. In landscape this is the
+  // FlatList's ListHeaderComponent so it scrolls away with the content; in
+  // portrait it's rendered as a fixed sibling above the FlatList instead, so
+  // all three stay frozen and never scroll at all.
+  const combinedHeader = (
+    <View style={{ paddingBottom: 12 }}>
+      {titleRow}
+      {searchTabsBlock}
+    </View>
+  );
+
   return (
     <View style={[styles.container, { backgroundColor: c.bg }]}>
       <StatusBar barStyle={theme === 'light' ? 'dark-content' : 'light-content'} />
+
+      {!isLandscape && combinedHeader}
 
       <FlatList
         ref={flatListRef}
         data={filteredSongs}
         keyExtractor={item => item.songId}
         renderItem={SongCard}
-        ListHeaderComponent={listHeader}
+        ListHeaderComponent={isLandscape ? combinedHeader : undefined}
         contentContainerStyle={{ paddingBottom: 100, paddingLeft: 12 + insets.left, paddingRight: 12 + insets.right }}
         initialNumToRender={20}
         maxToRenderPerBatch={20}

@@ -1,7 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   FlatList,
@@ -138,7 +138,15 @@ export default function SongReaderScreen() {
   // covers both the initial index-restore and a rotation mid-read, since
   // the FlatList's horizontal scroll offset from before a rotation no
   // longer points at the same page once every page is a different width.
-  useEffect(() => {
+  // useLayoutEffect (not useEffect) so this correction is applied in the
+  // same commit as the width change, before the screen paints — otherwise
+  // there's a visible frame where the pages are already the new size but
+  // still scrolled to the old (now-misaligned) pixel offset, which is what
+  // reads as the pager "freezing" then "snapping" on rotation. The pager
+  // FlatList is also remounted (via `key`, see below) on every orientation
+  // flip so `initialScrollIndex` re-lands correctly with the fresh
+  // `getItemLayout` math instead of relying solely on this correction.
+  useLayoutEffect(() => {
     if (songsIndex.length > 0 && currentIndex >= 0) {
       flatListRef.current?.scrollToIndex({ index: currentIndex, animated: false });
     }
@@ -319,6 +327,12 @@ export default function SongReaderScreen() {
       {!isLandscape && renderTopBar(currentSong)}
 
       <FlatList
+        // Forces a clean remount on every orientation flip instead of
+        // reusing the existing scroll position (computed for the old page
+        // width): the fresh instance lands on `initialScrollIndex` using
+        // the already-updated `getItemLayout`, so it opens correctly
+        // positioned rather than needing an async post-hoc correction.
+        key={isLandscape ? 'landscape' : 'portrait'}
         ref={flatListRef}
         data={songsIndex}
         keyExtractor={item => item.songId}
