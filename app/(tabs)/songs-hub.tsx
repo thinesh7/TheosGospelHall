@@ -9,7 +9,7 @@ import SongsScreen from './songs';
 type CollectionTab = 'geethangalum' | 'other';
 
 const OPTIONS: { id: CollectionTab; label: string; icon?: keyof typeof Ionicons.glyphMap }[] = [
-  { id: 'geethangalum', label: 'Geethangalum Keerthanaigalum', icon: 'musical-notes' },
+  { id: 'geethangalum', label: 'Geethangalum Keerthanaigalum' },
   { id: 'other', label: 'Special Songs' },
 ];
 
