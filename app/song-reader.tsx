@@ -100,6 +100,10 @@ export default function SongReaderScreen() {
   const flatListRef = useRef<FlatList>(null);
   const lyricsMapRef = useRef<LyricsMap>({});
   const loadingSetRef = useRef<Set<string>>(new Set());
+  // Measured height of the landscape top-bar overlay (via onLayout below),
+  // so the tap gesture can tell a tap on the bar itself apart from a tap on
+  // the content beneath it — see tapGesture.
+  const topBarHeightRef = useRef(0);
 
   const [songsIndex, setSongsIndex] = useState<SongIndexEntry[]>([]);
   const [lyricsMap, setLyricsMap] = useState<LyricsMap>({});
@@ -112,6 +116,10 @@ export default function SongReaderScreen() {
   const [settingsLoaded, setSettingsLoaded] = useState(false);
   const [showSearch, setShowSearch] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
+  // Landscape-only: the top bar starts hidden and toggles on tap, instead of
+  // portrait's always-visible fixed bar. Reset to hidden whenever we're not
+  // in landscape so re-entering landscape always starts from a clean state.
+  const [landscapeBarVisible, setLandscapeBarVisible] = useState(false);
 
   useEffect(() => {
     init();
@@ -213,6 +221,10 @@ export default function SongReaderScreen() {
   const isLandscape = SCREEN_WIDTH > SCREEN_HEIGHT;
   const maxFontSize = isLandscape ? MAX_FONT_SIZE_LANDSCAPE : MAX_FONT_SIZE;
 
+  useEffect(() => {
+    if (!isLandscape) setLandscapeBarVisible(false);
+  }, [isLandscape]);
+
   const decreaseFontSize = () => setFontSize(prev => Math.max(MIN_FONT_SIZE, prev - 1));
   const increaseFontSize = () => setFontSize(prev => Math.min(maxFontSize, prev + 1));
   const decreaseThickness = () => setThickness(prev => Math.max(MIN_THICKNESS, prev - THICKNESS_STEP));
@@ -248,7 +260,27 @@ export default function SongReaderScreen() {
   // that built-in recognizer, and Simultaneous tells both to activate
   // together instead of one blocking the other.
   const pagerNativeGesture = Gesture.Native();
-  const pagerGesture = Gesture.Simultaneous(pinchGesture, pagerNativeGesture);
+  // Landscape-only tap-to-toggle for the top bar, folded into the same
+  // gesture graph as the pinch/pager above (rather than wrapping each page
+  // in a separate Pressable) — nesting a plain-React-Native Pressable as an
+  // ancestor of the per-page vertical FlatList fought with this graph's
+  // native touch handling and made vertical scrolling janky. A Tap gesture
+  // here coexists with the rest via Simultaneous and auto-fails once the
+  // finger moves past maxDistance, so a real scroll/swipe is unaffected.
+  // This gesture spans the whole page (bar included), so a tap landing on
+  // the bar itself — while it's visible — is left alone: its own
+  // TouchableOpacity buttons (search/back/favorite/etc.) already handle
+  // that tap, and toggling here too would fight them.
+  const tapGesture = Gesture.Tap()
+    .enabled(isLandscape)
+    .maxDistance(10)
+    .runOnJS(true)
+    .onEnd((e, success) => {
+      if (!success) return;
+      if (landscapeBarVisible && e.y <= topBarHeightRef.current) return;
+      setLandscapeBarVisible(v => !v);
+    });
+  const pagerGesture = Gesture.Simultaneous(pinchGesture, pagerNativeGesture, tapGesture);
 
   const searchResults = searchQuery.trim()
     ? songsIndex.filter(s => {
@@ -267,8 +299,8 @@ export default function SongReaderScreen() {
   };
 
   // Shared between the fixed portrait placement (rendered once, above the
-  // pager) and the landscape placement (rendered per-page, as each page's
-  // own scrollable ListHeaderComponent — see SongPage below) so there's one
+  // pager) and the landscape placement (rendered per-page, as a floating
+  // overlay toggled by tapping the page — see SongPage below) so there's one
   // definition of the icon row instead of two drifting copies. Acting on
   // `song` directly (rather than the outer `currentSong` state) also means
   // the landscape per-page copy is always correct for whichever page it's
@@ -309,7 +341,16 @@ export default function SongReaderScreen() {
     if (!lyrics) {
       return (
         <View style={[styles.page, { width: SCREEN_WIDTH, height: SCREEN_HEIGHT, backgroundColor: c.bg }]}>
-          {isLandscape && renderTopBar(item)}
+          {isLandscape && landscapeBarVisible && (
+            <View
+              style={styles.landscapeBarOverlay}
+              onLayout={e => {
+                topBarHeightRef.current = e.nativeEvent.layout.height;
+              }}
+            >
+              {renderTopBar(item)}
+            </View>
+          )}
           <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
             <ActivityIndicator size="large" color={c.accent} />
           </View>
@@ -326,13 +367,12 @@ export default function SongReaderScreen() {
         <FlatList
           data={[text]}
           keyExtractor={() => item.songId}
-          // Only landscape scrolls the top bar away with the lyrics — in
-          // portrait it stays fixed above this FlatList instead (see the
-          // main return below), matching the request that this only change
-          // landscape behavior.
-          ListHeaderComponent={isLandscape ? renderTopBar(item) : undefined}
           renderItem={() => (
-            <View style={{ paddingHorizontal: 20 + Math.max(insets.left, insets.right), paddingTop: 10, paddingBottom: lyricsPaddingBottom }}>
+            // Landscape's top bar floats as an overlay (see
+            // landscapeBarOverlay) instead of reserving in-flow space, so the
+            // content needs its own top safe-area padding to clear the
+            // notch/status bar rather than relying on the bar's old height.
+            <View style={{ paddingHorizontal: 20 + Math.max(insets.left, insets.right), paddingTop: isLandscape ? insets.top + 16 : 10, paddingBottom: lyricsPaddingBottom }}>
               <Text style={[styles.title, { color: c.accent, fontSize: fontSize + 4, fontWeight: thickness >= 600 ? 'bold' : '600' }]}>
                 {item.title}
               </Text>
@@ -343,6 +383,16 @@ export default function SongReaderScreen() {
             </View>
           )}
         />
+        {isLandscape && landscapeBarVisible && (
+          <View
+            style={styles.landscapeBarOverlay}
+            onLayout={e => {
+              topBarHeightRef.current = e.nativeEvent.layout.height;
+            }}
+          >
+            {renderTopBar(item)}
+          </View>
+        )}
       </View>
     );
   };
@@ -565,6 +615,14 @@ const styles = StyleSheet.create({
     paddingBottom: 12,
   },
   topBarActions: { flexDirection: 'row', gap: 8 },
+  landscapeBarOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    zIndex: 10,
+    elevation: 10,
+  },
   iconBtn: { padding: 4 },
   title: { fontWeight: 'bold' },
   lyrics: {},
