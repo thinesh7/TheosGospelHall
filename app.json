@@ -7,7 +7,6 @@
     "icon": "./assets/images/logo.png",
     "scheme": "theosgospelhall",
     "userInterfaceStyle": "light",
-    "newArchEnabled": true,
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.theosgospelhall.app"

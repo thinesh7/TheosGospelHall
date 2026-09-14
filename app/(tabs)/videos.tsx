@@ -672,7 +672,7 @@ function VideoModal({ visible, videoId, title, isLive, onClose }: VideoModalProp
       <View style={[styles.videoModal, isLandscape && styles.videoModalLandscape]}>
         <StatusBar hidden />
         {(!playerReady || !progressLoaded) && (
-          <View style={[StyleSheet.absoluteFillObject, { backgroundColor: '#0a0a0a', justifyContent: 'center', alignItems: 'center', zIndex: 10 }]}>
+          <View style={[StyleSheet.absoluteFill, { backgroundColor: '#0a0a0a', justifyContent: 'center', alignItems: 'center', zIndex: 10 }]}>
             {loadError
               ? <PlayerErrorState onRetry={() => {
                   setLoadError(false); setProgressLoaded(false); setPlayerReady(false);
@@ -717,7 +717,7 @@ function VideoModal({ visible, videoId, title, isLive, onClose }: VideoModalProp
               {showResume && videoId && (
                 <Image
                   source={{ uri: `https://img.youtube.com/vi/${videoId}/hqdefault.jpg` }}
-                  style={[StyleSheet.absoluteFillObject, { resizeMode: 'cover' }]}
+                  style={[StyleSheet.absoluteFill, { resizeMode: 'cover' }]}
                 />
               )}
             </View>
@@ -740,7 +740,7 @@ function VideoModal({ visible, videoId, title, isLive, onClose }: VideoModalProp
             <Ionicons name="close" size={26} color="#fff" />
           </TouchableOpacity>
         </View>
-        <Animated.View pointerEvents="none" style={[StyleSheet.absoluteFillObject, { backgroundColor: '#000', opacity: fsOverlayOpacity, zIndex: 50 }]} />
+        <Animated.View pointerEvents="none" style={[StyleSheet.absoluteFill, { backgroundColor: '#000', opacity: fsOverlayOpacity, zIndex: 50 }]} />
         {locked && <LockOverlay onUnlock={() => setLocked(false)} />}
       </View>
     </Modal>
@@ -805,7 +805,7 @@ function SongItem({ item, index, isActive, playerReady, progressLoaded, colors, 
   return (
     <View style={{ width: containerW, height: containerH, backgroundColor: '#000', justifyContent: 'center' }}>
       {(!playerReady || !progressLoaded) && isActive && (
-        <View style={[StyleSheet.absoluteFillObject, { backgroundColor: '#0a0a0a', justifyContent: 'center', alignItems: 'center', zIndex: 10 }]}>
+        <View style={[StyleSheet.absoluteFill, { backgroundColor: '#0a0a0a', justifyContent: 'center', alignItems: 'center', zIndex: 10 }]}>
           {loadError ? <PlayerErrorState onRetry={onRetry} /> : <VideoLoadingState accentColor={colors.accent} />}
         </View>
       )}
@@ -827,7 +827,7 @@ function SongItem({ item, index, isActive, playerReady, progressLoaded, colors, 
           {showResume && videoId && (
             <Image
               source={{ uri: `https://img.youtube.com/vi/${videoId}/hqdefault.jpg` }}
-              style={[StyleSheet.absoluteFillObject, { resizeMode: 'cover' }]}
+              style={[StyleSheet.absoluteFill, { resizeMode: 'cover' }]}
             />
           )}
         </View>
@@ -1093,7 +1093,7 @@ function SongsPlayer({ visible, songs, startIndex, onClose, onEndReached }: Song
             <Ionicons name="chevron-down" size={16} color="rgba(255,255,255,0.5)" />
           </View>
         )}
-        <Animated.View pointerEvents="none" style={[StyleSheet.absoluteFillObject, { backgroundColor: '#000', opacity: fsOverlayOpacity, zIndex: 50 }]} />
+        <Animated.View pointerEvents="none" style={[StyleSheet.absoluteFill, { backgroundColor: '#000', opacity: fsOverlayOpacity, zIndex: 50 }]} />
         {locked && <LockOverlay onUnlock={() => setLocked(false)} />}
       </View>
     </Modal>
@@ -1208,7 +1208,7 @@ function ShortsPlayerItemInner({ item, index, isActive, onEnd, onClose, total, o
     <View style={{ width: containerW, height: containerH, backgroundColor: '#000', justifyContent: 'center' }}>
       <StatusBar hidden />
       {(!shortReady || !progressLoaded) && (
-        <View style={[StyleSheet.absoluteFillObject, { backgroundColor: '#0a0a0a', justifyContent: 'center', alignItems: 'center', zIndex: 10 }]}>
+        <View style={[StyleSheet.absoluteFill, { backgroundColor: '#0a0a0a', justifyContent: 'center', alignItems: 'center', zIndex: 10 }]}>
           {loadError
             ? <PlayerErrorState onRetry={() => {
                 if (loadTimeoutRef.current) clearTimeout(loadTimeoutRef.current);

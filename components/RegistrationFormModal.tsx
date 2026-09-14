@@ -465,7 +465,7 @@ const styles = StyleSheet.create({
   submitBtn: { borderRadius: 14, padding: 16, alignItems: 'center', marginTop: 8, marginBottom: 24, elevation: 4 },
   submitBtnText: { color: '#fff', fontWeight: 'bold', fontSize: 16 },
   successOverlay: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     backgroundColor: 'rgba(15,20,30,0.55)',
     alignItems: 'center',
     justifyContent: 'center',

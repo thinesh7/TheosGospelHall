@@ -1,9 +1,9 @@
-import { StyleSheet, TextStyle } from 'react-native';
+import { StyleProp, StyleSheet, TextStyle } from 'react-native';
 import { Text } from './AppText';
 
 interface Props {
   text: string;
-  style?: TextStyle;
+  style?: StyleProp<TextStyle>;
 }
 
 export default function Paragraphs({ text, style }: Props) {
