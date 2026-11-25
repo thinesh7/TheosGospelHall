@@ -52,7 +52,11 @@ export const THEMES: Record<ThemeName, ThemeColors> = {
   },
 };
 
-export const THEME_ORDER: ThemeName[] = ['light', 'dark', 'sepia'];
+// Order shown in the theme menu and used when cycling: Dark → Light → Sepia.
+export const THEME_ORDER: ThemeName[] = ['dark', 'light', 'sepia'];
+
+// Theme used until the user picks one themselves.
+export const DEFAULT_THEME: ThemeName = 'dark';
 
 export function nextTheme(current: ThemeName): ThemeName {
   const idx = THEME_ORDER.indexOf(current);

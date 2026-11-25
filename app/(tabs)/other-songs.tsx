@@ -10,7 +10,6 @@ import {
   StatusBar,
   StyleSheet,
   TouchableOpacity,
-  useWindowDimensions,
   View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -33,8 +32,6 @@ export default function OtherSongsScreen({ headerTitle }: { headerTitle?: React.
   const router = useRouter();
   const { colors: c, theme, cycleTheme } = useTheme();
   const insets = useSafeAreaInsets();
-  const { width: winWidth, height: winHeight } = useWindowDimensions();
-  const isLandscape = winWidth > winHeight;
   const flatListRef = useRef<FlatList>(null);
   const [activeTab, setActiveTab] = useState<Tab>('numbers');
   const [search, setSearch] = useState('');
@@ -220,10 +217,8 @@ export default function OtherSongsScreen({ headerTitle }: { headerTitle?: React.
     </View>
   );
 
-  // Title + search bar + filter tabs together. In landscape this is the
-  // FlatList's ListHeaderComponent so it scrolls away with the content; in
-  // portrait it's rendered as a fixed sibling above the FlatList instead, so
-  // all three stay frozen and never scroll at all.
+  // Title + search bar + filter tabs together, rendered as a fixed sibling
+  // above the FlatList so all three stay frozen and never scroll.
   const combinedHeader = (
     <View style={{ paddingBottom: 12 }}>
       {titleRow}
@@ -233,16 +228,15 @@ export default function OtherSongsScreen({ headerTitle }: { headerTitle?: React.
 
   return (
     <View style={[styles.container, { backgroundColor: c.bg }]}>
-      <StatusBar barStyle={theme === 'light' ? 'dark-content' : 'light-content'} hidden={isLandscape} animated />
+      <StatusBar barStyle={theme === 'light' ? 'dark-content' : 'light-content'} />
 
-      {!isLandscape && combinedHeader}
+      {combinedHeader}
 
       <FlatList
         ref={flatListRef}
         data={filteredSongs}
         keyExtractor={item => item.songId}
         renderItem={SongCard}
-        ListHeaderComponent={isLandscape ? combinedHeader : undefined}
         contentContainerStyle={{ paddingBottom: 100, paddingLeft: 12 + insets.left, paddingRight: 12 + insets.right }}
         initialNumToRender={20}
         maxToRenderPerBatch={20}

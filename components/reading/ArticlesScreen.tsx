@@ -42,9 +42,7 @@ interface ArticleThemeStyle {
   chipText: string;
   chipSelectedBg: string;
   chipSelectedText: string;
-  footerBg: string;
-  footerIconGradient: [string, string];
-  footerDash: string;
+  headerIconGradient: [string, string];
 }
 
 // Three distinct, professionally themed variants — Blue Light, Dark Gold, and Sepia — using
@@ -73,9 +71,7 @@ const ARTICLE_STYLES: Record<ThemeName, ArticleThemeStyle> = {
     chipText: '#101b32',
     chipSelectedBg: '#0f3460',
     chipSelectedText: '#ffffff',
-    footerBg: '#f1f6fb',
-    footerIconGradient: ['#3d6a9c', '#0f3460'],
-    footerDash: '#d5e0ec',
+    headerIconGradient: ['#3d6a9c', '#0f3460'],
   },
   dark: {
     bg: '#121212',
@@ -97,9 +93,7 @@ const ARTICLE_STYLES: Record<ThemeName, ArticleThemeStyle> = {
     chipText: '#e0e0e0',
     chipSelectedBg: '#ff6b70',
     chipSelectedText: '#1a1a1a',
-    footerBg: '#1c1c1c',
-    footerIconGradient: ['#ff8a8e', '#ff6b70'],
-    footerDash: 'rgba(255,107,112,0.4)',
+    headerIconGradient: ['#ff8a8e', '#ff6b70'],
   },
   sepia: {
     // Soft parchment/ivory rather than saturated gold-tan, muted caramel/bronze
@@ -124,9 +118,7 @@ const ARTICLE_STYLES: Record<ThemeName, ArticleThemeStyle> = {
     chipText: '#5c3f28',
     chipSelectedBg: '#8a5a32',
     chipSelectedText: '#faf3e6',
-    footerBg: '#f0e3ca',
-    footerIconGradient: ['#c2955f', '#5c3f28'],
-    footerDash: 'rgba(138,90,50,0.35)',
+    headerIconGradient: ['#c2955f', '#5c3f28'],
   },
 };
 
@@ -134,7 +126,7 @@ const ARTICLE_STYLES: Record<ThemeName, ArticleThemeStyle> = {
  *  ReadingSectionHeader can color the Articles icon box to match this screen's own palette
  *  (independent of the Reading hub's own orange-family Articles card). */
 export function getArticleHeaderIconGradient(theme: ThemeName): [string, string] {
-  return ARTICLE_STYLES[theme].footerIconGradient;
+  return ARTICLE_STYLES[theme].headerIconGradient;
 }
 
 interface Props {
@@ -319,22 +311,6 @@ export default function ArticlesScreen({ headerTitle }: Props) {
             </View>
           ) : null
         }
-        ListFooterComponent={
-          <View style={[styles.footerCard, { backgroundColor: st.footerBg, borderColor: st.cardBorder }]}>
-            <View style={styles.footerIconRow}>
-              <View style={[styles.footerDash, { backgroundColor: st.footerDash }]} />
-              <View>
-                <LinearGradient colors={st.footerIconGradient} style={styles.footerIconBadge}>
-                  <Ionicons name="book" size={22} color="#fff" />
-                </LinearGradient>
-                <Ionicons name="sparkles" size={13} color={st.footerDash} style={styles.footerSparkle} />
-              </View>
-              <View style={[styles.footerDash, { backgroundColor: st.footerDash }]} />
-            </View>
-            <Text style={[styles.footerTitle, { color: st.text }]}>More inspiring articles coming soon!</Text>
-            <Text style={[styles.footerSubtitle, { color: st.subtext }]}>Stay tuned for more faith-filled content.</Text>
-          </View>
-        }
       />
     </View>
   );
@@ -414,11 +390,4 @@ const styles = StyleSheet.create({
   emptyWrap: { alignItems: 'center', justifyContent: 'center', marginTop: 80, gap: 12 },
   emptyText: { fontSize: 14, fontStyle: 'italic' },
 
-  footerCard: { borderRadius: 20, borderWidth: 1, padding: 24, alignItems: 'center', marginTop: 4 },
-  footerIconRow: { flexDirection: 'row', alignItems: 'center', gap: 14, marginBottom: 16 },
-  footerIconBadge: { width: 52, height: 52, borderRadius: 26, alignItems: 'center', justifyContent: 'center' },
-  footerSparkle: { position: 'absolute', top: -4, right: -6 },
-  footerDash: { width: 28, height: 2, borderRadius: 1 },
-  footerTitle: { fontSize: 16, fontWeight: 'bold', textAlign: 'center', marginBottom: 6 },
-  footerSubtitle: { fontSize: 13, textAlign: 'center' },
 });

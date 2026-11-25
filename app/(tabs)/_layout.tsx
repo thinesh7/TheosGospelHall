@@ -24,10 +24,10 @@ const TABS = [
   { name: 'Contact', icon: 'call' },
 ];
 
-// Reading stays portrait-only; Songs (index 3) now supports free rotation —
-// see songs.tsx / songs-hub.tsx / other-songs.tsx for the responsive layout
-// that makes both orientations usable there.
-const PORTRAIT_LOCKED_TABS = [2];
+// Home (0), Reading (2), Songs (3) and Contact (4) are portrait-only (the
+// song readers inherit the Songs lock). Videos (1) stays unlocked so the
+// player can go landscape for full-screen playback.
+const PORTRAIT_LOCKED_TABS = [0, 2, 3, 4];
 
 export default function TabLayout() {
   const { colors } = useTheme();

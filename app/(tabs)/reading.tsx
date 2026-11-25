@@ -179,8 +179,6 @@ const READING_SECTIONS: ReadingSectionMeta[] = [
   },
 ];
 
-const MORE_SOON_ACCENT = '#7c3aed';
-
 function renderSection(id: string, headerTitle: ReactNode) {
   switch (id) {
     case 'bible':
@@ -304,11 +302,6 @@ export default function ReadingScreen() {
             </TouchableOpacity>
           );
         })}
-
-        <Text style={styles.comingSoonText}>
-          <Text>✨ </Text>
-          <Text style={{ color: MORE_SOON_ACCENT }}>More coming soon…!</Text>
-        </Text>
       </ScrollView>
     </View>
   );
@@ -393,6 +386,4 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.15,
     shadowRadius: 3,
   },
-
-  comingSoonText: { textAlign: 'center', fontSize: 14, fontWeight: '700', fontStyle: 'italic', marginTop: 6 },
 });

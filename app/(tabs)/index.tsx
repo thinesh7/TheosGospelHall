@@ -15,17 +15,34 @@ import {
   StyleSheet,
   TouchableOpacity,
   View,
+  useWindowDimensions,
 } from 'react-native';
 import { Text } from '../../components/AppText';
 import { useTheme } from '../../utils/ThemeContext';
 import { getCachedHomeContent, getMemoryCachedHomeContent, HomeContent, subscribeHomeContent } from '../../utils/homeContentSync';
 import { THEME_ORDER, THEMES, ThemeName } from '../../utils/theme';
 
+// Header top padding: clears the edge-to-edge Android status bar.
+const HEADER_TOP = Platform.OS === 'android' ? (StatusBar.currentHeight ?? 24) + 14 : 56;
+
+// Width of the theme-button / bell slots either side of the header title.
+const SIDE_SLOT = 40;
+// Equal space reserved on both sides of the title for those icons (+ a gap).
+const TITLE_SIDE_INSET = SIDE_SLOT + 6;
+const HEADER_SIDE_PADDING = 16;
+// "Theos Gospel Hall" in bold is roughly 10× its font size wide; size the
+// title to fit its row on one line (max 30) instead of auto-shrinking, which
+// can misplace centered text on Android.
+const titleFontSizeFor = (windowWidth: number) =>
+  Math.max(20, Math.min(30, Math.floor((windowWidth - 2 * (HEADER_SIDE_PADDING + TITLE_SIDE_INSET)) / 10)));
+
 const THEME_LABELS: Record<ThemeName, string> = { light: 'Light', dark: 'Dark', sepia: 'Sepia' };
 
 export default function HomeScreen() {
   const { theme, colors, setTheme } = useTheme();
   const router = useRouter();
+  const { width: windowWidth } = useWindowDimensions();
+  const titleFontSize = titleFontSizeFor(windowWidth);
   const [showThemeMenu, setShowThemeMenu] = useState(false);
 
   const appStateRef = useRef(AppState.currentState);
@@ -61,7 +78,7 @@ export default function HomeScreen() {
     const applyStatusBar = () => {
       StatusBar.setBarStyle('light-content', true);
       if (Platform.OS === 'android') {
-        StatusBar.setBackgroundColor('#1a1a2e', true);
+        StatusBar.setBackgroundColor('#0b1a3a', true);
       }
     };
     applyStatusBar();
@@ -81,21 +98,54 @@ export default function HomeScreen() {
 
   return (
     <ScrollView style={[styles.container, { backgroundColor: colors.bg }]}>
-      <LinearGradient colors={['#1a1a2e', '#16213e', '#0f3460']} style={styles.header}>
-        <View style={styles.settingsWrap}>
-          <TouchableOpacity
-            onPress={() => setShowThemeMenu(true)}
-            style={styles.headerIconBtn}
-            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+      <LinearGradient
+        colors={['#0b1a3a', '#0f2752', '#163a6e']}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 0, y: 1 }}
+        style={styles.header}
+      >
+        {/* One row: theme button | title | bell. The title spans the full
+            row and is centered on the screen itself; the two icons are pinned
+            to the edges on top of the title's side padding, so their widths
+            can never push the title off-center. */}
+        <View style={styles.titleRow}>
+          <View style={[styles.sideSlot, styles.sideSlotLeft]}>
+            <TouchableOpacity
+              onPress={() => setShowThemeMenu(true)}
+              style={styles.iconPill}
+              activeOpacity={0.7}
+              hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+              accessibilityRole="button"
+              accessibilityLabel={`App theme: ${THEME_LABELS[theme]}`}
+            >
+              <Ionicons
+                name={theme === 'dark' ? 'moon' : theme === 'light' ? 'sunny' : 'contrast'}
+                size={20}
+                color="#fff"
+              />
+            </TouchableOpacity>
+          </View>
+
+          <Text
+            style={[styles.churchName, { fontSize: titleFontSize, lineHeight: Math.round(titleFontSize * 1.3) }]}
+            numberOfLines={1}
+            allowFontScaling={false}
           >
-            <Ionicons name="settings-outline" size={22} color="#fff" />
-          </TouchableOpacity>
+            Theos Gospel Hall
+          </Text>
+
+          <View style={[styles.sideSlot, styles.sideSlotRight]}>
+            <NotificationBell color="#fff" onPress={() => router.push('/notification-center')} />
+          </View>
         </View>
-        <View style={styles.bellWrap}>
-          <NotificationBell color="#fff" onPress={() => router.push('/notification-center')} />
+
+        <View style={styles.ornament}>
+          <View style={styles.ornamentLine} />
+          <Ionicons name="book" size={18} color="rgba(255,255,255,0.9)" style={styles.ornamentIcon} />
+          <View style={styles.ornamentLine} />
         </View>
-        <Text style={styles.churchName}>Theos Gospel Hall</Text>
-        <Text style={styles.tagline}>"The Word of God is Living and Active"</Text>
+
+        <Text style={styles.tagline} maxFontSizeMultiplier={1.3}>{'"The Word of God is Living and Active"'}</Text>
       </LinearGradient>
 
       <Modal
@@ -162,12 +212,68 @@ export default function HomeScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
-  header: { padding: 40, alignItems: 'center', paddingTop: 60 },
-  settingsWrap: { position: 'absolute', top: 56, left: 16, zIndex: 2 },
-  bellWrap: { position: 'absolute', top: 56, right: 16, zIndex: 2 },
-  headerIconBtn: { padding: 4 },
-  churchName: { fontSize: 26, fontWeight: 'bold', color: '#fff', textAlign: 'center' },
-  tagline: { fontSize: 14, color: '#ffffff', marginTop: 8, fontStyle: 'italic', fontWeight: '600', letterSpacing: 0.5, textAlign: 'center', width: '100%' },
+  header: {
+    alignItems: 'center',
+    paddingTop: HEADER_TOP,
+    paddingBottom: 26,
+    paddingHorizontal: HEADER_SIDE_PADDING,
+  },
+  titleRow: {
+    width: '100%',
+    minHeight: 40,
+    justifyContent: 'center',
+    marginTop: 6,
+  },
+  // Icons sit on top of the title's (equal) side padding, pinned to the edges.
+  sideSlot: {
+    position: 'absolute',
+    top: 0,
+    bottom: 0,
+    width: SIDE_SLOT,
+    justifyContent: 'center',
+    zIndex: 1,
+  },
+  sideSlotLeft: { left: 0, alignItems: 'flex-start' },
+  sideSlotRight: { right: 0, alignItems: 'flex-end' },
+  iconPill: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(255,255,255,0.10)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.28)',
+  },
+  churchName: {
+    width: '100%',
+    paddingHorizontal: TITLE_SIDE_INSET,
+    fontWeight: 'bold',
+    color: '#fff',
+    textAlign: 'center',
+    letterSpacing: 0.3,
+  },
+  ornament: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    width: '80%',
+    marginTop: 12,
+    marginBottom: 10,
+  },
+  ornamentLine: { flex: 1, height: StyleSheet.hairlineWidth * 2, backgroundColor: 'rgba(255,255,255,0.35)' },
+  ornamentIcon: { marginHorizontal: 12 },
+  tagline: {
+    fontSize: 15,
+    lineHeight: 22,
+    color: 'rgba(255,255,255,0.92)',
+    fontStyle: 'italic',
+    fontWeight: '600',
+    letterSpacing: 0.4,
+    textAlign: 'center',
+    width: '100%',
+    paddingHorizontal: 8,
+  },
   pastorCard: { margin: 16, borderRadius: 16, padding: 20, alignItems: 'center', elevation: 4 },
   pastorAvatar: { marginBottom: 10 },
   pastorImage: { width: 120, height: 120, borderRadius: 60, borderWidth: 3 },
@@ -180,7 +286,7 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(0,0,0,0.5)',
     justifyContent: 'flex-start',
     alignItems: 'flex-start',
-    paddingTop: 102,
+    paddingTop: HEADER_TOP + 52,
     paddingLeft: 16,
   },
   themeMenuCard: {

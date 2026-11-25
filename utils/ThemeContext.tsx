@@ -1,8 +1,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as SystemUI from 'expo-system-ui';
 import { createContext, ReactNode, useContext, useEffect, useState } from 'react';
-import { useColorScheme } from 'react-native';
-import { nextTheme, THEME_ORDER, THEMES, ThemeColors, ThemeName } from './theme';
+import { DEFAULT_THEME, nextTheme, THEME_ORDER, THEMES, ThemeColors, ThemeName } from './theme';
 
 const STORAGE_KEY = 'tgh_app_theme';
 
@@ -17,18 +16,14 @@ interface ThemeContextValue {
 const ThemeContext = createContext<ThemeContextValue | null>(null);
 
 export function ThemeProvider({ children }: { children: ReactNode }) {
-  const systemScheme = useColorScheme();
-  const [theme, setThemeState] = useState<ThemeName>(
-    systemScheme === 'light' ? 'light' : 'dark'
-  );
+  // Dark is the default until the user picks a theme; a saved choice always wins.
+  const [theme, setThemeState] = useState<ThemeName>(DEFAULT_THEME);
   const [isLoaded, setIsLoaded] = useState(false);
 
   useEffect(() => {
     AsyncStorage.getItem(STORAGE_KEY).then(stored => {
       if (stored && THEME_ORDER.includes(stored as ThemeName)) {
         setThemeState(stored as ThemeName);
-      } else if (systemScheme === 'light' || systemScheme === 'dark') {
-        setThemeState(systemScheme);
       }
       setIsLoaded(true);
     });
